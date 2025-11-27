@@ -1,0 +1,149 @@
+* {
+  box-sizing: border-box;
+}
+
+.splash {
+  min-height: 100vh;
+  width: 100vw;
+  background: #ffffff;
+  color: #2c2f3a;
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+}
+
+.splash-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.splash-body {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+
+.splash-card {
+  background: #fff;
+  border: 1px solid #e4e7ef;
+  border-radius: 16px;
+  padding: 48px 56px;
+  max-width: 980px;
+  width: 100%;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
+}
+
+.slides-wrapper {
+  overflow: hidden;
+}
+
+.slides {
+  display: flex;
+  transition: transform 0.7s ease;
+  width: 100%;
+}
+
+.slide {
+  min-width: 100%;
+  padding-right: 32px;
+}
+
+.step-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+.splash-card h1 {
+  margin: 0 0 12px;
+  font-size: 32px;
+  color: #1f2937;
+}
+
+.splash-card p {
+  margin: 0 0 28px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #4b5563;
+}
+
+.splash-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dots {
+  display: flex;
+  gap: 10px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d1d5db;
+  transition: all 0.2s ease;
+}
+
+.dot.active {
+  background: #033266;
+  transform: scale(1.1);
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+}
+
+.text-btn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ghost-btn,
+.primary-btn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.ghost-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghost-btn:hover:not(:disabled) {
+  border-color: #9ca3af;
+}
+
+.primary-btn {
+  border: none;
+  background: #033266;
+  color: #fff;
+}
+
+.primary-btn:hover {
+  background: #02254c;
+}
+
+@media (max-width: 720px) {
+  .splash-card {
+    padding: 28px 24px;
+  }
+
+  .splash-footer {
+    align-items: flex-start;
+  }
+}

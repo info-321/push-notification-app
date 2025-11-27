@@ -1,0 +1,21 @@
+/* Body background for login screen only */
+body.login-bg {
+  background: linear-gradient(120deg, #b90005, #f5eada);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* Body background for splash (and other pages) */
+body.splash-bg {
+  background: #ffffff;
+}
+
+/* Body background for domain/settings pages */
+body.domain-bg {
+  background: #eef3f7 !important;
+  display: block;
+  min-height: 100vh;
+  margin: 0;
+}
