@@ -114,6 +114,66 @@ body {
   font-size: 16px;
 }
 
+.profile {
+  position: relative;
+}
+
+.profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.caret {
+  font-size: 10px;
+}
+
+.profile-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: #fff;
+  color: #2c2f3a;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  min-width: 160px;
+  padding: 6px 0;
+  z-index: 10;
+}
+
+.menu-item {
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.menu-item:hover {
+  background: #f1f5f9;
+}
+
+.menu-icon {
+  width: 18px;
+  text-align: center;
+}
+
+.menu-sep {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 4px 0;
+}
+
 .domain-content {
   flex: 1;
   padding: 24px 32px 48px;
@@ -224,4 +284,26 @@ body {
 
 .save-btn:hover {
   background: #185fa6;
+}
+
+.error {
+  margin-top: 6px;
+  color: #b3261e;
+  font-size: 12px;
+}
+
+.success {
+  margin-top: 10px;
+  color: #0f5132;
+  background: #d1e7dd;
+  border: 1px solid #badbcc;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.spinner {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #1f73c9;
 }
