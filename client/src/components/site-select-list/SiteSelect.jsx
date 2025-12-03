@@ -4,8 +4,8 @@ import './siteselect.css';
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
 
 // Site selection list, fetched from backend domains endpoint.
-// Enhancements: domain dropdown with "Add Domain" option, profile dropdown, and no back/logout buttons in the header.
-const SiteSelect = ({ onAddDomain, onSettings, onLogout }) => {
+// Enhancements: domain dropdown with "Add Domain" option, profile dropdown, and clicking a domain arrow opens Configuration.
+const SiteSelect = ({ onAddDomain, onSettings, onLogout, onSelectDomain }) => {
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,8 +25,9 @@ const SiteSelect = ({ onAddDomain, onSettings, onLogout }) => {
         }
         // Normalize status to boolean configured flag for UI
         const list = (data.data || []).map((d) => ({
-          name: d.domain,
+          name: d.domain_name || d.domain,
           configured: d.status === 'verified',
+          key: d.domain_key,
         }));
         setDomains(list);
         if (list.length > 0) {
@@ -125,7 +126,12 @@ const SiteSelect = ({ onAddDomain, onSettings, onLogout }) => {
                     {item.configured ? 'Configured' : 'Not Configured'}
                   </div>
                 </div>
-                <button type="button" className="domain-action" aria-label="Open domain">
+                <button
+                  type="button"
+                  className="domain-action"
+                  aria-label="Open domain"
+                  onClick={() => onSelectDomain?.(item.key, item.name)}
+                >
                   →
                 </button>
               </div>

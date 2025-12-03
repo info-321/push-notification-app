@@ -1,22 +1,20 @@
 -- Domains table for MySQL
--- Prevent duplicates with unique constraints; track verification status and checks.
+-- Prevent duplicates with unique constraints; track verification status, VAPID keys, and domain key.
 
 CREATE TABLE IF NOT EXISTS domains (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  owner_id BIGINT UNSIGNED NOT NULL,
-  domain VARCHAR(255) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  domain_name VARCHAR(255) NOT NULL,
+  domain_key VARCHAR(64) NOT NULL,
   status ENUM('pending', 'verified', 'failed') NOT NULL DEFAULT 'pending',
   verification_token VARCHAR(128) NOT NULL,
+  vapid_public_key TEXT NULL,
+  vapid_private_key TEXT NULL,
   last_check_result TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uniq_owner_domain (owner_id, domain),
+  UNIQUE KEY uniq_user_domain (user_id, domain_name),
+  UNIQUE KEY uniq_domain_key (domain_key),
   KEY idx_status (status)
 );
-
--- Example index for global uniqueness (if you need it)
--- CREATE UNIQUE INDEX uniq_domain ON domains (domain);
-
--- Example insert
--- INSERT INTO domains (owner_id, domain, verification_token) VALUES (123, 'example.com', 'token-123');

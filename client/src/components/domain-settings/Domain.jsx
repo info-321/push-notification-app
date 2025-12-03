@@ -5,7 +5,12 @@ import './domain.css';
 // After validation, we call the backend to persist the domain and then route to SiteSelect.
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
 
-const Domain = ({ onLogout = () => {}, onSettings = () => {}, onSiteSelect = () => {} }) => {
+const Domain = ({
+  onLogout = () => {},
+  onSettings = () => {},
+  onSiteSelect = () => {},
+  onConfigTab = () => {},
+}) => {
   const [showMenu, setShowMenu] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -77,7 +82,7 @@ const Domain = ({ onLogout = () => {}, onSettings = () => {}, onSiteSelect = () 
         body: JSON.stringify({
           ownerId: 1, // replace with real user/account id when available
           name,
-          domain: domain.toLowerCase(),
+          domain_name: domain.toLowerCase(),
           timezone: '(GMT+05:30) Asia, Kolkata',
         }),
       });
@@ -95,10 +100,12 @@ const Domain = ({ onLogout = () => {}, onSettings = () => {}, onSiteSelect = () 
       }
 
       setStatus('Domain saved. Redirecting to site selection...');
-      // Give the user a moment to see the message, then show SiteSelect (which fetches domains).
+      // Give the user a moment to see the message, then show SiteSelect/Config.
       setTimeout(() => {
         setLoading(false);
-        onSiteSelect();
+        const domainKey = data.data?.domain_key;
+        const domainName = data.data?.domain_name || domain;
+        onSiteSelect(domainKey, domainName);
       }, 600);
     } catch (err) {
       setLoading(false);
@@ -158,7 +165,9 @@ const Domain = ({ onLogout = () => {}, onSettings = () => {}, onSiteSelect = () 
       <div className="domain-content">
         <nav className="tabs">
           <button className="tab">Settings</button>
-          <button className="tab">Configuration</button>
+          <button className="tab" onClick={onConfigTab}>
+            Configuration
+          </button>
           <button className="tab active">Domain</button>
           <button className="tab">Account</button>
           <button className="tab">User</button>

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -27,6 +28,20 @@ const pool = mysql.createPool({
 app.use(cors());
 app.use(express.json());
 
+// Utility: generate a short domain key (8 chars, mixed set).
+const generateDomainKey = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%!';
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+};
+
+// Utility: generate pseudo VAPID-like keys (public 16 chars, private 8 chars) with mixed chars.
+// Note: This is a simplified placeholder; replace with real web-push keys when needed.
+const generateVapidKeys = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%!';
+  const make = (len) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return { publicKey: make(16), privateKey: make(8) };
+};
+
 // POST /api/login - basic admin auth.
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body || {};
@@ -38,53 +53,73 @@ app.post('/api/login', (req, res) => {
 
 // POST /api/domains - create a domain record after frontend validation.
 app.post('/api/domains', async (req, res) => {
-  const { ownerId = 1, name, domain, timezone = '(GMT+05:30) Asia, Kolkata' } = req.body || {};
+  const { userId = 1, name, domain, domain_name, timezone = '(GMT+05:30) Asia, Kolkata' } = req.body || {};
 
-  if (!name || !domain) {
+  const domainName = (domain_name || domain || '').trim().toLowerCase();
+
+  if (!name || !domainName) {
     return res.status(400).json({ ok: false, message: 'Name and domain are required.' });
   }
 
   try {
     const verificationToken = `tok_${Date.now()}`;
     const status = 'pending';
+    const domainKey = generateDomainKey();
+    const vapid = generateVapidKeys();
 
-    // Insert with uniqueness on ownerId + domain. If duplicate, MySQL throws ER_DUP_ENTRY.
     const sql = `
-      INSERT INTO domains (owner_id, domain, status, verification_token, last_check_result, created_at, updated_at)
-      VALUES (?, ?, ?, ?, NULL, NOW(), NOW())
+      INSERT INTO domains (user_id, domain_name, domain_key, status, verification_token, vapid_public_key, vapid_private_key, last_check_result, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
     `;
-    await pool.query(sql, [ownerId, domain.toLowerCase(), status, verificationToken]);
+    await pool.query(sql, [userId, domainName, domainKey, status, verificationToken, vapid.publicKey, vapid.privateKey]);
 
-    // Return latest list for this owner.
+    // Fetch the inserted row to return to the client (without private key).
     const [rows] = await pool.query(
-      'SELECT id, owner_id, domain, status, last_check_result, created_at, updated_at FROM domains WHERE owner_id = ? ORDER BY created_at DESC',
-      [ownerId]
+      'SELECT id, user_id, domain_name, domain_key, status, vapid_public_key, created_at, updated_at FROM domains WHERE domain_key = ? LIMIT 1',
+      [domainKey]
     );
 
-    return res.json({ ok: true, data: rows });
+    return res.json({ ok: true, data: rows[0] });
   } catch (err) {
     // Duplicate domain error
     if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ ok: false, message: 'Domain already exists for this owner.' });
+      return res.status(409).json({ ok: false, message: 'Domain already exists for this user.' });
     }
-    // Surface a clearer error to the client and logs to help debugging (e.g., missing DB/table/auth failure)
     console.error('Error inserting domain', err);
     return res.status(500).json({ ok: false, message: err.message || 'Failed to save domain.' });
   }
 });
 
-// GET /api/domains - list domains for an owner (default owner 1 for demo).
+// GET /api/domains - list domains for a user (default user 1 for demo).
 app.get('/api/domains', async (req, res) => {
-  const ownerId = Number(req.query.ownerId || 1);
+  const userId = Number(req.query.userId || 1);
   try {
     const [rows] = await pool.query(
-      'SELECT id, owner_id, domain, status, last_check_result, created_at, updated_at FROM domains WHERE owner_id = ? ORDER BY created_at DESC',
-      [ownerId]
+      'SELECT id, user_id, domain_name, domain_key, status, vapid_public_key, created_at, updated_at FROM domains WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
     );
     return res.json({ ok: true, data: rows });
   } catch (err) {
     console.error('Error fetching domains', err);
     return res.status(500).json({ ok: false, message: 'Failed to fetch domains.' });
+  }
+});
+
+// GET /api/domains/:key - fetch a single domain by domain_key.
+app.get('/api/domains/:key', async (req, res) => {
+  const domainKey = req.params.key;
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, user_id, domain_name, domain_key, status, vapid_public_key, created_at, updated_at FROM domains WHERE domain_key = ? LIMIT 1',
+      [domainKey]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, message: 'Domain not found' });
+    }
+    return res.json({ ok: true, data: rows[0] });
+  } catch (err) {
+    console.error('Error fetching domain by key', err);
+    return res.status(500).json({ ok: false, message: 'Failed to fetch domain.' });
   }
 });
 
