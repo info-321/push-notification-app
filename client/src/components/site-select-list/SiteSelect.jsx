@@ -12,6 +12,11 @@ const SiteSelect = ({ onAddDomain, onSettings, onLogout, onSelectDomain }) => {
   const [selectedDomain, setSelectedDomain] = useState('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
+  // Keep URL consistent while on SiteSelect (mimic dashboard route).
+  useEffect(() => {
+    window.history.pushState({}, '', '/dashboard');
+  }, []);
+
   // Fetch domains from backend
   useEffect(() => {
     const fetchDomains = async () => {

@@ -286,6 +286,131 @@ body {
   background: #185fa6;
 }
 
+.config-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.config-keys {
+  border: 1px solid #dbe2ea;
+  border-radius: 10px;
+  padding: 16px;
+  background: #f8fafc;
+}
+
+.key-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.label {
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.value {
+  color: #374151;
+  word-break: break-all;
+}
+
+.config-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.subtab {
+  padding: 8px 12px;
+  border: 1px solid #1f73c9;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f73c9;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.subtab.active {
+  background: #1f73c9;
+  color: #fff;
+}
+
+.config-section {
+  border: 1px solid #dbe2ea;
+  border-radius: 10px;
+  padding: 16px;
+  background: #fff;
+}
+
+.config-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.config-section-header h4 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.section-link {
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.config-cards {
+  display: flex;
+  gap: 12px;
+}
+
+.config-card-item {
+  flex: 1;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f9fafc;
+}
+
+.config-card-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.config-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggle-arrow {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.toggle-arrow.open {
+  transform: rotate(180deg);
+}
+
+.code-snippet {
+  margin-top: 8px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  color: #111827;
+  overflow-x: auto;
+}
+.config-card-desc {
+  color: #4b5563;
+  font-size: 13px;
+}
 .error {
   margin-top: 6px;
   color: #b3261e;

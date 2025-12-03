@@ -5,7 +5,7 @@ import Splash from './components/splash/Splash';
 import Domain from './components/domain-settings/Domain';
 import Settings from './components/domain-settings/Settings';
 import SiteSelect from './components/site-select-list/SiteSelect';
-import Configuration from './components/domain-settings/Configuration';
+// Note: Configuration content now lives inside Domain tabs; no separate view.
 
 const App = () => {
   // Restore persisted auth/view state so reloads stay on the same page.
@@ -26,12 +26,49 @@ const App = () => {
   // Current domain selection (for config routing)
   const [selectedDomainKey, setSelectedDomainKey] = useState(initialDomainKey);
   const [selectedDomainName, setSelectedDomainName] = useState(initialDomainName);
+  // Which tab should Domain open on (domain/config). Defaults to domain.
+  const [domainTab, setDomainTab] = useState('domain');
+
+  // Helper to sync view/tab from the current URL (supports /dashboard, /settings/domain, /settings/config?domain=KEY).
+  const syncViewFromUrl = () => {
+    if (!isAuthenticated) return;
+    const path = window.location.pathname;
+    if (path === '/dashboard') {
+      setView('sites');
+      setDomainTab('domain');
+    } else if (path === '/settings/domain') {
+      setView('domain');
+      setDomainTab('domain');
+    } else if (path.startsWith('/settings/config')) {
+      const params = new URLSearchParams(window.location.search);
+      const key = params.get('domain') || '';
+      if (key) {
+        setSelectedDomainKey(key);
+        setDomainTab('config');
+      }
+      setView('domain');
+    }
+  };
+
+  // On first load and whenever auth toggles on, honor direct URLs.
+  useEffect(() => {
+    syncViewFromUrl();
+  }, [isAuthenticated]);
+
+  // Listen for manual URL changes (back/forward or typing new path) to resync view.
+  useEffect(() => {
+    const handler = () => syncViewFromUrl();
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, [isAuthenticated]);
 
   // Apply page-specific body backgrounds.
   useEffect(() => {
     const classes = ['login-bg', 'splash-bg', 'domain-bg'];
     document.body.classList.remove(...classes);
     if (view === 'login') {
+      // Keep URL consistent when on the login screen.
+      window.history.pushState({}, '', '/login');
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
@@ -67,10 +104,13 @@ const App = () => {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setView('login');
+    // Also push the login URL on logout for consistency.
+    window.history.pushState({}, '', '/login');
     localStorage.removeItem('auth');
     localStorage.removeItem('view');
     localStorage.removeItem('selectedDomainKey');
     localStorage.removeItem('selectedDomainName');
+    setDomainTab('domain');
   };
 
   const handleLoginSuccess = () => {
@@ -113,24 +153,12 @@ const App = () => {
         onSettings={() => setView('settings')}
         onLogout={handleLogout}
         onSelectDomain={(key, name) => {
+          // When selecting a domain from the list, open Domain with Configuration tab active.
           setSelectedDomainKey(key);
           setSelectedDomainName(name);
-          setView('config');
-          // Update URL to mimic /settings/config?domain=<key>
-          window.history.pushState({}, '', `/settings/config?domain=${encodeURIComponent(key)}`);
+          setDomainTab('config');
+          setView('domain');
         }}
-      />
-    );
-  }
-
-  if (view === 'config') {
-    return (
-      <Configuration
-        domainKey={selectedDomainKey}
-        domainName={selectedDomainName}
-        onLogout={handleLogout}
-        onSettings={() => setView('settings')}
-        onBackToSites={() => setView('sites')}
       />
     );
   }
@@ -140,24 +168,23 @@ const App = () => {
     <Domain
       onLogout={handleLogout}
       onSettings={() => setView('settings')}
-    	 onSiteSelect={(domainKey, domainName) => {
+      selectedDomainKey={selectedDomainKey}
+      selectedDomainName={selectedDomainName}
+      defaultTab={domainTab}
+      onSiteSelect={(domainKey, domainName) => {
         // When domain is successfully saved, mark setup complete and show SiteSelect by default.
         setDomainSetupComplete(true);
         if (domainKey) {
           setSelectedDomainKey(domainKey);
           setSelectedDomainName(domainName || '');
-          setView('config');
-          window.history.pushState({}, '', `/settings/config?domain=${encodeURIComponent(domainKey)}`);
+          setDomainTab('config');
+          setView('domain');
         } else {
+          setDomainTab('domain');
           setView('sites');
         }
       }}
-      onConfigTab={() => {
-        if (selectedDomainKey) {
-          setView('config');
-          window.history.pushState({}, '', `/settings/config?domain=${encodeURIComponent(selectedDomainKey)}`);
-        }
-      }}
+      onSelectDomainTab={setDomainTab}
     />
   );
 };
