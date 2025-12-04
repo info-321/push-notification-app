@@ -28,11 +28,42 @@ const Domain = ({
   // Toggle states for showing code/plugin details under each config card.
   const [showScript, setShowScript] = useState(false);
   const [showPlugin, setShowPlugin] = useState(false);
+  // Domain list for the navbar dropdown.
+  const [domains, setDomains] = useState([]);
+  const [dropdownValue, setDropdownValue] = useState(selectedDomainName || 'add');
 
   // Sync tab when parent requests a specific default tab.
   useEffect(() => {
     setActiveTab(defaultTab);
   }, [defaultTab]);
+
+  // Fetch all domains so the navbar dropdown can list them.
+  useEffect(() => {
+    const loadDomains = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/domains?ownerId=1`);
+        const data = await res.json();
+        if (res.ok && data.ok && Array.isArray(data.data)) {
+          setDomains(
+            data.data.map((d) => ({
+              name: d.domain_name || d.domain,
+              key: d.domain_key,
+            })),
+          );
+        }
+      } catch (e) {
+        // Silent fail for navbar list; form still works.
+      }
+    };
+    loadDomains();
+  }, []);
+
+  // Keep dropdown selection in sync when parent passes a new domain.
+  useEffect(() => {
+    if (selectedDomainName) {
+      setDropdownValue(selectedDomainName);
+    }
+  }, [selectedDomainName]);
 
   // Keep URL in sync with tab selection (mimic Feedify URLs).
   useEffect(() => {
@@ -66,10 +97,46 @@ const Domain = ({
     loadConfig();
   }, [activeTab, selectedDomainKey]);
 
+  // Build a personalized script snippet for the current domain (rendered in the Config tab).
+  const domainKeyForSnippet = configDetails?.domain_key || selectedDomainKey || '<your-domain-key>';
+  const vapidKeyForSnippet = configDetails?.vapid_public_key || '<vapid-public-key>';
+  const apiBaseForSnippet = API_BASE;
+  const snippetText = `<!-- Push Script -->
+<script>
+  (function (d, w) {
+    // Per-domain config passed to the SDK
+    w.pushConfig = {
+      domainKey: '${domainKeyForSnippet}',
+      apiBase: '${apiBaseForSnippet}',
+      vapidPublicKey: '${vapidKeyForSnippet}',
+      swPath: '/push-sw.js' // Change if you host the service worker elsewhere
+    };
+    // Load your hosted SDK
+    var s = d.createElement('script');
+    s.src = '${apiBaseForSnippet}/sdk/push.js';
+    s.async = true;
+    d.head.appendChild(s);
+  })(document, window);
+</script>`;
+
   const handleSiteChange = (e) => {
-    // If "Add Domain +" is chosen, stay on this page so user can add domains.
-    if (e.target.value === 'add') {
-      window.location.href = window.location.pathname;
+    const value = e.target.value;
+    setDropdownValue(value);
+    // If "Add Domain +" is chosen, jump to Domain tab for adding.
+    if (value === 'add') {
+      setActiveTab('domain');
+      onSelectDomainTab('domain');
+      window.history.pushState({}, '', '/settings/domain');
+      return;
+    }
+
+    // For an existing domain selection, find its key and switch to Configuration.
+    const chosen = domains.find((d) => d.name === value);
+    if (chosen) {
+      onSiteSelect(chosen.key, chosen.name); // update parent selection
+      setActiveTab('config');
+      onSelectDomainTab('config');
+      window.history.pushState({}, '', `/settings/config?domain=${encodeURI(chosen.key)}`);
     }
   };
 
@@ -169,9 +236,14 @@ const Domain = ({
             <img src="/images/TTWLogo.jpg" alt="TTW Logo" />
           </div>
           <div className="site-select">
-            <select defaultValue="add" onChange={handleSiteChange}>
+            {/* Navbar domain selector shows all domains plus the add option */}
+            <select value={dropdownValue} onChange={handleSiteChange}>
               <option value="add">Add Domain +</option>
-              {/* <option value="www.travelandtourworld.ee">www.travelandtourworld.ee</option> */}
+              {domains.map((d) => (
+                <option key={d.key || d.name} value={d.name}>
+                  {d.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -334,15 +406,38 @@ const Domain = ({
                         <button
                           type="button"
                           className={`toggle-arrow ${showScript ? 'open' : ''}`}
-                          onClick={() => setShowScript(!showScript)}
+                          onClick={() => {
+                            setShowScript(!showScript);
+                            setShowPlugin(false); // keep only this card open
+                          }}
                           aria-label="Toggle script details"
                         >
                           ▼
                         </button>
                       </div>
-                      {showScript && (
-                        <pre className="code-snippet">{`<script src="https://cdn.example.com/push.js" async></script>`}</pre>
-                      )}
+                      <div style={{ maxHeight: showScript ? '700px' : '0px', opacity: showScript ? 1 : 0, overflow: 'hidden', transition: 'all 0.35s ease' }}>
+                        {showScript && (
+                          <div className="code-block">
+                            <p className="code-step">
+                              {/* Tell the user where to place the snippet */}
+                              Step 1: Copy this snippet into the <code>&lt;head&gt;</code> of your site.
+                            </p>
+                            <pre className="code-snippet">{snippetText}</pre>
+                            <p className="code-step">
+                              Step 2: Ensure <code>push-sw.js</code> is reachable at the configured <code>swPath</code> (root recommended).
+                            </p>
+                            <p className="code-step">
+                              Step 3: Publish the site and send a test push from your dashboard.
+                            </p>
+                            <p className="code-step">
+                              {/* Allow users to download the service worker file directly (mirrors Feedify style) */}
+                              <a href="/push-sw.js" download>
+                                Download push-sw.js
+                              </a>
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="config-card-item">
                       <div className="config-card-title-row">
@@ -350,7 +445,10 @@ const Domain = ({
                         <button
                           type="button"
                           className={`toggle-arrow ${showPlugin ? 'open' : ''}`}
-                          onClick={() => setShowPlugin(!showPlugin)}
+                          onClick={() => {
+                            setShowPlugin(!showPlugin);
+                            setShowScript(false);
+                          }}
                           aria-label="Toggle plugin details"
                         >
                           ▼
