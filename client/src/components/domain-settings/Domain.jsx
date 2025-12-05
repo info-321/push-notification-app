@@ -119,6 +119,9 @@ const Domain = ({
   })(document, window);
 </script>`;
 
+  // Download URL for the WordPress plugin zip (place the zip in /public/downloads/).
+  const pluginDownloadUrl = '/downloads/push-notifications-plugin.zip';
+
   const handleSiteChange = (e) => {
     const value = e.target.value;
     setDropdownValue(value);
@@ -395,7 +398,7 @@ const Domain = ({
                   <button className="subtab">IOS Setting</button>
                 </div>
 
-                <div className="config-section">
+                {/* <div className="config-section">
                   <div className="config-section-header">
                     <h4>Push Notification</h4>
                   </div>
@@ -419,7 +422,7 @@ const Domain = ({
                         {showScript && (
                           <div className="code-block">
                             <p className="code-step">
-                              {/* Tell the user where to place the snippet */}
+                              
                               Step 1: Copy this snippet into the <code>&lt;head&gt;</code> of your site.
                             </p>
                             <pre className="code-snippet">{snippetText}</pre>
@@ -430,7 +433,7 @@ const Domain = ({
                               Step 3: Publish the site and send a test push from your dashboard.
                             </p>
                             <p className="code-step">
-                              {/* Allow users to download the service worker file directly (mirrors Feedify style) */}
+                              
                               <a href="/push-sw.js" download>
                                 Download push-sw.js
                               </a>
@@ -438,14 +441,14 @@ const Domain = ({
                           </div>
                         )}
                       </div>
-                    </div>
-                    <div className="config-card-item">
+                    </div> */}
+                    {/* <div className="config-card-item">
                       <div className="config-card-title-row">
                         <div className="config-card-title">Install WordPress Plugin</div>
                         <button
                           type="button"
                           className={`toggle-arrow ${showPlugin ? 'open' : ''}`}
-                          onClick={() => {
+                          onClick={() => {                            
                             setShowPlugin(!showPlugin);
                             setShowScript(false);
                           }}
@@ -459,8 +462,130 @@ const Domain = ({
                           Download the plugin from your dashboard and upload it in WP → Plugins → Add New.
                         </div>
                       )}
+                    </div> */}
+
+
+                    {/* <div className="config-card-item">
+                      <div className="config-card-title-row">
+                        <div className="config-card-title">Install WordPress Plugin</div>
+                        <button
+                          type="button"
+                          className={`toggle-arrow ${showPlugin ? 'open' : ''}`}
+                          onClick={() => {
+                            // Open plugin card and close script card to keep only one expanded.
+                            setShowPlugin(!showPlugin);
+                            setShowScript(false);
+                          }}
+                          aria-label="Toggle plugin details"
+                        >
+                          ▼
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: showPlugin ? '300px' : '0px', opacity: showPlugin ? 1 : 0, overflow: 'hidden', transition: 'all 0.35s ease' }}>
+                        {showPlugin && (
+                          <div className="config-card-desc">
+                            
+                            <p className="code-step">
+                              Step 1: Note your Domain Key: {configDetails?.domain_key || selectedDomainKey}
+                            </p>
+                            <p className="code-step">
+                              Step 2: Download the WordPress plugin and upload it in WP → Plugins → Add New.
+                            </p>
+                            <p className="code-step">
+                              <a href={pluginDownloadUrl} download>
+                                Download WordPress Plugin
+                              </a>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div> */}
+
+
+                  <div className="config-section">
+                    <div className="config-section-header">
+                      <h4>Push Notification</h4>
                     </div>
-                  </div>
+                    <div className="config-cards">
+                      <div className="config-card-item">
+                        <div className="config-card-title-row">
+                          <div className="config-card-title">Install With Script</div>
+                          <button
+                            type="button"
+                            className={`toggle-arrow ${showScript ? 'open' : ''}`}
+                            onClick={() => {
+                              // Only this card opens; close WP card for a cleaner UX.
+                              setShowScript(!showScript);
+                              setShowPlugin(false);
+                            }}
+                            aria-label="Toggle script details"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                        {/* Animated collapse for script details */}
+                        <div style={{ maxHeight: showScript ? '700px' : '0px', opacity: showScript ? 1 : 0, overflow: 'hidden', transition: 'all 0.35s ease' }}>
+                          {showScript && (
+                            <div className="code-block">
+                              <p className="code-step">
+                                {/* Tell the user where to place the snippet */}
+                                Step 1: Copy this snippet into the <code>&lt;head&gt;</code> of your site.
+                              </p>
+                              <pre className="code-snippet">{snippetText}</pre>
+                              <p className="code-step">
+                                Step 2: Ensure <code>push-sw.js</code> is reachable at the configured <code>swPath</code> (root recommended).
+                              </p>
+                              <p className="code-step">
+                                Step 3: Publish the site and send a test push from your dashboard.
+                              </p>
+                              <p className="code-step">
+                                {/* Allow users to download the service worker file directly (mirrors Feedify style) */}
+                                <a href="/push-sw.js" download>
+                                  Download push-sw.js
+                                </a>
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="config-card-item">
+                        <div className="config-card-title-row">
+                          <div className="config-card-title">Install WordPress Plugin</div>
+                            <button
+                            type="button"
+                            className={`toggle-arrow ${showPlugin ? 'open' : ''}`}
+                            onClick={() => {
+                              // Only this card opens; close Script card for a cleaner UX.
+                              setShowPlugin(!showPlugin);
+                              setShowScript(false);
+                            }}
+                            aria-label="Toggle plugin details"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                        {/* Animated collapse for plugin details */}
+                        <div style={{ maxHeight: showPlugin ? '300px' : '0px', opacity: showPlugin ? 1 : 0, overflow: 'hidden', transition: 'all 0.35s ease' }}>
+                          {showPlugin && (
+                            <div className="config-card-desc">
+                              {/* Step details for WP users */}
+                              <p className="code-step">
+                                Step 1: Note your Domain Key: {configDetails?.domain_key || selectedDomainKey}
+                              </p>
+                              <p className="code-step">
+                                Step 2: Download the WordPress plugin and upload it in WP → Plugins → Add New.
+                              </p>
+                              <p className="code-step">
+                                <a href="/downloads/push-notifications-plugin.zip" download>
+                                  Download WordPress Plugin
+                                </a>
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                 </div>
               </>
             )}
