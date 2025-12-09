@@ -195,10 +195,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
   border: 1px solid #dbe2ea;
   border-radius: 10px;
   padding: 14px 16px;
   background: #fff;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .domain-info {
@@ -226,12 +228,74 @@
 }
 
 .domain-action {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
-  background: #e6f7f1;
-  color: #0f5132;
-  font-size: 18px;
+  background: #e7f3ff;
+  color: #0f4c81;
+  font-size: 16px;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.domain-card:hover {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.domain-action:hover {
+  box-shadow: 0 6px 14px rgba(15, 76, 129, 0.18);
+  transform: translateY(-1px);
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-trigger {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #dbe2ea;
+  background: #f8fafc;
+  color: #1f2937;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.menu-trigger:hover {
+  background: #eef2f7;
+  border-color: #cbd5e1;
+}
+
+.card-menu {
+  position: absolute;
+  margin-top: 36px;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  min-width: 120px;
+  z-index: 5;
+}
+
+.card-menu-item {
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-weight: 600;
+  color: #1f2937;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.card-menu-item:hover {
+  background: #f1f5f9;
 }

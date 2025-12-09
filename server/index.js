@@ -123,6 +123,47 @@ app.get('/api/domains/:key', async (req, res) => {
   }
 });
 
+// DELETE /api/domains/:id - delete a domain by numeric id for the given user.
+app.delete('/api/domains/:id', async (req, res) => {
+  const userId = Number(req.query.userId || 1);
+  const id = Number(req.params.id);
+
+  if (!id) {
+    return res.status(400).json({ ok: false, message: 'Invalid domain id' });
+  }
+
+  try {
+    const [result] = await pool.query('DELETE FROM domains WHERE id = ? AND user_id = ?', [id, userId]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ ok: false, message: 'Domain not found' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting domain by id', err);
+    return res.status(500).json({ ok: false, message: 'Failed to delete domain.' });
+  }
+});
+
+// DELETE /api/domains?userId=1&domain_key=XXX - delete by domain_key (fallback for clients using keys).
+app.delete('/api/domains', async (req, res) => {
+  const userId = Number(req.query.userId || 1);
+  const domainKey = req.query.domain_key;
+  if (!domainKey) {
+    return res.status(400).json({ ok: false, message: 'domain_key is required' });
+  }
+
+  try {
+    const [result] = await pool.query('DELETE FROM domains WHERE domain_key = ? AND user_id = ?', [domainKey, userId]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ ok: false, message: 'Domain not found' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting domain by key', err);
+    return res.status(500).json({ ok: false, message: 'Failed to delete domain.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });

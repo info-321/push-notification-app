@@ -1,8 +1,15 @@
-// Minimal service worker for web push notifications.
+// Service worker for web push notifications with basic safety checks.
 // Safe defaults: if payload lacks icon/url, it still shows a notification without errors.
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {};
+
+  // Optional TTL check: if payload includes expiresAt (ms or ISO), skip expired notifications.
+  const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : undefined;
+  if (expiresAt && Date.now() > expiresAt) {
+    return; // Do not show stale/expired notification.
+  }
+
   const title = data.title || 'New notification';
   const body = data.body || '';
   // If no icon/url are provided, fall back to empty icon and root URL to avoid errors.
@@ -36,4 +43,11 @@ self.addEventListener('notificationclick', (event) => {
       return null;
     })
   );
+});
+
+// Placeholder for background sync. If you queue failed requests, trigger them with a sync tag.
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'retry-push-sync') {
+    event.waitUntil(Promise.resolve()); // Replace with real retry logic if you store a queue.
+  }
 });
