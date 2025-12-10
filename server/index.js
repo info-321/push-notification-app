@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
-import crypto from 'crypto';
+import webpush from 'web-push';
 
 dotenv.config();
 
@@ -34,12 +34,10 @@ const generateDomainKey = () => {
   return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 };
 
-// Utility: generate pseudo VAPID-like keys (public 16 chars, private 8 chars) with mixed chars.
-// Note: This is a simplified placeholder; replace with real web-push keys when needed.
+// Utility: generate real VAPID keys using web-push (safe for PushManager).
 const generateVapidKeys = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%!';
-  const make = (len) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return { publicKey: make(16), privateKey: make(8) };
+  const keys = webpush.generateVAPIDKeys();
+  return { publicKey: keys.publicKey, privateKey: keys.privateKey };
 };
 
 // POST /api/login - basic admin auth.
@@ -89,6 +87,33 @@ app.post('/api/domains', async (req, res) => {
     return res.status(500).json({ ok: false, message: err.message || 'Failed to save domain.' });
   }
 });
+
+// POST /api/subscriptions - save a push subscription
+app.post('/api/subscriptions', async (req, res) => {
+  const { subscription, domain_key, userId = 1 } = req.body || {};
+  if (!subscription || !subscription.endpoint || !domain_key) {
+    return res.status(400).json({ ok: false, message: 'subscription and domain_key required' });
+  }
+
+  const endpoint = subscription.endpoint;
+  const p256dh = subscription.keys?.p256dh;
+  const auth = subscription.keys?.auth;
+
+  try {
+    await pool.query(
+      'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
+      [userId, domain_key, endpoint, p256dh, auth]
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    // if duplicate endpoint, treat as success
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.json({ ok: true });
+    }
+    return res.status(500).json({ ok: false, message: 'Failed to save subscription' });
+  }
+});
+
 
 // GET /api/domains - list domains for a user (default user 1 for demo).
 app.get('/api/domains', async (req, res) => {
