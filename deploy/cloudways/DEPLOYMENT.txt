@@ -1,0 +1,70 @@
+Push API on Cloudways Flexible (manual Node deployment)
+
+This is a Cloudways deployment package. The cPanel Application Manager
+instructions do not apply. Uploading a ZIP transfers files; it does not start
+the Node service or configure the public HTTPS address.
+
+Upload permission error
+-----------------------
+An SFTP application's root may be protected. Open private_html and upload
+there. With application credentials this is normally /private_html in the
+SFTP view, while the SSH path may be different. This avoids writing to the
+protected root or changing its permissions. Cloudways documents private_html:
+https://support.cloudways.com/en/articles/5123384-securing-app-configuration-files-in-private_html-folder
+
+Separate API application
+------------------------
+Use a separate Cloudways application and API subdomain for deployment. Ask
+the account administrator/Cloudways support to confirm Node.js, npm, SSH,
+PM2, and reverse proxy support on your server. The existing WordPress
+application does not need a new web routing configuration.
+
+On Hybrid Stack, Cloudways' manual Node guide uses a PHP application
+container, a background Node process, and Apache mod_proxy. Support must
+enable mod_proxy/mod_proxy_http and mod_rewrite. Lightning Stack is NGINX
+only and requires a host-managed NGINX proxy; .htaccess rules do not apply.
+Reference: https://www.cloudways.com/blog/how-to-host-a-node-js-application/
+
+Once that separate application is available:
+1. Connect with its SFTP credentials. Upload push-api-cloudways.zip into
+   its private_html and extract it there (or unzip through SSH). This creates
+   private_html/push-api/app.js. A ZIP uploaded to the existing WordPress
+   application's private_html is only a temporary stored copy; transfer it
+   to the new API application when ready.
+2. In the new API application, create server/.env from server/.env.example.
+   Use its hosted MySQL credentials, your administrator credentials,
+   PUBLIC_API_BASE=https://YOUR_API_SUBDOMAIN, NODE_ENV=production, and a
+   real contact email in VAPID_SUBJECT. Set PORT to an available port agreed
+   with the server administrator; the proxy example uses 5000.
+3. Preserve PUSH_API_SECRET and migrate the local database if you want to
+   retain domain keys and sender keys. For a new empty hosted database,
+   import server/db/schema.sql and add the website domain again through the
+   dashboard. The package contains no actual .env or database export.
+4. Through SSH, change into private_html/push-api and run:
+   npm install --omit=dev
+   pm2 start ecosystem.config.cjs
+   pm2 save
+   Ask the server administrator to configure service recovery after reboots.
+   PM2 and the Node runtime must already be available to that SSH user.
+5. On Hybrid Stack, with Cloudways support, use cloudways-proxy.htaccess.example
+   in the NEW API application's public_html/.htaccess. Back up existing rules,
+   keep hosting-managed HTTPS/certificate rules, and match the proxy port to
+   server/.env. The example preserves /.well-known/acme-challenge/ for renewal.
+   This file is for the separate API application, not the WordPress site.
+   The backend and .env remain in private_html; only proxy rules belong in
+   the new application's public_html. Confirm the hosting stack forwards
+   /sdk and /downloads as well as /api to Node, including static file paths.
+6. Point your API subdomain at the server, configure its Domain Management
+   entry and HTTPS certificate, and verify https://YOUR_API_SUBDOMAIN/sdk/push.js.
+7. Set REACT_APP_API_BASE in your local client/.env to that HTTPS address,
+   restart the frontend, and log in. Loading the domain list verifies the
+   hosted database connection. Use the domain matching the WordPress site.
+8. Copy the refreshed integration settings into the active WordPress plugin,
+   subscribe on the live website, and send a test.
+
+For assistance enabling the server features, you can send support this:
+"I need to run a separate Express/Node.js push API with MySQL on my Cloudways
+server, managed by PM2, behind an HTTPS API subdomain. Please confirm SSH,
+Node/npm availability, an available local port, mod_proxy/reverse proxy
+setup including static asset paths, and restart recovery. My WordPress
+site must keep its existing routing."

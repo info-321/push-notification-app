@@ -26,6 +26,9 @@ const Login = ({ onLoginSuccess }) => {
         throw new Error(data.message || 'Invalid credentials');
       }
 
+      const data = await response.json();
+      if (!data.token) throw new Error('The backend did not create a login session. Restart the backend and try again.');
+      localStorage.setItem('sessionToken', data.token);
       if (onLoginSuccess) onLoginSuccess();
     } catch (err) {
       setError(err.message || 'Login failed');

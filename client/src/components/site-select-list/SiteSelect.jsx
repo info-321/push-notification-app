@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './siteselect.css';
 
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
+import { API_BASE, apiFetch } from '../../api';
 
 // Site selection list, fetched from backend domains endpoint.
 // Enhancements: per-card 3-dot menu (Edit/Delete), domain dropdown with "Add Domain", and profile dropdown.
@@ -31,7 +31,7 @@ const SiteSelect = ({
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(`${API_BASE}/api/domains?ownerId=1`);
+        const res = await apiFetch(`${API_BASE}/api/domains?userId=1`);
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data.message || 'Failed to load domains');
@@ -79,7 +79,7 @@ const SiteSelect = ({
         ? `${API_BASE}/api/domains/${encodeURIComponent(domain.id)}?userId=1`
         : `${API_BASE}/api/domains?userId=1&domain_key=${encodeURIComponent(domain.key)}`;
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -109,7 +109,8 @@ const SiteSelect = ({
           </div>
           <div className="site-select">
             {/* Domain selector with "Add Domain" option */}
-            <select value={selectedDomain || 'add'} onChange={handleDomainSelect}>
+            <select value={selectedDomain} onChange={handleDomainSelect} aria-label="Select domain or add a domain">
+              {!selectedDomain && <option value="" disabled>Select a domain</option>}
               <option value="add">Add Domain +</option>
               {domains.map((d) => (
                 <option key={d.name} value={d.name}>
@@ -217,7 +218,14 @@ const SiteSelect = ({
                 </div>
               </div>
             ))}
-            {domains.length === 0 && <div className="empty">No domains yet. Add one to get started.</div>}
+            {domains.length === 0 && (
+              <div className="empty">
+                <p>No domains yet. Add one to get started.</p>
+                <button type="button" className="primary-btn" onClick={onAddDomain}>
+                  Add Domain
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

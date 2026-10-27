@@ -1,0 +1,46 @@
+# Push Notification project
+
+React admin dashboard, Express API, MySQL storage, and a WordPress integration for web push.
+
+## Local setup
+
+1. Start the **MySQL80** Windows service. It uses port 3306. XAMPP is a separate database installation; use the server containing your `push_notifications` database.
+2. For a new installation, create the database and run `server/db/schema.sql` inside it. Existing databases need no migration for the WordPress changes.
+3. Copy `server/.env.example` to `server/.env` only for a new installation. Configure the database credentials and administrator login. Generate `PUSH_API_SECRET` with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Keep this secret stable; changing it invalidates login sessions and sender API keys.
+4. In `server`, run `npm.cmd install` and `npm.cmd run dev`.
+5. In a second terminal, in `client`, run `npm.cmd install` and `npm.cmd start`. The dashboard opens at http://localhost:3000; the API uses http://localhost:5000.
+6. Log in and select a domain. Existing browser sessions from before authenticated APIs were added must log in again.
+
+## Live WordPress setup
+
+1. Host the Node server on a public HTTPS address with access to MySQL. Deploy `server` together with `client/public` in their existing relative locations: the API serves its SDK, worker, and plugin ZIP from that public folder. From the repository root, the backend start command is `npm --prefix server start`. Configure `PUBLIC_API_BASE` to the public API address, set real administrator credentials, set a real contact email in `VAPID_SUBJECT` (for example `mailto:you@your-domain.com`), preserve `PUSH_API_SECRET`, and use `NODE_ENV=production`. Forward HTTPS requests through your hosting provider or reverse proxy to Node's `PORT`. This repository does not provision hosting or certificates.
+2. Set `REACT_APP_API_BASE` in `client/.env` to that same API address and restart/rebuild the dashboard. This is the dashboard-to-API address; `PUBLIC_API_BASE` controls the installation settings given to WordPress.
+3. In Configuration, expand **Install WordPress Plugin** and download the ZIP. In WordPress, use **Plugins → Add New Plugin → Upload Plugin**, then activate it. If the plugin is already installed, replace it with this updated ZIP.
+4. Open WordPress **Settings → Push Notifications**. Copy API Base, Service URL, Domain Key, VAPID Public Key, and Sender API Key from the dashboard. Leave Service Worker Path empty to use the worker bundled in the plugin. The sender key is for WordPress server requests only and is never injected into visitor scripts.
+5. Save settings. Visit the registered website in a browser, click **Enable notifications**, and allow notifications. Both apex and `www` versions are accepted by the API; each browser origin has its own subscription.
+6. Send a test from WordPress settings or the dashboard. Tests from the dashboard target **all subscribers of that domain**. Results report acceptance by push services, not confirmed device delivery. Expired endpoints (404/410) are removed. With zero subscribers, the result explains that nothing was sent.
+7. Optionally enable **Send on publish** in WordPress. New public, non-password-protected blog posts trigger a send. Existing published posts are not resent on every edit.
+
+Install the WordPress plugin alone: it loads the SDK and serves the worker automatically. The alternative script method is for manually managed websites: add the snippet to the page head and host `push-sw.js` on that website.
+
+The default API address is local. It cannot serve visitors on a live WordPress site. The dashboard displays a local-setup notice until an HTTPS address is configured. A URL setting alone does not deploy the server.
+
+### Repair an installation from an older ZIP
+
+Version 1.1.0 archives built by Windows PowerShell could contain literal backslashes in ZIP paths. Linux hosting can extract these as filenames such as `push-notifications-plugin\push-notifications.php` instead of creating a directory. WordPress then generates an activation path that does not exist.
+
+Version 1.1.1 fixes the packager to write forward slashes explicitly. Remove the failed inactive installation and upload the newly rebuilt ZIP. If WordPress cannot remove the failed installation, use your hosting File Manager to remove only the failed `wp-content/plugins/push-notifications-plugin` folder, then reinstall. The final main file must be `wp-content/plugins/push-notifications-plugin/push-notifications.php`, with all three plugin files directly inside that folder. The test suite checks the raw local and central ZIP header names to catch separator problems without Windows path normalization hiding them.
+
+## Validation and packaging
+
+For Cloudways Flexible, use `powershell -ExecutionPolicy Bypass -File scripts/package-cloudways.ps1` to create `artifacts/push-api-cloudways.zip`. The application SFTP root can be protected; upload into `private_html`. The ZIP includes PM2 configuration and proxy rules for a separate API application. See `deploy/cloudways/DEPLOYMENT.txt` for the SSH, database, HTTPS, and Cloudways support prerequisites. Cloudways does not use the cPanel Application Manager procedure below.
+
+For cPanel Application Manager, run `powershell -ExecutionPolicy Bypass -File scripts/package-cpanel.ps1`. This creates `artifacts/push-api-cpanel.zip` with a CommonJS `app.js` wrapper for Passenger, the backend, and public SDK/plugin assets. It excludes credentials and dependencies. Upload it to the hosting home directory and extract it to create `push-api`. Full instructions are in `deploy/cpanel/DEPLOYMENT.txt`. Register the app with path `push-api`, a dedicated API subdomain, and production environment variables; use Enable Dependencies to install the root package's dependencies.
+
+- `cd server; npm.cmd test`: HTTP route, authentication, subscription, notification delivery, SDK permission, and service worker tests. External push services are mocked.
+- `cd client; npm.cmd run build`: frontend build.
+- `C:\xampp\php\php.exe -l wordpress/push-notifications-plugin/push-notifications.php`: PHP syntax check (or use your installed PHP).
+- `C:\xampp\php\php.exe wordpress/test-plugin.php`: WordPress API contract checks with stubs.
+- `powershell -ExecutionPolicy Bypass -File scripts/package-wordpress.ps1`: copy the current worker into the plugin and rebuild the downloadable ZIP from `wordpress/push-notifications-plugin`.
+
+Sending is synchronous with bounded concurrency, suited to initial testing and small audiences. Larger campaigns need a background queue. This remains a single-admin application; user registration, domain ownership verification, campaign scheduling, and analytics are separate unfinished features.

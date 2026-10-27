@@ -18,3 +18,16 @@ CREATE TABLE IF NOT EXISTS domains (
   UNIQUE KEY uniq_domain_key (domain_key),
   KEY idx_status (status)
 );
+
+-- Subscriptions table to store push endpoints per domain/user.
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  domain_key VARCHAR(128) NOT NULL,
+  endpoint TEXT NOT NULL,
+  p256dh TEXT NULL,
+  auth TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_endpoint (endpoint(255))
+);

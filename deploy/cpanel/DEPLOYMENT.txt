@@ -1,0 +1,73 @@
+Push API deployment through cPanel Application Manager
+
+1. Create an API subdomain in cPanel, such as push.micetraveladvisor.com,
+   and enable a valid HTTPS certificate for it. This address is an example:
+   it must be created in your account and its DNS must point to this hosting.
+
+2. Upload push-api-cpanel.zip to your cPanel HOME directory and extract it
+   there. The archive creates one push-api folder. Its startup file will be:
+   /home/YOUR_CPANEL_USERNAME/push-api/app.js
+
+3. Create a separate hosted MySQL database and database user. Grant that
+   user access to this database. Use the full account-prefixed database and
+   user names shown by cPanel. Import server/db/schema.sql for a fresh
+   database, or migrate your existing push_notifications data to preserve
+   the domain/VAPID keys. The Windows database does not move automatically.
+
+4. In Application Manager > Register Application, enter:
+   Application Name: Push Notifications API
+   Deployment Domain: push.micetraveladvisor.com (or your actual API subdomain)
+   Base Application URL: /
+   Application Path: push-api
+   Deployment Environment: Production
+
+   The Application Path is relative to your cPanel home directory. Passenger
+   uses the root app.js. Do not select server/app.js: that file is an app
+   factory rather than the startup wrapper. The host must have a supported
+   Node.js runtime installed, in addition to Application Manager.
+
+5. Add these environment variables before deploying:
+   NODE_ENV=production
+   PUBLIC_API_BASE=https://push.micetraveladvisor.com
+   DB_HOST=<database hostname supplied by your host>
+   DB_PORT=<database port supplied by your host, normally 3306>
+   DB_NAME=<full cPanel database name>
+   DB_USER=<full cPanel database username>
+   DB_PASSWORD=<that database user's password>
+   ADMIN_USERNAME=<your project administrator username>
+   ADMIN_PASSWORD=<a strong project administrator password>
+   PUSH_API_SECRET=<a random secret of at least 32 characters>
+   VAPID_SUBJECT=mailto:<your real contact email>
+
+   If preserving existing sender keys, copy PUSH_API_SECRET from your local
+   server/.env into the hosting environment settings. Never share it in chat.
+   To generate a new secret, run this locally:
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+   If the panel cannot add environment variables, create server/.env inside
+   the uploaded application with these values. Keep the application outside
+   your website document root. The archive intentionally contains no .env
+   file or database export.
+
+6. Click Deploy, then Enable Dependencies for the application to install
+   its npm dependencies. The root package.json lists the backend dependencies.
+   Application Manager's Passenger manages the Node process and listening
+   port. For restarts, create/update push-api/tmp/restart.txt.
+
+7. Open https://YOUR_API_SUBDOMAIN/sdk/push.js. A JavaScript response confirms
+   the public SDK is served. A 404 at the API root / is expected; there is
+   no homepage at that address. Check push-api/logs for startup errors.
+
+8. In your local client/.env set:
+   REACT_APP_API_BASE=https://YOUR_API_SUBDOMAIN
+   Restart npm.cmd start in client and sign in again. Load the domain list
+   to verify the hosted database connection. Select/add micetraveladvisor.com
+   if this is the WordPress site where the plugin is installed.
+
+9. Copy the fresh integration settings into WordPress Settings > Push
+   Notifications. Leave Service Worker Path empty, save, subscribe from the
+   live website, and send a test. Database imports and secret changes can
+   change which configuration must be copied.
+
+Only the Node API is included in this deployment package. You can continue
+using the React admin dashboard locally while pointing it at the hosted API.

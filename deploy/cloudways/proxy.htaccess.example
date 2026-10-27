@@ -1,0 +1,10 @@
+# For a separate API application's public_html on Hybrid Stack only.
+# Ask Cloudways support to enable mod_proxy/mod_proxy_http and mod_rewrite.
+# Lightning Stack requires a host-managed NGINX proxy instead of .htaccess.
+# Match the port to server/.env and retain existing hosting TLS rules.
+DirectoryIndex disabled
+RewriteEngine On
+RewriteBase /
+# Keep Let's Encrypt HTTP validation on the hosting web server.
+RewriteRule ^\.well-known/acme-challenge/ - [L]
+RewriteRule ^(.*)$ http://127.0.0.1:5000/$1 [P,L]

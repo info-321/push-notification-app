@@ -9,7 +9,7 @@ import SiteSelect from './components/site-select-list/SiteSelect';
 
 const App = () => {
   // Restore persisted auth/view state so reloads stay on the same page.
-  const initialAuth = localStorage.getItem('auth') === 'true';
+  const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
   const initialView = initialAuth ? localStorage.getItem('view') || 'domain' : 'login';
   const initialSplash = initialAuth ? Number(localStorage.getItem('remainingSplash') || 0) : 1;
   const initialDomainSetup = localStorage.getItem('domainSetupComplete') === 'true';
@@ -28,6 +28,12 @@ const App = () => {
   const [selectedDomainName, setSelectedDomainName] = useState(initialDomainName);
   // Which tab should Domain open on (domain/config). Defaults to domain.
   const [domainTab, setDomainTab] = useState('domain');
+
+  useEffect(() => {
+    const expire = () => { setIsAuthenticated(false); setView('login'); };
+    window.addEventListener('auth-expired', expire);
+    return () => window.removeEventListener('auth-expired', expire);
+  }, []);
 
   // Helper to sync view/tab from the current URL (supports /dashboard, /settings/domain, /settings/config?domain=KEY).
   const syncViewFromUrl = () => {
@@ -107,6 +113,7 @@ const App = () => {
     // Also push the login URL on logout for consistency.
     window.history.pushState({}, '', '/login');
     localStorage.removeItem('auth');
+    localStorage.removeItem('sessionToken');
     localStorage.removeItem('view');
     localStorage.removeItem('selectedDomainKey');
     localStorage.removeItem('selectedDomainName');
@@ -149,7 +156,10 @@ const App = () => {
   if (view === 'sites') {
     return (
       <SiteSelect
-        onAddDomain={() => setView('domain')}
+        onAddDomain={() => {
+          setDomainTab('domain');
+          setView('domain');
+        }}
         onSettings={() => setView('settings')}
         onLogout={handleLogout}
         onSelectDomain={(key, name) => {

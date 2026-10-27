@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './configuration.css';
 
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
+import { API_BASE, apiFetch } from '../../api';
 
 // Configuration screen that reads ?domain=<domain_key>, fetches domain details,
 // and displays domain key + VAPID public key placeholders similar to Feedify.
@@ -27,7 +27,7 @@ const Configuration = ({ domainKey, domainName, onLogout, onSettings, onBackToSi
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(`${API_BASE}/api/domains/${encodeURIComponent(key)}`);
+        const res = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(key)}`);
         const data = await res.json();
         if (!res.ok || !data.ok) {
           throw new Error(data.message || 'Failed to load domain');

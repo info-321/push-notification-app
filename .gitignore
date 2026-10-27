@@ -1,18 +1,67 @@
 # dependencies
-client/node_modules/
-server/node_modules/
+node_modules/
 
 # build outputs
 client/build/
 coverage/
 dist/
+artifacts/
 
 # environment / secrets
-server/.env
-client/.env
-*.env.local
+.env
+.env.*
+*.env
+*.env.*
+# Keep sanitized setup templates available to contributors.
+!.env.example
+!.env.sample
+!.env.template
+!*.env.example
+!*.env.sample
+!*.env.template
+
+# private keys, certificates, and local credential stores
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.kdbx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+.ssh/
+.aws/
+.npmrc
+.pypirc
+.netrc
+secrets/
+credentials/
+credentials.json
+service-account*.json
+service_account*.json
+
+# database exports and backups can contain subscriber data and private VAPID keys
+*.sql
+!server/db/schema.sql
+!**/migrations/*.sql
+*.sql.gz
+*.sql.zip
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+*.backup
+backups/
+dumps/
 
 # logs
+logs/
+*.log
+*.log.*
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*

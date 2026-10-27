@@ -3,7 +3,7 @@ import './domain.css';
 
 // Domain setup layout aligned to the provided screenshot.
 // After validation, we call the backend to persist the domain and then route to SiteSelect/Config tab.
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
+import { API_BASE, apiFetch } from '../../api';
 
 const Domain = ({
   onLogout = () => {},
@@ -27,7 +27,13 @@ const Domain = ({
   const [configError, setConfigError] = useState('');
   // Toggle states for showing code/plugin details under each config card.
   const [showScript, setShowScript] = useState(false);
-  const [showPlugin, setShowPlugin] = useState(false);
+  const [showPlugin, setShowPlugin] = useState(true);
+  const [testTitle, setTestTitle] = useState('Test notification');
+  const [testBody, setTestBody] = useState('Push notifications are connected.');
+  const [testUrl, setTestUrl] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testResult, setTestResult] = useState('');
+  const [testError, setTestError] = useState(false);
   // Domain list for the navbar dropdown.
   const [domains, setDomains] = useState([]);
   const [dropdownValue, setDropdownValue] = useState(selectedDomainName || 'add');
@@ -41,7 +47,7 @@ const Domain = ({
   useEffect(() => {
     const loadDomains = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/domains?ownerId=1`);
+        const res = await apiFetch(`${API_BASE}/api/domains?userId=1`);
         const data = await res.json();
         if (res.ok && data.ok && Array.isArray(data.data)) {
           setDomains(
@@ -77,30 +83,34 @@ const Domain = ({
 
   // Fetch configuration details (including VAPID public key) when config tab is active.
   useEffect(() => {
+    let cancelled = false;
     const loadConfig = async () => {
       if (activeTab !== 'config' || !selectedDomainKey) return;
       setConfigLoading(true);
+      setConfigDetails(null);
+      setTestResult('');
       setConfigError('');
       try {
-        const res = await fetch(`${API_BASE}/api/domains/${encodeURIComponent(selectedDomainKey)}`);
+        const res = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(selectedDomainKey)}/integration`);
         const data = await res.json();
         if (!res.ok || !data.ok) {
           throw new Error(data.message || 'Failed to load configuration');
         }
-        setConfigDetails(data.data);
+        if (!cancelled) setConfigDetails(data.data);
       } catch (err) {
-        setConfigError(err.message || 'Error loading configuration');
+        if (!cancelled) setConfigError(err.message || 'Error loading configuration');
       } finally {
-        setConfigLoading(false);
+        if (!cancelled) setConfigLoading(false);
       }
     };
     loadConfig();
+    return () => { cancelled = true; };
   }, [activeTab, selectedDomainKey]);
 
   // Build a personalized script snippet for the current domain (rendered in the Config tab).
   const domainKeyForSnippet = configDetails?.domain_key || selectedDomainKey || '<your-domain-key>';
   const vapidKeyForSnippet = configDetails?.vapid_public_key || '<vapid-public-key>';
-  const apiBaseForSnippet = API_BASE;
+  const apiBaseForSnippet = configDetails?.api_base || API_BASE;
   const snippetText = `<!-- Push Script -->
 <script>
   (function (d, w) {
@@ -120,7 +130,26 @@ const Domain = ({
 </script>`;
 
   // Download URL for the WordPress plugin zip (place the zip in /public/downloads/).
-  const pluginDownloadUrl = '/downloads/push-notifications-plugin.zip';
+  const pluginDownloadUrl = `${API_BASE}/downloads/push-notifications-plugin.zip?v=1.1.1`;
+
+  const sendTest = async (event) => {
+    event.preventDefault();
+    setSendingTest(true);
+    setTestResult('');
+    setTestError(false);
+    try {
+      const response = await apiFetch(`${API_BASE}/api/notifications`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain_key: selectedDomainKey, title: testTitle, body: testBody, url: testUrl || '/' }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || 'Could not send the test notification.');
+      setTestResult(result.message);
+    } catch (error) {
+      setTestError(true);
+      setTestResult(error.message);
+    } finally { setSendingTest(false); }
+  };
 
   const handleSiteChange = (e) => {
     const value = e.target.value;
@@ -194,11 +223,11 @@ const Domain = ({
     setStatus('Domain looks good. Saving...');
 
     try {
-      const response = await fetch(`${API_BASE}/api/domains`, {
+      const response = await apiFetch(`${API_BASE}/api/domains`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ownerId: 1, // replace with real user/account id when available
+          userId: 1, // replace with real user/account id when available
           name,
           domain_name: domain.toLowerCase(),
           timezone: '(GMT+05:30) Asia, Kolkata',
@@ -358,7 +387,7 @@ const Domain = ({
             </div>
 
             {status && <div className="success">{status}</div>}
-            {loading && <div className="spinner">Checking DNS/HTTP and saving...</div>}
+            {loading && <div className="spinner">Saving domain...</div>}
           </section>
         )}
 
@@ -367,7 +396,7 @@ const Domain = ({
             <h3>Configuration</h3>
             {configLoading && <div className="spinner">Loading configuration...</div>}
             {configError && <div className="error">{configError}</div>}
-            {!configLoading && !configError && (
+            {!configLoading && !configError && configDetails && (
               <>
                 <div className="config-keys">
                   <div className="key-row">
@@ -390,6 +419,14 @@ const Domain = ({
                   </div>
                 </div>
 
+                {!configDetails.live_ready && (
+                  <p className="setup-notice" role="status">
+                    Local testing is configured. To connect your live WordPress site, deploy the API with HTTPS
+                    and set its public address as PUBLIC_API_BASE on the server. The installation settings below
+                    will then use that address.
+                  </p>
+                )}
+
                 <div className="config-tabs">
                   <button className="subtab active">Push Notification</button>
                   <button className="subtab">Pop ups</button>
@@ -397,110 +434,6 @@ const Domain = ({
                   <button className="subtab">Android Setting</button>
                   <button className="subtab">IOS Setting</button>
                 </div>
-
-                {/* <div className="config-section">
-                  <div className="config-section-header">
-                    <h4>Push Notification</h4>
-                  </div>
-                  <div className="config-cards">
-                    <div className="config-card-item">
-                      <div className="config-card-title-row">
-                        <div className="config-card-title">Install With Script</div>
-                        <button
-                          type="button"
-                          className={`toggle-arrow ${showScript ? 'open' : ''}`}
-                          onClick={() => {
-                            setShowScript(!showScript);
-                            setShowPlugin(false); // keep only this card open
-                          }}
-                          aria-label="Toggle script details"
-                        >
-                          ▼
-                        </button>
-                      </div>
-                      <div style={{ maxHeight: showScript ? '700px' : '0px', opacity: showScript ? 1 : 0, overflow: 'hidden', transition: 'all 0.35s ease' }}>
-                        {showScript && (
-                          <div className="code-block">
-                            <p className="code-step">
-                              
-                              Step 1: Copy this snippet into the <code>&lt;head&gt;</code> of your site.
-                            </p>
-                            <pre className="code-snippet">{snippetText}</pre>
-                            <p className="code-step">
-                              Step 2: Ensure <code>push-sw.js</code> is reachable at the configured <code>swPath</code> (root recommended).
-                            </p>
-                            <p className="code-step">
-                              Step 3: Publish the site and send a test push from your dashboard.
-                            </p>
-                            <p className="code-step">
-                              
-                              <a href="/push-sw.js" download>
-                                Download push-sw.js
-                              </a>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div> */}
-                    {/* <div className="config-card-item">
-                      <div className="config-card-title-row">
-                        <div className="config-card-title">Install WordPress Plugin</div>
-                        <button
-                          type="button"
-                          className={`toggle-arrow ${showPlugin ? 'open' : ''}`}
-                          onClick={() => {                            
-                            setShowPlugin(!showPlugin);
-                            setShowScript(false);
-                          }}
-                          aria-label="Toggle plugin details"
-                        >
-                          ▼
-                        </button>
-                      </div>
-                      {showPlugin && (
-                        <div className="config-card-desc">
-                          Download the plugin from your dashboard and upload it in WP → Plugins → Add New.
-                        </div>
-                      )}
-                    </div> */}
-
-
-                    {/* <div className="config-card-item">
-                      <div className="config-card-title-row">
-                        <div className="config-card-title">Install WordPress Plugin</div>
-                        <button
-                          type="button"
-                          className={`toggle-arrow ${showPlugin ? 'open' : ''}`}
-                          onClick={() => {
-                            // Open plugin card and close script card to keep only one expanded.
-                            setShowPlugin(!showPlugin);
-                            setShowScript(false);
-                          }}
-                          aria-label="Toggle plugin details"
-                        >
-                          ▼
-                        </button>
-                      </div>
-                      <div style={{ maxHeight: showPlugin ? '300px' : '0px', opacity: showPlugin ? 1 : 0, overflow: 'hidden', transition: 'all 0.35s ease' }}>
-                        {showPlugin && (
-                          <div className="config-card-desc">
-                            
-                            <p className="code-step">
-                              Step 1: Note your Domain Key: {configDetails?.domain_key || selectedDomainKey}
-                            </p>
-                            <p className="code-step">
-                              Step 2: Download the WordPress plugin and upload it in WP → Plugins → Add New.
-                            </p>
-                            <p className="code-step">
-                              <a href={pluginDownloadUrl} download>
-                                Download WordPress Plugin
-                              </a>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div> */}
-
 
                   <div className="config-section">
                     <div className="config-section-header">
@@ -540,7 +473,7 @@ const Domain = ({
                               </p>
                               <p className="code-step">
                                 {/* Allow users to download the service worker file directly (mirrors Feedify style) */}
-                                <a href="/push-sw.js" download>
+                                <a href={`${API_BASE}/push-sw.js`} download>
                                   Download push-sw.js
                                 </a>
                               </p>
@@ -551,7 +484,7 @@ const Domain = ({
 
                       <div className="config-card-item">
                         <div className="config-card-title-row">
-                          <div className="config-card-title">Install WordPress Plugin</div>
+                          <div className="config-card-title">Install WordPress Plugin (recommended for WordPress)</div>
                             <button
                             type="button"
                             className={`toggle-arrow ${showPlugin ? 'open' : ''}`}
@@ -566,18 +499,27 @@ const Domain = ({
                           </button>
                         </div>
                         {/* Animated collapse for plugin details */}
-                        <div style={{ maxHeight: showPlugin ? '300px' : '0px', opacity: showPlugin ? 1 : 0, overflow: 'hidden', transition: 'all 0.35s ease' }}>
+                        <div hidden={!showPlugin}>
                           {showPlugin && (
                             <div className="config-card-desc">
-                              {/* Step details for WP users */}
+                              <ol>
+                                <li>Download the plugin below.</li>
+                                <li>In WordPress, open Plugins → Add New Plugin → Upload Plugin, upload the ZIP, and activate it.</li>
+                                <li>Open Settings → Push Notifications and copy these settings.</li>
+                              </ol>
+                              <dl className="wordpress-settings">
+                                <dt>API Base</dt><dd>{configDetails.api_base}</dd>
+                                <dt>Service URL</dt><dd>{configDetails.service_url}</dd>
+                                <dt>Domain Key</dt><dd>{configDetails.domain_key}</dd>
+                                <dt>VAPID Public Key</dt><dd>{configDetails.vapid_public_key}</dd>
+                                <dt>Sender API Key</dt>
+                                <dd><input aria-label="Sender API Key" readOnly value={configDetails.sender_api_key || ''} /></dd>
+                              </dl>
+                              <p>The Sender API Key belongs only in WordPress settings. The plugin keeps it out of visitor scripts.</p>
+                              <p>Leave Service Worker Path empty to use the bundled worker. Save settings, visit your website, and click Enable notifications.</p>
+                              <p>The plugin installs the script automatically. Enable Send on publish if you want notifications for new posts.</p>
                               <p className="code-step">
-                                Step 1: Note your Domain Key: {configDetails?.domain_key || selectedDomainKey}
-                              </p>
-                              <p className="code-step">
-                                Step 2: Download the WordPress plugin and upload it in WP → Plugins → Add New.
-                              </p>
-                              <p className="code-step">
-                                <a href="/downloads/push-notifications-plugin.zip" download>
+                                <a href={pluginDownloadUrl} download>
                                   Download WordPress Plugin
                                 </a>
                               </p>
@@ -587,6 +529,24 @@ const Domain = ({
                       </div>
                     </div>
                 </div>
+                <form className="config-section" onSubmit={sendTest}>
+                  <h4>Send a test notification</h4>
+                  <p>This sends to all subscribers of this website. Subscribe from your website first.</p>
+                  <div className="field">
+                    <label htmlFor="test-title">Title</label>
+                    <input id="test-title" value={testTitle} onChange={event => setTestTitle(event.target.value)} required maxLength={150} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="test-body">Message</label>
+                    <input id="test-body" value={testBody} onChange={event => setTestBody(event.target.value)} maxLength={1000} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="test-url">Link (optional)</label>
+                    <input id="test-url" value={testUrl} onChange={event => setTestUrl(event.target.value)} placeholder={`https://${configDetails.domain_name}/`} />
+                  </div>
+                  <button className="save-btn" type="submit" disabled={sendingTest}>{sendingTest ? 'Sending...' : 'Send test notification'}</button>
+                  {testResult && <p role="status" className={testError ? 'error' : 'success'}>{testResult}</p>}
+                </form>
               </>
             )}
           </section>
