@@ -33,6 +33,8 @@ Version 1.1.1 fixes the packager to write forward slashes explicitly. Remove the
 
 ## Validation and packaging
 
+For Hostinger KVM with an existing Docker/Caddy setup, use the separate Compose project in `deploy/hostinger`. It includes production API/dashboard images, a private persistent MySQL database, and routing through the existing Caddy service. See [Hostinger deployment](deploy/hostinger/DEPLOYMENT.md) for configuration, migrating the Cloudways database and keys, and the coordinated DNS cutover.
+
 For Cloudways Flexible, use `powershell -ExecutionPolicy Bypass -File scripts/package-cloudways.ps1` to create `artifacts/push-api-cloudways.zip`. The application SFTP root can be protected; upload into `private_html`. The ZIP includes PM2 configuration and proxy rules for a separate API application. See `deploy/cloudways/DEPLOYMENT.txt` for the SSH, database, HTTPS, and Cloudways support prerequisites. Cloudways does not use the cPanel Application Manager procedure below.
 
 For cPanel Application Manager, run `powershell -ExecutionPolicy Bypass -File scripts/package-cpanel.ps1`. This creates `artifacts/push-api-cpanel.zip` with a CommonJS `app.js` wrapper for Passenger, the backend, and public SDK/plugin assets. It excludes credentials and dependencies. Upload it to the hosting home directory and extract it to create `push-api`. Full instructions are in `deploy/cpanel/DEPLOYMENT.txt`. Register the app with path `push-api`, a dedicated API subdomain, and production environment variables; use Enable Dependencies to install the root package's dependencies.

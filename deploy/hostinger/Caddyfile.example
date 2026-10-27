@@ -1,0 +1,15 @@
+# Add this site to the existing /etc/caddy/Caddyfile after backing it up.
+# Preserve all existing sites, imports, and global options.
+# If this hostname already has a site block here, update that block instead.
+push.micetraveladvisor.com {
+    encode zstd gzip
+
+    @backend path /api /api/* /sdk /sdk/* /downloads /downloads/* /push-sw.js
+    handle @backend {
+        reverse_proxy 127.0.0.1:5000
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:3001
+    }
+}

@@ -1,0 +1,88 @@
+name: push-notification-app
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-push_notifications}
+      MYSQL_USER: ${DB_USER:-push_app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in deploy/hostinger/.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/hostinger/.env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ../../server/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP --host=127.0.0.1
+          --user="$${MYSQL_USER}" --database="$${MYSQL_DATABASE}"
+          --execute="SELECT 1" >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    logging: *logging
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/hostinger/api.Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-push_notifications}
+      DB_USER: ${DB_USER:-push_app}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in deploy/hostinger/.env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?Set ADMIN_USERNAME in deploy/hostinger/.env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in deploy/hostinger/.env}
+      PUSH_API_SECRET: ${PUSH_API_SECRET:?Copy the existing Cloudways PUSH_API_SECRET}
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:?Set the public HTTPS API address}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:?Set a real mailto contact address}
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5000/sdk/push.js').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *logging
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/hostinger/web.Dockerfile
+      args:
+        REACT_APP_API_BASE: ${PUBLIC_API_BASE:?Set the public HTTPS API address}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *logging
+
+volumes:
+  mysql-data:

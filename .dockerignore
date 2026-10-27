@@ -1,0 +1,22 @@
+# Send only application inputs to Docker, never local credentials or exports.
+**
+!server/
+!server/package.json
+!server/package-lock.json
+!server/*.js
+!client/
+!client/package.json
+!client/package-lock.json
+!client/src/
+!client/src/**
+!client/public/
+!client/public/**
+!deploy/
+!deploy/hostinger/
+!deploy/hostinger/*.Dockerfile
+!deploy/hostinger/nginx.conf
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/node_modules/**
