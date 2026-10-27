@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily push notification database backup
+
+[Timer]
+# 07:45 India time; a missed run is caught up after the timer starts again.
+OnCalendar=*-*-* 02:15:00 UTC
+Persistent=true
+Unit=push-notification-backup.service
+
+[Install]
+WantedBy=timers.target

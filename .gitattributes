@@ -1,0 +1,3 @@
+deploy/hostinger/*.sh text eol=lf
+deploy/hostinger/*.service text eol=lf
+deploy/hostinger/*.timer text eol=lf

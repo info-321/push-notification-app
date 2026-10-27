@@ -165,3 +165,62 @@ Use `docker compose logs --tail=50 api` for errors. Never use `docker compose
 down -v` on this deployment: it deletes the database volume. Configure scheduled
 database backups to separate storage and verify restoring a copy before relying
 on them. Hostinger server snapshots alone are not the application's backup plan.
+
+## 6. Daily local database backups
+
+After the production deployment works, pull the latest repository and run:
+
+```bash
+cd /opt/push-notification-app
+git pull --ff-only
+cd deploy/hostinger
+bash backup.sh
+bash verify-backup.sh
+```
+
+The first command creates a private completed folder in `backups/automatic/`.
+It contains `database.sql.gz` (both tables, including private keys and subscriber
+data), `application.env` (including PUSH_API_SECRET), and file checksums. These
+files are Git-ignored and must stay private. Failed backups remain `.partial-*`
+folders and are never selected as successful backups.
+
+The verification command checks the files and imports the SQL into a NEW,
+isolated MySQL container with no network or production mounts, then prints its
+record counts. It uses at most 1 GiB of memory and one CPU, and removes only that
+temporary container and its anonymous volume when finished. It does not send
+notifications or import into the running application database. Compare the
+restored counts with the records expected at backup time. It verifies the .env
+file's checksum, not the ability to log in with every restored credential.
+
+Once both checks pass, install the dedicated systemd service and timer:
+
+```bash
+install -m 644 push-notification-backup.service /etc/systemd/system/push-notification-backup.service
+install -m 644 push-notification-backup.timer /etc/systemd/system/push-notification-backup.timer
+systemd-analyze verify /etc/systemd/system/push-notification-backup.service /etc/systemd/system/push-notification-backup.timer
+systemctl daemon-reload
+systemctl start push-notification-backup.service
+systemctl enable --now push-notification-backup.timer
+systemctl list-timers --all push-notification-backup.timer
+```
+
+The schedule is daily at 02:15 UTC (07:45 India time), independent of the VPS's
+timezone. `Persistent=true` catches up a missed scheduled run after the timer
+starts again. Check failures with:
+
+```bash
+systemctl status push-notification-backup.service --no-pager
+journalctl -u push-notification-backup.service -n 50 --no-pager
+```
+
+There is no automatic deletion policy. Monitor storage with
+`du -sh backups/automatic` and `df -h /`. Local backups protect against mistakes
+and database corruption, but not loss of the VPS. Copy completed backup folders
+to separate, private storage; add off-server automation when that storage is
+available. Saving an application database backup does not back up the TTW
+similarity application's database or all server configurations.
+
+For an actual disaster recovery, keep the original backup intact, restore its
+application.env as deploy/hostinger/.env on a replacement installation, and
+import `gzip -dc /path/to/database.sql.gz` through the database import command in
+section 2. Never run a recovery import against production just to test a backup.
