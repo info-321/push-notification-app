@@ -23,6 +23,8 @@ React admin dashboard, Express API, MySQL storage, and a WordPress integration f
 
 Install the WordPress plugin alone: it loads the SDK and serves the worker automatically. The alternative script method is for manually managed websites: add the snippet to the page head and host `push-sw.js` on that website.
 
+Configuration uses a separate website/public-key summary and expandable **Install With Script** / **Install WordPress Plugin** rows. Both rows start collapsed and only one opens at a time. The script contains public configuration only; the administrator sender key stays in the WordPress setup panel, masked until revealed or copied. Copy buttons and downloads use the selected website's integration settings. The **Send Push** shortcut still opens the test form through `#send-push`. Popup, feedback, and native-app tabs are disabled until those integrations are implemented.
+
 The default API address is local. It cannot serve visitors on a live WordPress site. The dashboard displays a local-setup notice until an HTTPS address is configured. A URL setting alone does not deploy the server.
 
 Domain cards show **Configured** when the domain has its push keys and at least one saved browser subscription with encryption keys for that same domain and owner. This also recognizes existing imported subscriptions. This installation indicator is separate from the legacy domain verification status; it does not claim ownership verification or confirmed notification delivery.

@@ -1,0 +1,53 @@
+.configuration-screen { color:#506175; }
+.configuration-main { max-width:1450px; padding:20px 20px 42px; }
+.configuration-screen .domain-list-tabs { padding:0 12px; }
+.configuration-card { background:#fff; border:1px solid #e8ecef; border-radius:8px; box-shadow:0 3px 10px #25394e12; margin-bottom:24px; }
+.configuration-summary { min-height:156px; padding:28px 39px; }
+.configuration-summary dl { margin:0; }
+.configuration-summary dl > div { display:flex; align-items:baseline; gap:6px; margin:10px 0 14px; font-size:13px; line-height:1.7; }
+.configuration-summary dt { flex-shrink:0; font-weight:500; }
+.configuration-summary dd { margin:0; overflow-wrap:anywhere; min-width:0; }
+.configuration-install { padding:30px 37px 42px; }
+.configuration-subtabs { display:flex; flex-wrap:wrap; gap:5px; }
+.configuration-subtabs button { border:1px solid #0784ff; padding:10px 16px; border-radius:0; font-size:14px; background:#fff; color:#0784ff; min-height:43px; }
+.configuration-subtabs button.is-active { color:#101820; border-color:#18282d; border-bottom:3px solid #1bb58c; padding-bottom:8px; }
+.configuration-subtabs button:disabled { color:#448dd5; border-color:#86b7ef; }
+.configuration-install h1 { margin:0; padding:80px 0 24px; font-size:24px; color:#404a54; font-weight:400; line-height:1.4; box-shadow:0 3px 4px -3px #6e7d8f77; }
+.configuration-accordions { margin:20px 50px 0; }
+.configuration-install-toggle { display:flex; width:100%; align-items:center; gap:16px; text-align:left; padding:12px 0; min-height:57px; background:none; border:0; border-bottom:1px solid #dce1e5; color:#50647c; font-size:13px; }
+.configuration-install-toggle > svg { margin-left:auto; width:16px; height:16px; flex-shrink:0; transition:transform .16s ease; }
+.configuration-install-toggle > svg.is-open { transform:rotate(90deg); }
+.configuration-script-icon { display:grid; place-items:center; width:35px; height:35px; background:#578fcb; color:#fff; font-size:14px; border-radius:50%; flex-shrink:0; }
+.configuration-wordpress-icon { display:grid; place-items:center; width:35px; height:35px; border:3px solid #16a8cf; border-radius:50%; color:#16a8cf; font:bold 24px Georgia,serif; flex-shrink:0; line-height:1; }
+.configuration-install-content { padding:16px 0 24px 51px; font-size:13px; line-height:1.9; color:#586e83; }
+.configuration-install-content p { margin:0 0 12px; }
+.configuration-install-content ol { padding-left:20px; margin:16px 0; }
+.configuration-install-content li { margin-bottom:7px; }
+.configuration-code { margin:14px 0; padding:16px; border:1px solid #dce6ee; border-radius:5px; background:#f5f8fa; color:#29405b; font:12px/1.7 Consolas,monospace; overflow-x:auto; max-width:100%; }
+.configuration-copy { border:1px solid #cbdde7; background:#f7fafc; color:#39738d; border-radius:4px; font-size:11px!important; padding:5px 10px; line-height:1.4; flex-shrink:0; }
+.configuration-copy:hover { background:#edf5f8; }
+.configuration-copy-status { font-size:12px; color:#188169; padding:10px 0; margin:0; }
+.configuration-download { display:inline-block; color:#fff; background:#178eaf; border-radius:5px; padding:8px 14px; text-decoration:none; font-size:12px; }
+.configuration-download:hover { background:#0b7798; }
+.configuration-recommended { color:#15876e; font-weight:500; }
+.configuration-wordpress-values { margin:20px 0; }
+.configuration-wordpress-values > div { margin:0 0 14px; }
+.configuration-wordpress-values dt { font-weight:500; margin-bottom:5px; font-size:12px; }
+.configuration-wordpress-values dd { display:flex; align-items:center; gap:10px; background:#f6f9fb; padding:9px 10px; border:1px solid #e2e9ef; border-radius:4px; margin:0; min-width:0; }
+.configuration-wordpress-values code { flex:1; min-width:0; overflow-wrap:anywhere; font-size:12px; }
+.configuration-sender-field input { flex:1; width:100%; min-width:0; border:0; padding:3px 0; background:transparent; color:#506175; font:inherit; font-size:12px; }
+.configuration-local-note { padding:12px 14px; font-size:12px; line-height:1.8; background:#fff8e3; color:#7b622b; border-radius:5px; }
+.configuration-send { padding:30px 39px; scroll-margin-top:24px; }
+.configuration-send h2 { margin:0 0 10px; font-size:21px; font-weight:400; color:#404a54; }
+.configuration-send > p { font-size:12px; margin:0 0 24px; color:#718195; }
+.configuration-field { margin-bottom:18px; }
+.configuration-field label { display:block; margin-bottom:7px; font-size:13px; }
+.configuration-field input { display:block; width:100%; padding:11px 12px; border:1px solid #cad6e0; border-radius:5px; color:#3b536a; font-size:13px!important; }
+.configuration-send-button,.configuration-message button { border:0; border-radius:5px; padding:10px 18px; color:#fff; background:#17a985; font-size:13px!important; }
+.configuration-send-button:disabled { background:#80cbb6; }
+.configuration-success,.configuration-error { font-size:12px; line-height:1.8; padding:12px; border-radius:5px; margin:16px 0 0; }
+.configuration-success { background:#e8f5ef; color:#187557; }
+.configuration-error { background:#fff0f1; color:#a83849; }
+.configuration-message { padding:32px 39px; font-size:14px; }
+@media(prefers-reduced-motion:reduce) { .configuration-install-toggle > svg { transition:none; } }
+@media(max-width:760px) { .configuration-main { padding:16px 14px 32px; } .configuration-summary,.configuration-send { padding:22px; } .configuration-install { padding:22px 20px 28px; } .configuration-install h1 { padding-top:40px; font-size:22px; } .configuration-accordions { margin:16px 0 0; } .configuration-install-content { padding-left:0; } .configuration-subtabs button { padding:8px 10px; min-height:39px; font-size:12px; } .configuration-summary dl > div { flex-wrap:wrap; } .configuration-summary dt { font-size:12px; } .configuration-summary dd { font-size:12px; } .configuration-wordpress-values dd { gap:6px; padding:8px; } .configuration-copy { padding:5px 7px; } }
