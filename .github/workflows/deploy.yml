@@ -37,6 +37,22 @@ jobs:
           for script in deploy/hostinger/*.sh; do
             bash -n "$script"
           done
+      - name: Check API image with restrictive checkout permissions
+        run: |
+          chmod 600 server/*.js server/package.json server/package-lock.json
+          find client/public -type f -exec chmod 600 {} +
+          find client/public -type d -exec chmod 700 {} +
+          docker build --file deploy/hostinger/api.Dockerfile --tag push-api-ci .
+          docker run --rm --network none push-api-ci node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import fs from "node:fs";
+            await import("./app.js");
+            assert.notEqual(process.getuid(), 0);
+            for (const file of ["sdk/push.js", "push-sw.js", "downloads/push-notifications-plugin.zip"]) {
+              assert.ok(fs.readFileSync("../client/public/" + file).length > 0);
+            }
+            console.log("API modules and assets are readable by the non-root runtime user.");
+          '
       - name: Install dashboard dependencies
         run: npm ci
         working-directory: client

@@ -10,4 +10,6 @@ RUN test -n "$REACT_APP_API_BASE" && npm run build
 FROM nginx:stable-alpine
 COPY deploy/hostinger/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/client/build/ /usr/share/nginx/html/
+# Public files copied by CRA may retain restrictive source permissions.
+RUN chmod -R a+rX /usr/share/nginx/html
 EXPOSE 80
