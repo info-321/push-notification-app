@@ -16,7 +16,9 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/dashboard');
   apiFetch.mockImplementation(async url => {
     const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
-    return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/settings')
+    return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/api/account')
+      ? { username: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
+      : url.endsWith('/settings')
       ? { ...domain, time_zone: 'Asia/Kolkata' }
       : url.endsWith('/integration') ? { ...domain, vapid_public_key: 'public-key', sender_api_key: 'test-sender' }
       : url.endsWith('/overview')
@@ -96,4 +98,19 @@ test('Settings opens from the overview and Configuration retains the selected we
   fireEvent.click(screen.getByRole('button', { name: 'Open Configuration' }));
   expect(await screen.findByText('Configuration screen')).toBeTruthy();
   expect(window.location.search).toBe('?domain=mice-key');
+});
+
+test('Account opens from Settings and survives direct URL navigation', async () => {
+  window.history.replaceState({}, '', '/settings?domain=mice-key');
+  render(<App />);
+  await screen.findByRole('heading', { name: 'General Setting' });
+  fireEvent.click(screen.getByRole('button', { name: 'Account', exact: true }));
+  expect(await screen.findByRole('heading', { name: 'Change Password' })).toBeTruthy();
+  expect(window.location.pathname).toBe('/settings/account');
+  expect(await screen.findByText('admin')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Domain', exact: true }));
+  await screen.findByRole('button', { name: 'Edit MICE Travel Advisor' });
+  window.history.replaceState({}, '', '/settings/account?domain=mice-key');
+  fireEvent(window, new PopStateEvent('popstate'));
+  expect(await screen.findByRole('heading', { name: 'Change Password' })).toBeTruthy();
 });

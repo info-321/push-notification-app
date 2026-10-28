@@ -7,6 +7,7 @@ import Settings from './components/domain-settings/Settings';
 import SiteSelect from './components/site-select-list/SiteSelect';
 import Dashboard from './components/dashboard/Dashboard';
 import DomainList from './components/domain-settings/DomainList';
+import Account from './components/domain-settings/Account';
 // Note: Configuration content now lives inside Domain tabs; no separate view.
 
 const App = () => {
@@ -14,7 +15,8 @@ const App = () => {
   const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
   const params = new URLSearchParams(window.location.search);
   const routeKey = params.get('domain') || '';
-  const routeView = ['/settings', '/settings/general'].includes(window.location.pathname) ? 'settings'
+  const routeView = window.location.pathname === '/settings/account' ? 'account'
+    : ['/settings', '/settings/general'].includes(window.location.pathname) ? 'settings'
     : window.location.pathname === '/settings/domains' ? 'domains'
     : window.location.pathname === '/dashboard' ? (routeKey ? 'overview' : 'sites')
     : window.location.pathname.startsWith('/settings/') ? 'domain' : null;
@@ -52,6 +54,10 @@ const App = () => {
       if (key) setSelectedDomainKey(key);
       setView(key ? 'overview' : 'sites');
       setDomainTab('domain');
+    } else if (path === '/settings/account') {
+      const key = new URLSearchParams(window.location.search).get('domain');
+      if (key) setSelectedDomainKey(key);
+      setView('account');
     } else if (path === '/settings' || path === '/settings/general') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
@@ -94,15 +100,15 @@ const App = () => {
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
-    } else if (view === 'domain' || view === 'settings' || view === 'sites' || view === 'overview' || view === 'domains') {
+    } else if (view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
       document.body.classList.add('domain-bg');
       if (view === 'sites' || view === 'overview') {
         const url = view === 'overview' && selectedDomainKey ? `/dashboard?domain=${encodeURIComponent(selectedDomainKey)}` : '/dashboard';
         if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
       }
       if (view === 'domains' && window.location.pathname !== '/settings/domains') window.history.pushState({}, '', '/settings/domains');
-      if (view === 'settings') {
-        const url = `/settings${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
+      if (view === 'settings' || view === 'account') {
+        const url = `/settings${view === 'account' ? '/account' : ''}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
         if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
       }
     }
@@ -196,12 +202,26 @@ const App = () => {
       onConfiguration={openConfiguration}
       onDashboard={(key, name) => key ? openOverview(key, name) : setView('sites')}
       onBack={() => setView('domains')}
+      onAccount={() => setView('account')}
+      onLogout={handleLogout}
+    />;
+  }
+
+  if (view === 'account') {
+    return <Account
+      selectedDomainKey={selectedDomainKey}
+      onSelectDomain={(key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name); }}
+      onSettings={() => setView('settings')}
+      onDomains={() => setView('domains')}
+      onConfiguration={openConfiguration}
+      onDashboard={(key, name) => key ? openOverview(key, name) : setView('sites')}
       onLogout={handleLogout}
     />;
   }
 
   if (view === 'domains') {
     return <DomainList
+      onAccount={() => setView('account')}
       selectedDomainKey={selectedDomainKey}
       onNew={() => { setDomainTab('domain'); setView('domain'); }}
       onConfiguration={openConfiguration}
@@ -233,6 +253,7 @@ const App = () => {
   if (view === 'sites') {
     return (
       <SiteSelect
+        onAccount={() => setView('account')}
         onAddDomain={() => {
           setDomainTab('domain');
           setView('domain');
@@ -249,6 +270,7 @@ const App = () => {
   // Default post-login destination is Domain page.
   return (
     <Domain
+      onAccount={() => setView('account')}
       onDomains={() => setView('domains')}
       onDashboard={() => selectedDomainKey ? openOverview(selectedDomainKey, selectedDomainName) : setView('sites')}
       onLogout={handleLogout}

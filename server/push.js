@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
+import { createAdminToken } from './accounts.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -21,20 +22,25 @@ export function validPushEndpoint(value) {
   } catch { return false; }
 }
 
-export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject }) {
+export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts }) {
   const sign = (value) => crypto.createHmac('sha256', secret).update(value).digest('base64url');
   const senderKey = (key) => sign(`send:${key}`);
-  const createToken = () => {
-    const payload = Buffer.from(JSON.stringify({ exp: Date.now() + 12 * 60 * 60 * 1000 })).toString('base64url');
-    return `${payload}.${sign(`session:${payload}`)}`;
-  };
-  const isAdmin = (req) => {
+  const createToken = version => createAdminToken(secret, version);
+  const isAdmin = async (req) => {
+    let session;
     try {
       const [payload, signature, extra] = (req.get('Authorization') || '').replace(/^Bearer /, '').split('.');
-      return !extra && equal(signature, sign(`session:${payload}`)) && JSON.parse(Buffer.from(payload, 'base64url')).exp > Date.now();
+      if (extra || !equal(signature, sign(`session:${payload}`))) return false;
+      session = JSON.parse(Buffer.from(payload, 'base64url'));
+      if (!Number.isFinite(session.exp) || session.exp <= Date.now()) return false;
     } catch { return false; }
+    const account = await accounts.read();
+    return Boolean(account && (session.v === account.session_version || (session.v === undefined && !account.password_changed_at)));
   };
-  const requireAdmin = (req, res, next) => isAdmin(req) ? next() : res.status(401).json({ ok: false, message: 'Please sign in again.' });
+  const requireAdmin = async (req, res, next) => {
+    try { return await isAdmin(req) ? next() : res.status(401).json({ ok: false, message: 'Please sign in again.' }); }
+    catch { return res.status(503).json({ ok: false, message: 'Sign in is temporarily unavailable.' }); }
+  };
   const apiBase = publicApiBase.replace(/\/$/, '');
   let liveReady = false;
   try {
@@ -97,7 +103,12 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
 
   app.post('/api/notifications', async (req, res) => {
     const { domain_key: domainKey, title, body = '', url, icon = '' } = req.body || {};
-    if (typeof domainKey !== 'string' || (!isAdmin(req) && !equal(req.get('X-Api-Key'), senderKey(domainKey)))) {
+    let authorized = typeof domainKey === 'string' && equal(req.get('X-Api-Key'), senderKey(domainKey));
+    if (!authorized) {
+      try { authorized = await isAdmin(req); }
+      catch { return res.status(503).json({ ok: false, message: 'Sign in is temporarily unavailable.' }); }
+    }
+    if (typeof domainKey !== 'string' || !authorized) {
       return res.status(401).json({ ok: false, message: 'Valid sender credentials are required.' });
     }
     if (typeof title !== 'string' || !title.trim() || title.length > 150 || typeof body !== 'string' || body.length > 1000 || typeof icon !== 'string') {

@@ -23,7 +23,7 @@ function EmailToggle({ label, id }) {
   return <div className="settings-toggle-field"><label htmlFor={id}>{label}</label><button type="button" id={id} className="settings-switch" role="switch" aria-checked="false" aria-label={label} disabled><span />OFF</button></div>;
 }
 
-export default function Settings({ selectedDomainKey = '', onSelectDomain = () => {}, onBack = () => {}, onConfiguration = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
+export default function Settings({ selectedDomainKey = '', onSelectDomain = () => {}, onBack = () => {}, onAccount = () => {}, onConfiguration = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
   const [domains, setDomains] = useState([]);
   const [domainsError, setDomainsError] = useState('');
   const [domainsLoading, setDomainsLoading] = useState(true);
@@ -115,7 +115,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
 
     <main className="settings-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation">
-        <button className="is-active" aria-current="page">Settings</button><button disabled title="Account settings are not available yet">Account</button>
+        <button className="is-active" aria-current="page">Settings</button><button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeKey || loading}>Configuration</button><button disabled title="Billing is not available yet">Plan &amp; Billing</button>
         <button onClick={onBack}>Domain</button><button disabled title="PWA settings are not available yet">PWA Setting</button><button disabled title="User management is not available yet">User</button>
       </nav>

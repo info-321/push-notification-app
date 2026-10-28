@@ -5,14 +5,15 @@ import { installPush } from './push.js';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { deleteOwnedDomain } from './domain-management.js';
 import { installDomainSettings, validTimeZone, defaultTimeZone } from './domain-settings.js';
+import { installAccountRoutes, memoryAccountRepository, verifyPassword } from './accounts.js';
 
-export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject }) {
+export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository }) {
   const app = express();
-  const ADMIN_USERNAME = adminUsername;
-  const ADMIN_PASSWORD = adminPassword;
+  const accounts = accountRepository || memoryAccountRepository(adminUsername, adminPassword);
   app.use(cors());
   app.use(express.json({ limit: '32kb' }));
-  const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject });
+  const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts });
+  installAccountRoutes(app, { accounts, requireAdmin, createToken });
 
   // Utility: generate a URL-safe domain key (Base64URL, no padding) so it's safe in URLs/headers.
   const generateDomainKey = () => {
@@ -27,12 +28,27 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   };
 
   // POST /api/login - basic admin auth.
-  app.post('/api/login', (req, res) => {
+  let failedLogins = 0, loginWindow = 0;
+  app.post('/api/login', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
     const { username, password } = req.body || {};
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      return res.json({ ok: true, token: createToken() });
+    if (Date.now() - loginWindow > 15 * 60 * 1000) { failedLogins = 0; loginWindow = Date.now(); }
+    if (failedLogins >= 10) return res.status(429).json({ ok: false, message: 'Too many incorrect attempts. Try again in 15 minutes.' });
+    try {
+      const row = await accounts.read();
+      if (!row || !await verifyPassword(password, row.password_hash) || username !== row.username) {
+        failedLogins++;
+        return res.status(401).json({ ok: false, message: 'Invalid credentials' });
+      }
+      if (!await accounts.recordLogin(row.password_hash, new Date(), req.socket.remoteAddress?.replace(/^::ffff:/, '') || null)) {
+        return res.status(401).json({ ok: false, message: 'Credentials changed. Please sign in again.' });
+      }
+      failedLogins = 0;
+      return res.json({ ok: true, token: createToken(row.session_version) });
+    } catch (error) {
+      console.error('Login failed:', error.code);
+      return res.status(503).json({ ok: false, message: 'Sign in is temporarily unavailable. Please try again.' });
     }
-    return res.status(401).json({ ok: false, message: 'Invalid credentials' });
   });
 
   // POST /api/domains - create a domain record after frontend validation.

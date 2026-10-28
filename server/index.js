@@ -4,6 +4,7 @@ import webpush from 'web-push';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { ensureDomainDisplayName, ensureDomainTimeZone } from './domain-schema.js';
+import { mysqlAccountRepository } from './accounts.js';
 
 dotenv.config({ path: fileURLToPath(new URL('.env', import.meta.url)) });
 const port = Number(process.env.PORT || 5000);
@@ -25,8 +26,10 @@ const pool = mysql.createPool({
 });
 await ensureDomainDisplayName(pool);
 await ensureDomainTimeZone(pool);
+const accountRepository = mysqlAccountRepository(pool);
+await accountRepository.initialize(process.env.ADMIN_USERNAME || 'admin', process.env.ADMIN_PASSWORD || 'admin');
 const app = createApp({
-  pool, webpush,
+  pool, webpush, accountRepository,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin',
   secret: process.env.PUSH_API_SECRET,

@@ -45,6 +45,14 @@ Open **Settings** from the overview or settings navigation, or use `/settings?do
 
 Push Sending Settings displays the current domain key, a masked sender API key, and the VAPID public key. Private VAPID keys remain on the server; the card links to Configuration rather than replacing keys. Native iOS/Android push, email notifications/reports, SMTP, and Mailchimp are not implemented. Their reference-style cards and controls are disabled and do not save credentials, accept uploads, download a native SDK, or send test email.
 
+## Administrator account
+
+The **Account** tab at `/settings/account` displays the actual administrator username (or email when the login uses an email address), account status, and the most recent successful login recorded by the API. Login history starts with this feature; older logins show **Not recorded yet**. Connection IP is the address seen by the API socket and may be a reverse proxy address; untrusted forwarded headers do not overwrite it. Dates use the selected website's time zone when available. The avatar is a generic local illustration, and deletion of the sole administrator is disabled.
+
+Change Password requires the current password and a different replacement of 12–128 characters. Passwords are stored as salted scrypt hashes in a new `admin_accounts` table, initialized once at API startup from `ADMIN_USERNAME` and `ADMIN_PASSWORD`. Those environment values are bootstrap credentials: subsequent restarts and deployments preserve the stored account and password. Update the password through Account after initialization. A password change returns a replacement session for the current browser and invalidates older dashboard sessions, including legacy sessions. Website VAPID keys and WordPress sender API keys remain unchanged.
+
+Backups now dump the entire dedicated project database, including `admin_accounts`. Deployment checks use an internal short-lived signed session and the current database session version, so a password change does not require putting the new password in GitHub or changing deployment secrets. The deployment probe does not overwrite human login history. The production entry point always uses the MySQL account repository; an injectable in-memory repository is available for isolated HTTP tests.
+
 ### Repair an installation from an older ZIP
 
 Version 1.1.0 archives built by Windows PowerShell could contain literal backslashes in ZIP paths. Linux hosting can extract these as filenames such as `push-notifications-plugin\push-notifications.php` instead of creating a directory. WordPress then generates an activation path that does not exist.

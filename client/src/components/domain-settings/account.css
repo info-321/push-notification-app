@@ -1,0 +1,33 @@
+.account-screen { color:#17304a; }
+.account-main { max-width:1450px; padding-top:20px; }
+.account-screen .domain-list-tabs { min-height:56px; }
+.account-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:30px; }
+.account-panel { background:#fff; border:1px solid #e5eaed; border-radius:7px; padding:30px; box-shadow:0 3px 10px #243b5012; }
+.account-profile-box { border:1px solid #d7dce0; border-radius:4px; padding:12px 10px; }
+.account-avatar { width:100px; height:100px; margin:0 auto 10px; padding:3px; border:3px solid #d3d9e2; border-radius:50%; }
+.account-avatar svg { display:block; width:100%; height:100%; border-radius:50%; }
+.account-details { margin:0; border-top:1px solid #dce0e4; }
+.account-details > div { display:flex; align-items:baseline; gap:5px; flex-wrap:wrap; padding:13px 0; border-bottom:1px solid #dce0e4; line-height:1.5; font-size:14px; }
+.account-details dt { font-weight:600; flex-shrink:0; }
+.account-details dd { margin:0; overflow-wrap:anywhere; min-width:0; }
+.account-delete { display:inline-block; border:0; background:none; color:#5b8fbe; padding:4px 0 0; font-size:14px!important; }
+.account-password-panel { padding:26px 34px 42px; }
+.account-password-panel h1 { font-size:24px; font-weight:400; color:#303e49; margin:0 0 30px; }
+.account-password-panel form { padding:0 8px; }
+.account-input,.account-new-password { display:flex; width:100%; height:46px; border:1px solid #aab2b9; background:white; margin-bottom:17px; border-radius:1px 8px 8px 1px; }
+.account-input { padding:12px; font-size:13px!important; color:#405c73; }
+.account-new-password input { flex:1; width:100%; min-width:0; border:0; background:transparent; padding:12px; font:inherit; font-size:13px; color:#405c73; outline:0; }
+.account-new-password button { border:0; padding:8px 12px; background:none; color:#0785ff; display:flex; align-items:center; }
+.account-new-password svg { width:20px; height:20px; }
+.account-new-password:focus-within { outline:2px solid #25ae99; outline-offset:2px; }
+.account-input::placeholder,.account-new-password input::placeholder { color:#6e859a; opacity:1; }
+.account-input:disabled,.account-new-password:has(input:disabled) { background:#f7f9fa; }
+.account-note { color:#7a8996; font-size:11px; line-height:1.7; margin:0 0 16px; }
+.account-save { width:100%; border:0; border-radius:8px; padding:12px 18px; background:#17aa85; color:#fff; font-size:14px!important; min-height:46px; }
+.account-save:not(:disabled):hover { background:#0e9673; }
+.account-save:disabled { background:#83cdb8; }
+.account-error { background:#fff0f0; color:#a5303e; border-radius:4px; padding:10px; font-size:12px; line-height:1.7; }
+.account-error button { border:0; background:none; color:inherit; text-decoration:underline; }
+.account-success { color:#188169; background:#ebf7f1; border-radius:4px; padding:10px; font-size:12px; line-height:1.7; }
+.account-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+@media(max-width:800px) { .account-grid { grid-template-columns:1fr; gap:24px; } .account-panel { padding:24px; } .account-main { padding-top:14px; } .account-password-panel h1 { font-size:22px; } .account-password-panel form { padding:0; } .account-screen .domain-list-tabs { margin-bottom:16px; } }

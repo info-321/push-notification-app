@@ -38,11 +38,14 @@ case "$1" in
     if [[ "\u0024{TEST_DUMP_MODE:-}" == missing-table ]]; then exit 0; fi
     printf 'CREATE TABLE \x60subscriptions\x60 (id INT);\\n'
     printf "INSERT INTO domains VALUES (1, 'fixture-private-key');\\n"
+    printf 'CREATE TABLE \x60admin_accounts\x60 (id INT, password_hash TEXT);\\n'
+    printf "INSERT INTO admin_accounts VALUES (1, 'fixture-scrypt-hash');\\n"
     ;;
   run)
     printf '${id}\\n'
     ;;
   exec)
+    if [[ "$*" == *'valid_admin_accounts'* ]]; then printf '1\\n'; exit 0; fi
     if [[ "$2" == -i ]]; then
       cat >/dev/null
       if [[ "\u0024{TEST_RESTORE_FAIL:-}" == yes ]]; then exit 51; fi
@@ -77,10 +80,14 @@ test('backup publishes a compressed dump and private configuration only after ch
   const sql = gunzipSync(fs.readFileSync(path.join(backups[0], 'database.sql.gz'))).toString();
   assert.match(sql, /CREATE TABLE `domains`/);
   assert.match(sql, /CREATE TABLE `subscriptions`/);
+  assert.match(sql, /CREATE TABLE `admin_accounts`/);
+  assert.match(sql, /fixture-scrypt-hash/);
+  assert.ok(!fs.readFileSync(f.log, 'utf8').includes('"$MYSQL_DATABASE" domains subscriptions'), 'Backups must include account storage, not just the original two tables');
   assert.equal(fs.readFileSync(path.join(backups[0], 'application.env'), 'utf8'), publicFixture);
   assert.ok(fs.existsSync(path.join(backups[0], 'SHA256SUMS')));
   assert.ok(!result.stdout.includes('fixture-private-key'));
   assert.ok(!result.stdout.includes('fixture-only-not-a-live-secret'));
+  assert.ok(!result.stdout.includes('fixture-scrypt-hash'));
   if (process.platform !== 'win32') {
     assert.equal(fs.statSync(backups[0]).mode & 0o777, 0o700);
     assert.equal(fs.statSync(path.join(backups[0], 'application.env')).mode & 0o777, 0o600);

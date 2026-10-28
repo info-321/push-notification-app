@@ -9,6 +9,7 @@ import { timeZones } from './timezones';
 const Domain = ({
   onLogout = () => {},
   onSettings = () => {},
+  onAccount = () => {},
   onSiteSelect = () => {},
   onDashboard = () => {},
   onDomains = () => {},
@@ -333,7 +334,7 @@ const Domain = ({
           >
             Domain
           </button>
-          <button className="tab">Account</button>
+          <button className="tab" onClick={onAccount}>Account</button>
           <button className="tab">User</button>
         </nav>
 

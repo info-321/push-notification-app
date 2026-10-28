@@ -53,5 +53,13 @@ docker exec "$container_id" mysql --user=root --database=restore_check --execute
            (SELECT COUNT(*) FROM domains WHERE vapid_private_key IS NOT NULL
              AND LENGTH(vapid_private_key) > 0) AS domains_with_private_keys;
 '
+if gzip -dc database.sql.gz | grep -F 'CREATE TABLE `admin_accounts`' >/dev/null; then
+    account_count="$(docker exec "$container_id" mysql --user=root --database=restore_check --batch --skip-column-names --execute='
+        SELECT COUNT(*) AS valid_admin_accounts FROM admin_accounts
+        WHERE id = 1 AND password_hash LIKE "scrypt$%" AND LENGTH(session_version) > 0;
+    ')"
+    [[ "$account_count" == 1 ]] || { echo 'Administrator account restore check failed.' >&2; exit 1; }
+    printf 'Administrator account restore check passed.\n'
+fi
 printf 'Restore check passed: %s\n' "$backup_dir"
 printf 'The application.env checksum also passed; its contents were not displayed.\n'

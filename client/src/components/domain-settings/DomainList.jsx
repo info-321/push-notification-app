@@ -4,7 +4,7 @@ import './domain-list.css';
 
 const labelFor = domain => domain.display_name || domain.domain_name;
 
-export default function DomainList({ selectedDomainKey, onNew, onConfiguration, onDashboard, onSettings, onLogout, onDeleted }) {
+export default function DomainList({ selectedDomainKey, onNew, onConfiguration, onDashboard, onSettings, onAccount, onLogout, onDeleted }) {
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -130,7 +130,7 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
     <main className="domain-list-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation">
         <button onClick={onSettings}>Settings</button>
-        <button disabled title="Account settings are not available yet">Account</button>
+        <button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeDomain}>Configuration</button>
         <button disabled title="Billing is not available yet">Plan &amp; Billing</button>
         <button className="is-active" aria-current="page">Domain</button>

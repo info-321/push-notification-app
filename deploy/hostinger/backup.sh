@@ -25,7 +25,7 @@ cp -- .env "$partial/application.env"
 "${compose[@]}" exec -T db sh -c '
     MYSQL_PWD="$MYSQL_PASSWORD" exec mysqldump --user="$MYSQL_USER" \
         --single-transaction --quick --no-tablespaces --skip-lock-tables \
-        --set-gtid-purged=OFF "$MYSQL_DATABASE" domains subscriptions
+        --set-gtid-purged=OFF "$MYSQL_DATABASE"
 ' | gzip > "$partial/database.sql.gz"
 gzip -t "$partial/database.sql.gz"
 # Read the entire stream so pipefail does not mistake SIGPIPE for a dump failure.

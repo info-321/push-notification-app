@@ -1,6 +1,7 @@
 // Run inside the API container through stdin. Never sends notifications.
 import assert from 'node:assert/strict';
 import mysql from 'mysql2/promise';
+import crypto from 'node:crypto';
 
 const base = 'http://127.0.0.1:5000';
 for (const route of ['/sdk/push.js', '/push-sw.js', '/downloads/push-notifications-plugin.zip']) {
@@ -10,14 +11,29 @@ for (const route of ['/sdk/push.js', '/push-sw.js', '/downloads/push-notificatio
   console.log(`${route}: OK`);
 }
 assert.equal((await fetch(base + '/api/domains')).status, 401, 'Admin routes must require login');
-const login = await fetch(base + '/api/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ username: process.env.ADMIN_USERNAME, password: process.env.ADMIN_PASSWORD }),
+// Passwords can change in the dashboard. The internal probe signs a short-lived
+// session using the stored version, without overwriting the human last-login record.
+const authDb = await mysql.createConnection({
+  host: process.env.DB_HOST, port: Number(process.env.DB_PORT),
+  user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME,
 });
-assert.equal(login.status, 200, 'Admin login must succeed');
-const session = await login.json();
-assert.ok(session.token, 'Login must return a session token');
+let accountVersion;
+try {
+  const [[account]] = await authDb.query('SELECT session_version FROM admin_accounts WHERE id = 1');
+  assert.ok(account?.session_version, 'Persistent administrator account must exist');
+  accountVersion = account.session_version;
+} finally { await authDb.end(); }
+const payload = Buffer.from(JSON.stringify({ exp: Date.now() + 120000, v: accountVersion })).toString('base64url');
+const signature = crypto.createHmac('sha256', process.env.PUSH_API_SECRET).update(`session:${payload}`).digest('base64url');
+const session = { token: `${payload}.${signature}` };
+assert.equal((await fetch(base + '/api/account')).status, 401, 'Account must require login');
+const profile = await fetch(base + '/api/account', { headers: { Authorization: `Bearer ${session.token}` } });
+assert.equal(profile.status, 200, 'Account API must be available');
+const account = (await profile.json()).data;
+assert.equal(typeof account.username, 'string');
+assert.equal(account.password_hash, undefined);
+assert.equal(account.session_version, undefined);
+console.log('Account API: OK');
 const domains = await fetch(base + '/api/domains', { headers: { Authorization: `Bearer ${session.token}` } });
 assert.equal(domains.status, 200, 'Authenticated database access must succeed');
 const domainList = await domains.json();

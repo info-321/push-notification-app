@@ -8,6 +8,7 @@ import { API_BASE, apiFetch } from '../../api';
 const SiteSelect = ({
   onAddDomain,
   onSettings,
+  onAccount,
   onManageDomains,
   onLogout,
   onSelectDomain,
@@ -136,6 +137,7 @@ const SiteSelect = ({
             </button>
             {showProfileMenu && (
               <div className="profile-menu">
+                <button type="button" className="menu-item" onClick={onAccount}>Account</button>
                 <button type="button" className="menu-item" onClick={onManageDomains}>Domains</button>
                 <button type="button" className="menu-item" onClick={onSettings}>
                   <span className="menu-icon" role="img" aria-label="settings">
