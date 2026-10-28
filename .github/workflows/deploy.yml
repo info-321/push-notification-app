@@ -82,8 +82,8 @@ jobs:
           ssh_dir="$RUNNER_TEMP/push-hostinger-ssh"
           mkdir -p "$ssh_dir"
           trap 'rm -f -- "$ssh_dir/key" "$ssh_dir/known_hosts"' EXIT
-          printf '%s\n' "$SSH_KEY" > "$ssh_dir/key"
-          printf '%s\n' "$KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > "$ssh_dir/key"
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' > "$ssh_dir/known_hosts"
           ssh -T -i "$ssh_dir/key" \
             -o IdentitiesOnly=yes -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
