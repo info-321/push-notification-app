@@ -25,17 +25,20 @@ automation key cannot replace this entry point through a shell command.
 In a LOCAL VS Code PowerShell terminal:
 
 ```powershell
-ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\hostinger_actions" -C "github-actions-push-deploy"
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\hostinger_actions_ci" -C "github-actions-push-deploy"
 ```
 
 For this dedicated unattended key, leave the passphrase empty by pressing Enter
-twice. If the filename already exists, decline overwriting it and reuse it only
-if it is the deployment key you intended. Your personal SSH key is separate.
+twice. The workflow uses unattended batch SSH and cannot unlock a key with a
+passphrase. If the filename already exists, decline overwriting it and reuse it
+only if it is the intended unencrypted deployment key. Your personal SSH key is
+separate.
 
-Copy the PUBLIC key:
+Copy the complete restricted public-key entry (this does not copy the private key):
 
 ```powershell
-Get-Content "$env:USERPROFILE\.ssh\hostinger_actions.pub" | Set-Clipboard
+$deployPublicKey = (Get-Content "$env:USERPROFILE\.ssh\hostinger_actions_ci.pub" -Raw).Trim()
+('restrict,command="/usr/local/sbin/deploy-push-notifications" ' + $deployPublicKey) | Set-Clipboard
 ```
 
 ## 3. Authorize only the deployment command on HOSTINGER
@@ -46,12 +49,10 @@ In the HOSTINGER SSH terminal:
 nano /root/.ssh/authorized_keys
 ```
 
-Preserve every existing key. Add ONE new line containing this exact prefix,
-followed by the full public key you copied:
-
-```text
-restrict,command="/usr/local/sbin/deploy-push-notifications" ssh-ed25519 YOUR_PUBLIC_KEY github-actions-push-deploy
-```
+Preserve every existing key. Paste the copied entry as ONE new line. It already
+contains the restriction prefix, the complete public key, and its identifying
+comment. Visual wrapping in the terminal is fine; keep the entry on one logical
+line.
 
 Save, exit, and ensure the permissions:
 
@@ -76,7 +77,7 @@ In the LOCAL Windows terminal, copy the private deployment key directly to your
 clipboard:
 
 ```powershell
-Get-Content "$env:USERPROFILE\.ssh\hostinger_actions" -Raw | Set-Clipboard
+Get-Content "$env:USERPROFILE\.ssh\hostinger_actions_ci" -Raw | Set-Clipboard
 ```
 
 Paste it into this GitHub secret, including its BEGIN/END lines. Never paste it
