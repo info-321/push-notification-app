@@ -3,6 +3,7 @@ import cors from 'cors';
 import crypto from 'node:crypto';
 import { installPush } from './push.js';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
+import { deleteOwnedDomain } from './domain-management.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject }) {
   const app = express();
@@ -43,7 +44,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
     const rawDomain = domain_name || domain;
     const domainName = typeof rawDomain === 'string' ? rawDomain.trim().toLowerCase() : '';
 
-    if (typeof name !== 'string' || !name.trim() || !/^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,}$/.test(domainName) || domainName.length > 253) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 255 || !/^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,}$/.test(domainName) || domainName.length > 253) {
       return res.status(400).json({ ok: false, message: 'A name and valid domain such as yourwebsite.com are required.' });
     }
 
@@ -54,10 +55,10 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
       const vapid = generateVapidKeys();
 
       const sql = `
-        INSERT INTO domains (user_id, domain_name, domain_key, status, verification_token, vapid_public_key, vapid_private_key, last_check_result, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+        INSERT INTO domains (user_id, domain_name, domain_key, status, verification_token, vapid_public_key, vapid_private_key, display_name, last_check_result, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
       `;
-      await pool.query(sql, [userId, domainName, domainKey, status, verificationToken, vapid.publicKey, vapid.privateKey]);
+      await pool.query(sql, [userId, domainName, domainKey, status, verificationToken, vapid.publicKey, vapid.privateKey, name.trim()]);
 
       // Fetch the inserted row to return to the client (without private key).
       const [rows] = await pool.query(
@@ -135,18 +136,36 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
     }
   });
 
+  // Rename the display label without changing the registered site or push credentials.
+  app.patch('/api/domains/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    const name = req.body?.name;
+    if (!Number.isSafeInteger(id) || id <= 0 || typeof name !== 'string' || !name.trim() || name.trim().length > 255) {
+      return res.status(400).json({ ok: false, message: 'A valid domain id and name of up to 255 characters are required.' });
+    }
+    try {
+      const [result] = await pool.query('UPDATE domains SET display_name = ? WHERE id = ? AND user_id = ?', [name.trim(), id, 1]);
+      if (!result.affectedRows) return res.status(404).json({ ok: false, message: 'Domain not found' });
+      const [rows] = await pool.query(`${selectPublicDomains} WHERE d.id = ? AND d.user_id = 1 LIMIT 1`, [id]);
+      if (!rows.length) return res.status(404).json({ ok: false, message: 'Domain not found' });
+      return res.json({ ok: true, data: publicDomain(rows[0]) });
+    } catch (error) {
+      console.error('Error updating domain name', error.code);
+      return res.status(500).json({ ok: false, message: 'Failed to update the domain name.' });
+    }
+  });
+
   // DELETE /api/domains/:id - delete a domain by numeric id for the given user.
   app.delete('/api/domains/:id', async (req, res) => {
     const userId = 1;
     const id = Number(req.params.id);
 
-    if (!id) {
+    if (!Number.isSafeInteger(id) || id <= 0) {
       return res.status(400).json({ ok: false, message: 'Invalid domain id' });
     }
 
     try {
-      const [result] = await pool.query('DELETE FROM domains WHERE id = ? AND user_id = ?', [id, userId]);
-      if (result.affectedRows === 0) {
+      if (!await deleteOwnedDomain(pool, 'id', id, userId)) {
         return res.status(404).json({ ok: false, message: 'Domain not found' });
       }
       return res.json({ ok: true });
@@ -160,13 +179,12 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   app.delete('/api/domains', async (req, res) => {
     const userId = 1;
     const domainKey = req.query.domain_key;
-    if (!domainKey) {
+    if (typeof domainKey !== 'string' || !domainKey) {
       return res.status(400).json({ ok: false, message: 'domain_key is required' });
     }
 
     try {
-      const [result] = await pool.query('DELETE FROM domains WHERE domain_key = ? AND user_id = ?', [domainKey, userId]);
-      if (result.affectedRows === 0) {
+      if (!await deleteOwnedDomain(pool, 'domain_key', domainKey, userId)) {
         return res.status(404).json({ ok: false, message: 'Domain not found' });
       }
       return res.json({ ok: true });

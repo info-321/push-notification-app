@@ -24,6 +24,7 @@ const domainList = await domains.json();
 assert.ok(Array.isArray(domainList.data), 'Domain API must return a list');
 for (const domain of domainList.data) {
   assert.equal(typeof domain.is_configured, 'boolean', 'Domain push configuration must be an explicit boolean');
+  assert.ok(typeof domain.display_name === 'string' && domain.display_name.length > 0, 'Domains must have a friendly name or hostname fallback');
   const route = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/overview';
   assert.equal((await fetch(base + route)).status, 401, 'Overview must require login');
   const response = await fetch(base + route, { headers: { Authorization: `Bearer ${session.token}` } });

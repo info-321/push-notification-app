@@ -27,6 +27,12 @@ The default API address is local. It cannot serve visitors on a live WordPress s
 
 Domain cards show **Configured** when the domain has its push keys and at least one saved browser subscription with encryption keys for that same domain and owner. This also recognizes existing imported subscriptions. This installation indicator is separate from the legacy domain verification status; it does not claim ownership verification or confirmed notification delivery.
 
+## Domain management
+
+Open **Manage domains** from the overview, or visit `/settings/domains`, for a table of saved websites. **New** opens the existing setup form at `/settings/domain`. **Edit** changes the friendly name; the registered hostname and push keys remain unchanged. To use a different hostname, create a separate domain. Select individual rows or use the header checkbox, then **Delete** to remove those domains and their stored subscriptions. Deletion requires confirmation and removes each domain with its subscriptions in one database transaction; failed rows remain selected for retry.
+
+The API adds a nullable `domains.display_name` column automatically on startup if it is missing. Existing rows fall back to their hostname until renamed; new domain names are saved from the setup form. No domains or keys are regenerated. This additive migration runs after the deployment backup and supports older app images during rollback. The database account needs `ALTER` permission for this first startup. For a fresh database, import the baseline `server/db/schema.sql` and start the API to apply this addition. Normal database dumps include the new column and its values.
+
 ## Website overview
 
 Click a domain card or its arrow to open `/dashboard?domain=DOMAIN_KEY`. The overview includes current subscriber totals, quick links, audience channel totals, reporting status, and available events. **Send Push** opens the existing notification form in Configuration; sends still target every saved subscriber for that website. Configuration and the website selector remain available from the overview, and **Refresh data** reloads its counts.

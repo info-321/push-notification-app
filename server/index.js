@@ -3,6 +3,7 @@ import mysql from 'mysql2/promise';
 import webpush from 'web-push';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
+import { ensureDomainDisplayName } from './domain-schema.js';
 
 dotenv.config({ path: fileURLToPath(new URL('.env', import.meta.url)) });
 const port = Number(process.env.PORT || 5000);
@@ -22,6 +23,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
 });
+await ensureDomainDisplayName(pool);
 const app = createApp({
   pool, webpush,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',

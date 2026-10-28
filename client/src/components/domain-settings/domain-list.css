@@ -1,0 +1,61 @@
+.domain-list-page { min-height:100vh; background:#f0f5f8; color:#101b2d; }
+.domain-list-page button,.domain-list-page input,.domain-list-page select { font:inherit; }
+.domain-list-page button { cursor:pointer; }
+.domain-list-page button:disabled { cursor:default; }
+.domain-list-page button:focus-visible,.domain-list-page input:focus-visible,.domain-list-page select:focus-visible { outline:3px solid #2ab7b3; outline-offset:3px; }
+.domain-list-header { background:linear-gradient(105deg,#1d427e,#207d99); color:#fff; min-height:70px; padding:14px 34px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.domain-list-brand,.domain-list-account { display:flex; align-items:center; gap:26px; }
+.domain-list-logo { background:#ffffff18; border:0; padding:5px; border-radius:6px; display:flex; align-items:center; }
+.domain-list-logo img { width:34px; height:30px; object-fit:contain; }
+.domain-list-brand select { max-width:340px; padding:5px 6px; border:0; color:#fff; background:transparent; font-size:13px; font-weight:600; }
+.domain-list-brand option { color:#101b2d; background:#fff; }
+.domain-list-dashboard-link { border:0; background:none; color:#fff; font-size:13px!important; }
+.domain-list-profile { position:relative; }
+.domain-list-profile-trigger { display:flex; align-items:center; gap:7px; color:#fff; border:0; background:none; padding:0; }
+.domain-list-profile-trigger svg { width:25px; height:25px; }
+.domain-list-profile-menu { position:absolute; top:36px; right:0; z-index:5; width:140px; padding:6px; border-radius:7px; background:#fff; box-shadow:0 8px 24px #20314730; }
+.domain-list-profile-menu button { display:block; width:100%; border:0; color:#29364d; background:#fff; text-align:left; padding:9px 12px; font-size:13px; border-radius:4px; }
+.domain-list-profile-menu button:hover { background:#eef5f8; }
+.domain-list-main { max-width:1450px; margin:auto; padding:18px 34px 42px; }
+.domain-list-tabs { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); align-items:stretch; min-height:57px; gap:10px; padding:0 10px; }
+.domain-list-tabs button { border:0; border-bottom:3px solid transparent; background:none; padding:16px 5px 18px; color:#7c8594; font-size:14px; white-space:nowrap; }
+.domain-list-tabs button.is-active { color:#101b2d; border-bottom-color:#18b486; }
+.domain-list-tabs button:disabled { color:#7f8896; }
+.domain-list-panel { border-radius:10px; padding:16px; background:#fff; box-shadow:0 2px 14px #213c5510; }
+.domain-list-toolbar { border:1px solid #d9dde2; border-radius:5px; min-height:69px; padding:14px 15px; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:4px; }
+.domain-list-toolbar > span { font-size:12px; color:#627389; }
+.domain-list-toolbar > div { display:flex; align-items:center; gap:8px; }
+.domain-list-new,.domain-list-edit,.domain-list-delete { border:0; border-radius:24px; background:#087dff; color:#fff; font-size:15px!important; padding:8px 22px; line-height:1.3; }
+.domain-list-delete { background:#e97d8d; }
+.domain-list-delete:disabled { opacity:.65; }
+.domain-list-new:not(:disabled):hover,.domain-list-edit:hover { background:#0069df; }
+.domain-list-delete:not(:disabled):hover { background:#d75f73; }
+.domain-list-table-scroll { overflow-x:auto; }
+.domain-list-table { width:100%; border-collapse:collapse; min-width:650px; text-align:left; font-size:15px; }
+.domain-list-table th { background:#fafafa; border-top:1px solid #dedede; border-bottom:2px solid #dedede; font-weight:500; padding:14px 12px; }
+.domain-list-table td { padding:10px 12px; border-bottom:1px solid #dcdcdc; line-height:1.55; }
+.domain-list-table th:nth-child(2),.domain-list-table td:nth-child(2) { width:40%; overflow-wrap:anywhere; }
+.domain-list-table th:nth-child(3),.domain-list-table td:nth-child(3) { width:45%; overflow-wrap:anywhere; }
+.domain-list-table th:last-child,.domain-list-table td:last-child { text-align:right; padding-right:12px; width:100px; }
+.domain-list-table tbody tr:nth-child(odd) { background:#f1f1f1; }
+.domain-list-table tbody tr:nth-child(even) { background:#fafafa; }
+.domain-list-table tbody tr.is-selected { background:#eaf4ff; }
+.domain-list-table .domain-list-checkbox { width:70px; min-width:52px; padding-left:12px; padding-right:28px; }
+.domain-list-checkbox input { width:13px; height:13px; accent-color:#087dff; cursor:pointer; margin:0; }
+.domain-list-edit { padding:6px 22px; line-height:1.2; }
+.domain-list-table td.domain-list-empty { padding:38px 16px; text-align:center; color:#728092; }
+.domain-list-loading { padding:30px 16px; color:#627389; }
+.domain-list-notice { margin:12px 0; color:#167f64; font-size:13px; }
+.domain-list-error { margin:12px 0; padding:10px 12px; background:#fff0f0; color:#a32e38; border-radius:5px; font-size:13px; }
+.domain-list-error button { border:0; background:none; text-decoration:underline; color:inherit; margin-left:8px; }
+.domain-list-modal-backdrop { position:fixed; inset:0; z-index:100; background:#17294066; display:grid; place-items:center; padding:20px; }
+.domain-list-modal { width:100%; max-width:480px; max-height:90vh; overflow:auto; background:#fff; padding:28px; border-radius:12px; box-shadow:0 18px 60px #10213d40; }
+.domain-list-modal h1 { font-size:22px; margin:0 0 24px; font-weight:600; }
+.domain-list-modal label { display:block; font-size:13px; margin:16px 0 8px; }
+.domain-list-modal label span { color:#c44c59; }
+.domain-list-modal input { width:100%; border:1px solid #cbd7e2; border-radius:5px; padding:11px 12px; font-size:14px; }
+.domain-list-modal input:read-only { background:#f4f6f8; color:#627389; }
+.domain-list-modal form > p:not(.domain-list-error) { font-size:12px; color:#66758a; line-height:1.7; }
+.domain-list-modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:26px; }
+.domain-list-cancel { border:1px solid #d4dde5; border-radius:24px; background:#fff; color:#526479; padding:8px 20px; font-size:14px!important; }
+@media(max-width:760px) { .domain-list-header { padding:14px 18px; gap:12px; flex-wrap:wrap; } .domain-list-brand { gap:12px; } .domain-list-brand select { max-width:240px; font-size:12px; } .domain-list-main { padding:16px 14px 32px; } .domain-list-tabs { display:flex; overflow-x:auto; gap:12px; padding:0 4px; } .domain-list-tabs button { padding:16px 15px; font-size:12px; } .domain-list-panel { padding:10px; } .domain-list-toolbar { padding:12px 10px; } .domain-list-new,.domain-list-delete { padding:8px 18px; } .domain-list-modal { padding:24px 20px; } }

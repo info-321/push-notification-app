@@ -1,7 +1,7 @@
 // Push setup is independent of the legacy domain-ownership verification status.
 // Existing browser subscriptions provide installation evidence without a backfill.
 export const selectPublicDomains = `SELECT
-  d.id, d.user_id, d.domain_name, d.domain_key, d.status,
+  d.id, d.user_id, d.domain_name, COALESCE(NULLIF(d.display_name, ''), d.domain_name) AS display_name, d.domain_key, d.status,
   d.vapid_public_key, d.created_at, d.updated_at,
   (COALESCE(d.vapid_public_key, '') <> ''
     AND COALESCE(d.vapid_private_key, '') <> ''

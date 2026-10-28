@@ -15,7 +15,7 @@ beforeEach(() => {
   localStorage.setItem('domainSetupComplete', 'true');
   window.history.replaceState({}, '', '/dashboard');
   apiFetch.mockImplementation(async url => {
-    const domain = { domain_key: 'mice-key', domain_name: 'micetraveladvisor.com', is_configured: true };
+    const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
     return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/overview')
       ? { domain, subscribers: { total: 7, web: 7, mobile: null, app: null }, updated_at: '2026-10-28T08:00:00Z' }
       : [domain] }) };
@@ -48,4 +48,26 @@ test('a direct overview URL survives reload with stale persisted view and respon
   window.history.replaceState({}, '', '/dashboard?domain=mice-key');
   fireEvent(window, new PopStateEvent('popstate'));
   await waitFor(() => expect(screen.getByLabelText('Total Subscribers: 7')).toBeTruthy());
+});
+
+test('the domains settings URL survives reload and New opens the existing setup screen', async () => {
+  window.history.replaceState({}, '', '/settings/domains');
+  render(<App />);
+  expect(await screen.findByRole('button', { name: 'Edit MICE Travel Advisor' })).toBeTruthy();
+  expect(window.location.pathname).toBe('/settings/domains');
+  expect(screen.queryByText('Configuration screen')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'New', exact: true }));
+  expect(await screen.findByText('Configuration screen')).toBeTruthy();
+});
+
+test('Manage domains opens the table from an overview and supports browser Back', async () => {
+  window.history.replaceState({}, '', '/dashboard?domain=mice-key');
+  render(<App />);
+  expect(await screen.findByLabelText('Total Subscribers: 7')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Manage domains' }));
+  expect(await screen.findByRole('button', { name: 'Edit MICE Travel Advisor' })).toBeTruthy();
+  expect(window.location.pathname).toBe('/settings/domains');
+  window.history.replaceState({}, '', '/dashboard?domain=mice-key');
+  fireEvent(window, new PopStateEvent('popstate'));
+  expect(await screen.findByLabelText('Total Subscribers: 7')).toBeTruthy();
 });

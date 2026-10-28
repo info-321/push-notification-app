@@ -10,6 +10,7 @@ const Domain = ({
   onSettings = () => {},
   onSiteSelect = () => {},
   onDashboard = () => {},
+  onDomains = () => {},
   onSelectDomainTab = () => {},
   selectedDomainKey = '',
   selectedDomainName = '',
@@ -201,23 +202,6 @@ const Domain = ({
       nextErrors.domain = 'Enter a valid domain like example.com';
     }
 
-    // Mock duplicate checks: pretend these domains already exist
-    const existingDomains = ['example.com', 'demo.com'];
-    if (existingDomains.includes(domain.trim().toLowerCase())) {
-      nextErrors.domain = 'This domain is already registered.';
-    }
-
-    // Mock reachability check: pretend that any domain ending with ".invalid" fails
-    if (domain.endsWith('.invalid')) {
-      nextErrors.domain = 'Domain does not appear reachable (mock check).';
-    }
-
-    // Mock duplicate-in-system check (same as above, illustrative)
-    const duplicateInSystem = ['mysite.com'];
-    if (duplicateInSystem.includes(domain.trim().toLowerCase())) {
-      nextErrors.domain = 'Domain is duplicated in the system.';
-    }
-
     setErrors(nextErrors);
     return nextErrors;
   };
@@ -342,8 +326,7 @@ const Domain = ({
           <button
             className={`tab ${activeTab === 'domain' ? 'active' : ''}`}
             onClick={() => {
-              setActiveTab('domain');
-              onSelectDomainTab('domain');
+              onDomains();
             }}
           >
             Domain
@@ -355,11 +338,13 @@ const Domain = ({
         {activeTab === 'domain' && (
           <section className="form-card">
             <div className="field">
-              <label>
+              <label htmlFor="new-domain-name">
                 Name <span className="required">*</span>
               </label>
               <input
+                id="new-domain-name"
                 type="text"
+                maxLength={255}
                 placeholder=""
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -368,12 +353,13 @@ const Domain = ({
             </div>
 
             <div className="field">
-              <label>
+              <label htmlFor="new-domain-address">
                 Domain <span className="required">*</span>
               </label>
               <div className="domain-input">
                 <div className="prefix">https:// or http://</div>
                 <input
+                  id="new-domain-address"
                   type="text"
                   placeholder="example.com"
                   value={domain}
@@ -394,6 +380,7 @@ const Domain = ({
             </div>
 
             <div className="actions">
+              <button type="button" className="ghost-btn" disabled={loading} onClick={onDomains}>All domains</button>
               <button type="button" className="save-btn" disabled={loading} onClick={handleSave}>
                 {loading ? 'Saving...' : 'Save'}
               </button>
