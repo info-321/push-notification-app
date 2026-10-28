@@ -34,6 +34,15 @@ for (const domain of domainList.data) {
   assert.equal(data.subscribers.web, data.subscribers.total, 'Current subscriptions use browser push');
   assert.equal(data.domain.vapid_private_key, undefined, 'Dashboard must not expose private keys');
   console.log('Domain overview: OK; saved browser subscriptions:', data.subscribers.total);
+  const settingsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/settings';
+  assert.equal((await fetch(base + settingsRoute)).status, 401, 'Settings must require login');
+  const settingsResponse = await fetch(base + settingsRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(settingsResponse.status, 200, 'Domain settings must be available');
+  const settings = (await settingsResponse.json()).data;
+  assert.equal(typeof settings.time_zone, 'string', 'A time zone must be available');
+  new Intl.DateTimeFormat('en', { timeZone: settings.time_zone });
+  assert.equal(settings.vapid_private_key, undefined, 'Settings must not expose private push credentials');
+  console.log('Domain settings: OK');
 }
 console.log('Admin authentication and domain API: OK');
 console.log('Configured push integrations:', domainList.data.filter(domain => domain.is_configured).length);

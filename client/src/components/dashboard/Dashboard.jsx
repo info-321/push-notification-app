@@ -20,7 +20,7 @@ function Icon({ name, ...props }) {
 
 const number = value => new Intl.NumberFormat().format(value);
 
-export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSelectDomain, onConfiguration, onSendPush, onLogout }) {
+export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSettings, onSelectDomain, onConfiguration, onSendPush, onLogout }) {
   const [overview, setOverview] = useState(null);
   const [domains, setDomains] = useState([]);
   const [error, setError] = useState('');
@@ -80,7 +80,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
                 </select>
               </label>
             </div>
-            <div className="overview-account"><button onClick={onAllSites}>All websites</button><button onClick={onManageDomains}>Manage domains</button><button onClick={onLogout}>Log out</button></div>
+            <div className="overview-account"><button onClick={onAllSites}>All websites</button><button onClick={onManageDomains}>Manage domains</button><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>
           </div>
           <nav className="overview-navigation" aria-label="Website navigation">
             <button className="overview-nav-active" aria-current="page"><Icon name="home" />Dashboard</button>
@@ -115,7 +115,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
               <strong aria-label={`${label}: ${value === null ? 'Not available' : value}`}>{value === null ? '—' : number(value)}</strong><h2>{label}</h2><p>{detail}</p>
             </article>)}
           </section>
-          <p className="overview-data-note">Counts represent browser subscriptions, not unique people. Last refreshed {new Date(overview.updated_at).toLocaleString()}.</p>
+          <p className="overview-data-note">Counts represent browser subscriptions, not unique people. Last refreshed {new Date(overview.updated_at).toLocaleString(undefined, { timeZone: domain.time_zone || undefined })}{domain.time_zone ? ` (${domain.time_zone})` : ''}.</p>
 
           <div className="overview-middle">
             <section aria-labelledby="overview-quick-links"><h2 className="overview-section-title" id="overview-quick-links">Quick Links</h2>

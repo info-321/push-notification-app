@@ -39,6 +39,12 @@ Click a domain card or its arrow to open `/dashboard?domain=DOMAIN_KEY`. The ove
 
 The authenticated `/api/domains/:key/overview` endpoint counts saved subscriptions with encryption keys for the selected domain and owner. Total and web counts include desktop and mobile browsers; historical records do not contain device or location information. Mobile/app breakdowns therefore remain unavailable, and counts describe subscriptions rather than unique people or lifetime registrations. Campaign history, delivery/click tracking, templates, and popup events are not enabled in this first overview. Earlier test sends have no saved campaign history. No database migration is required.
 
+## Website settings
+
+Open **Settings** from the overview or settings navigation, or use `/settings?domain=DOMAIN_KEY`. The General Setting card saves the selected website's time zone through authenticated `GET`/`PUT /api/domains/:key/settings` endpoints. New domains also save the time zone selected during setup. Overview timestamps use the saved time zone; the default for existing websites is `Asia/Kolkata`. On startup, the API adds a nullable `domains.time_zone` column if necessary, preserving all existing keys and subscription records. Database backups include the preference.
+
+Push Sending Settings displays the current domain key, a masked sender API key, and the VAPID public key. Private VAPID keys remain on the server; the card links to Configuration rather than replacing keys. Native iOS/Android push, email notifications/reports, SMTP, and Mailchimp are not implemented. Their reference-style cards and controls are disabled and do not save credentials, accept uploads, download a native SDK, or send test email.
+
 ### Repair an installation from an older ZIP
 
 Version 1.1.0 archives built by Windows PowerShell could contain literal backslashes in ZIP paths. Linux hosting can extract these as filenames such as `push-notifications-plugin\push-notifications.php` instead of creating a directory. WordPress then generates an activation path that does not exist.

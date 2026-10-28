@@ -16,7 +16,10 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/dashboard');
   apiFetch.mockImplementation(async url => {
     const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
-    return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/overview')
+    return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/settings')
+      ? { ...domain, time_zone: 'Asia/Kolkata' }
+      : url.endsWith('/integration') ? { ...domain, vapid_public_key: 'public-key', sender_api_key: 'test-sender' }
+      : url.endsWith('/overview')
       ? { domain, subscribers: { total: 7, web: 7, mobile: null, app: null }, updated_at: '2026-10-28T08:00:00Z' }
       : [domain] }) };
   });
@@ -70,4 +73,27 @@ test('Manage domains opens the table from an overview and supports browser Back'
   window.history.replaceState({}, '', '/dashboard?domain=mice-key');
   fireEvent(window, new PopStateEvent('popstate'));
   expect(await screen.findByLabelText('Total Subscribers: 7')).toBeTruthy();
+});
+
+test('the Settings URL survives reload and its Domain tab opens domain management', async () => {
+  window.history.replaceState({}, '', '/settings?domain=mice-key');
+  render(<App />);
+  expect(await screen.findByRole('heading', { name: 'General Setting' })).toBeTruthy();
+  await waitFor(() => expect(screen.getByLabelText('Time Zone').value).toBe('Asia/Kolkata'));
+  expect(window.location.pathname + window.location.search).toBe('/settings?domain=mice-key');
+  fireEvent.click(screen.getByRole('button', { name: 'Domain', exact: true }));
+  expect(await screen.findByRole('button', { name: 'Edit MICE Travel Advisor' })).toBeTruthy();
+  expect(window.location.pathname).toBe('/settings/domains');
+});
+
+test('Settings opens from the overview and Configuration retains the selected website', async () => {
+  window.history.replaceState({}, '', '/dashboard?domain=mice-key');
+  render(<App />);
+  await screen.findByLabelText('Total Subscribers: 7');
+  fireEvent.click(screen.getByRole('button', { name: 'Settings', exact: true }));
+  await screen.findByRole('heading', { name: 'Push Sending Settings' });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Open Configuration' }).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Open Configuration' }));
+  expect(await screen.findByText('Configuration screen')).toBeTruthy();
+  expect(window.location.search).toBe('?domain=mice-key');
 });

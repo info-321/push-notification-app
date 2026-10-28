@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { installPush } from './push.js';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { deleteOwnedDomain } from './domain-management.js';
+import { installDomainSettings, validTimeZone, defaultTimeZone } from './domain-settings.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject }) {
   const app = express();
@@ -36,6 +37,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
   // POST /api/domains - create a domain record after frontend validation.
   app.use('/api/domains', requireAdmin);
+  installDomainSettings(app, pool);
 
   app.post('/api/domains', async (req, res) => {
     const { name, domain, domain_name } = req.body || {};
@@ -43,6 +45,8 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
     const userId = 1;
     const rawDomain = domain_name || domain;
     const domainName = typeof rawDomain === 'string' ? rawDomain.trim().toLowerCase() : '';
+    const timeZone = req.body?.time_zone ?? defaultTimeZone;
+    if (!validTimeZone(timeZone)) return res.status(400).json({ ok: false, message: 'Choose a valid time zone.' });
 
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 255 || !/^(?!-)([a-z0-9-]{1,63}\.)+[a-z]{2,}$/.test(domainName) || domainName.length > 253) {
       return res.status(400).json({ ok: false, message: 'A name and valid domain such as yourwebsite.com are required.' });
@@ -55,10 +59,10 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
       const vapid = generateVapidKeys();
 
       const sql = `
-        INSERT INTO domains (user_id, domain_name, domain_key, status, verification_token, vapid_public_key, vapid_private_key, display_name, last_check_result, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+        INSERT INTO domains (user_id, domain_name, domain_key, status, verification_token, vapid_public_key, vapid_private_key, display_name, time_zone, last_check_result, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
       `;
-      await pool.query(sql, [userId, domainName, domainKey, status, verificationToken, vapid.publicKey, vapid.privateKey, name.trim()]);
+      await pool.query(sql, [userId, domainName, domainKey, status, verificationToken, vapid.publicKey, vapid.privateKey, name.trim(), timeZone]);
 
       // Fetch the inserted row to return to the client (without private key).
       const [rows] = await pool.query(

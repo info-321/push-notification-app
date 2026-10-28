@@ -27,6 +27,7 @@ $files = [ordered]@{
     'server/domain-configuration.js' = 'server/domain-configuration.js'
     'server/domain-schema.js' = 'server/domain-schema.js'
     'server/domain-management.js' = 'server/domain-management.js'
+    'server/domain-settings.js' = 'server/domain-settings.js'
     'server/package.json' = 'server/package.json'
     'server/.env.example' = 'server/.env.example'
     'server/db/schema.sql' = 'server/db/schema.sql'

@@ -4,6 +4,7 @@ import './domain.css';
 // Domain setup layout aligned to the provided screenshot.
 // After validation, we call the backend to persist the domain and then route to SiteSelect/Config tab.
 import { API_BASE, apiFetch } from '../../api';
+import { timeZones } from './timezones';
 
 const Domain = ({
   onLogout = () => {},
@@ -19,6 +20,7 @@ const Domain = ({
   const [showMenu, setShowMenu] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
+  const [timeZone, setTimeZone] = useState('Asia/Kolkata');
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
@@ -223,7 +225,7 @@ const Domain = ({
           userId: 1, // replace with real user/account id when available
           name,
           domain_name: domain.toLowerCase(),
-          timezone: '(GMT+05:30) Asia, Kolkata',
+          time_zone: timeZone,
         }),
       });
 
@@ -313,7 +315,7 @@ const Domain = ({
 
       <div className="domain-content">
         <nav className="tabs">
-          <button className="tab">Settings</button>
+          <button className="tab" onClick={onSettings}>Settings</button>
           <button
             className={`tab ${activeTab === 'config' ? 'active' : ''}`}
             onClick={() => {
@@ -370,12 +372,9 @@ const Domain = ({
             </div>
 
             <div className="field">
-              <label>Time Zone</label>
-              <select defaultValue="(GMT+05:30) Asia, Kolkata">
-                <option>(GMT+05:30) Asia, Kolkata</option>
-                <option>(GMT+05:30) Asia, Kolkata (Assam)</option>
-                <option>(GMT+05:30) Asia, Kolkata (Guwahati)</option>
-                <option>(GMT-05:00) America, New York</option>
+              <label htmlFor="new-domain-time-zone">Time Zone</label>
+              <select id="new-domain-time-zone" value={timeZone} onChange={event => setTimeZone(event.target.value)}>
+                {timeZones.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
               </select>
             </div>
 

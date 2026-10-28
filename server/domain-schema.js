@@ -10,3 +10,13 @@ export async function ensureDomainDisplayName(pool) {
     if (error.code !== 'ER_DUP_FIELDNAME') throw error;
   }
 }
+
+export async function ensureDomainTimeZone(pool) {
+  const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'time_zone'");
+  if (columns.length) return;
+  try {
+    await pool.query('ALTER TABLE domains ADD COLUMN time_zone VARCHAR(64) NULL');
+  } catch (error) {
+    if (error.code !== 'ER_DUP_FIELDNAME') throw error;
+  }
+}

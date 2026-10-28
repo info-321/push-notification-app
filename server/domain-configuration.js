@@ -2,7 +2,7 @@
 // Existing browser subscriptions provide installation evidence without a backfill.
 export const selectPublicDomains = `SELECT
   d.id, d.user_id, d.domain_name, COALESCE(NULLIF(d.display_name, ''), d.domain_name) AS display_name, d.domain_key, d.status,
-  d.vapid_public_key, d.created_at, d.updated_at,
+  d.vapid_public_key, d.time_zone, d.created_at, d.updated_at,
   (COALESCE(d.vapid_public_key, '') <> ''
     AND COALESCE(d.vapid_private_key, '') <> ''
     AND EXISTS (
@@ -14,5 +14,6 @@ FROM domains d`;
 
 export const publicDomain = row => ({
   ...row,
+  time_zone: row.time_zone || 'Asia/Kolkata',
   is_configured: Number(row.is_configured) === 1,
 });

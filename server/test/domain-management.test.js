@@ -52,8 +52,8 @@ async function fixture(t) {
     }
     if (sql.startsWith('INSERT INTO domains')) {
       assert.match(sql, /vapid_private_key, display_name,/);
-      const [user_id, domain_name, domain_key, status, , vapid_public_key, vapid_private_key, display_name] = params;
-      records.push({ id: records.length + 1, user_id, domain_name, domain_key, status, vapid_public_key, vapid_private_key, display_name });
+      const [user_id, domain_name, domain_key, status, , vapid_public_key, vapid_private_key, display_name, time_zone] = params;
+      records.push({ id: records.length + 1, user_id, domain_name, domain_key, status, vapid_public_key, vapid_private_key, display_name, time_zone });
       return [{ affectedRows: 1 }];
     }
     if (sql.startsWith('SELECT') && sql.includes('FROM domains d')) {
@@ -83,9 +83,10 @@ test('friendly names persist on create and legacy rows fall back to the register
   const list = await f.request('/api/domains');
   assert.equal(list.data.length, 1);
   assert.equal(list.data[0].display_name, 'micetraveladvisor.com');
-  const created = await f.request('/api/domains', 'POST', { name: ' Travel & Tour World ', domain_name: 'travel.example.com' });
+  const created = await f.request('/api/domains', 'POST', { name: ' Travel & Tour World ', domain_name: 'travel.example.com', time_zone: 'Europe/London' });
   assert.equal(created.status, 200);
   assert.equal(created.data.display_name, 'Travel & Tour World');
+  assert.equal(created.data.time_zone, 'Europe/London');
   assert.equal(created.data.vapid_private_key, undefined);
 });
 
