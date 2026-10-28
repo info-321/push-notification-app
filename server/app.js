@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
 import { installPush } from './push.js';
+import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject }) {
   const app = express();
@@ -60,11 +61,11 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
       // Fetch the inserted row to return to the client (without private key).
       const [rows] = await pool.query(
-        'SELECT id, user_id, domain_name, domain_key, status, vapid_public_key, created_at, updated_at FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1',
+        `${selectPublicDomains} WHERE d.domain_key = ? AND d.user_id = 1 LIMIT 1`,
         [domainKey]
       );
 
-      return res.json({ ok: true, data: rows[0] });
+      return res.json({ ok: true, data: publicDomain(rows[0]) });
     } catch (err) {
       // Duplicate domain error
       if (err.code === 'ER_DUP_ENTRY') {
@@ -80,10 +81,10 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
     const userId = 1;
     try {
       const [rows] = await pool.query(
-        'SELECT id, user_id, domain_name, domain_key, status, vapid_public_key, created_at, updated_at FROM domains WHERE user_id = ? ORDER BY created_at DESC',
+        `${selectPublicDomains} WHERE d.user_id = ? ORDER BY d.created_at DESC`,
         [userId]
       );
-      return res.json({ ok: true, data: rows });
+      return res.json({ ok: true, data: rows.map(publicDomain) });
     } catch (err) {
       console.error('Error fetching domains', err);
       return res.status(500).json({ ok: false, message: 'Failed to fetch domains.' });
@@ -95,13 +96,13 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
     const domainKey = req.params.key;
     try {
       const [rows] = await pool.query(
-        'SELECT id, user_id, domain_name, domain_key, status, vapid_public_key, created_at, updated_at FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1',
+        `${selectPublicDomains} WHERE d.domain_key = ? AND d.user_id = 1 LIMIT 1`,
         [domainKey]
       );
       if (!rows.length) {
         return res.status(404).json({ ok: false, message: 'Domain not found' });
       }
-      return res.json({ ok: true, data: rows[0] });
+      return res.json({ ok: true, data: publicDomain(rows[0]) });
     } catch (err) {
       console.error('Error fetching domain by key', err);
       return res.status(500).json({ ok: false, message: 'Failed to fetch domain.' });

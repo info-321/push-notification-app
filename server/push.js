@@ -2,9 +2,9 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
-const publicColumns = 'id, user_id, domain_name, domain_key, status, vapid_public_key, created_at, updated_at';
 const equal = (a, b) => {
   const left = Buffer.from(String(a || ''));
   const right = Buffer.from(String(b || ''));
@@ -49,9 +49,9 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
   app.get('/api/domains/:key/integration', requireAdmin, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
-      const [rows] = await pool.query(`SELECT ${publicColumns} FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1`, [req.params.key]);
+      const [rows] = await pool.query(`${selectPublicDomains} WHERE d.domain_key = ? AND d.user_id = 1 LIMIT 1`, [req.params.key]);
       if (!rows.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
-      return res.json({ ok: true, data: { ...rows[0], api_base: apiBase, service_url: `${apiBase}/api/notifications`, sender_api_key: senderKey(req.params.key), live_ready: liveReady } });
+      return res.json({ ok: true, data: { ...publicDomain(rows[0]), api_base: apiBase, service_url: `${apiBase}/api/notifications`, sender_api_key: senderKey(req.params.key), live_ready: liveReady } });
     } catch (error) {
       console.error('Integration configuration failed:', error.code);
       return res.status(500).json({ ok: false, message: 'Could not load integration settings. Check the database connection.' });

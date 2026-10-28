@@ -25,6 +25,8 @@ Install the WordPress plugin alone: it loads the SDK and serves the worker autom
 
 The default API address is local. It cannot serve visitors on a live WordPress site. The dashboard displays a local-setup notice until an HTTPS address is configured. A URL setting alone does not deploy the server.
 
+Domain cards show **Configured** when the domain has its push keys and at least one saved browser subscription with encryption keys for that same domain and owner. This also recognizes existing imported subscriptions. This installation indicator is separate from the legacy domain verification status; it does not claim ownership verification or confirmed notification delivery.
+
 ### Repair an installation from an older ZIP
 
 Version 1.1.0 archives built by Windows PowerShell could contain literal backslashes in ZIP paths. Linux hosting can extract these as filenames such as `push-notifications-plugin\push-notifications.php` instead of creating a directory. WordPress then generates an activation path that does not exist.

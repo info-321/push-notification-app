@@ -6,24 +6,42 @@ const key = 'test-domain-key';
 const endpoint = 'https://fcm.googleapis.com/fcm/send/test';
 const browserKeys = { p256dh: Buffer.alloc(65, 1).toString('base64url'), auth: Buffer.alloc(16, 2).toString('base64url') };
 
-async function fixture(t, { subscriptions = [], sendError, publicApiBase = 'https://push.example.org' } = {}) {
+async function fixture(t, { subscriptions = [], sendError, publicApiBase = 'https://push.example.org', domainOverrides = {} } = {}) {
   const calls = [];
   const deletes = [];
   const inserts = [];
   const updates = [];
-  const domain = { id: 1, user_id: 1, domain_name: 'website.test', domain_key: key, vapid_public_key: 'public-key', vapid_private_key: 'private-key', status: 'pending' };
+  const domain = { id: 1, user_id: 1, domain_name: 'website.test', domain_key: key, vapid_public_key: 'public-key', vapid_private_key: 'private-key', status: 'pending', ...domainOverrides };
+  const stored = subscriptions.map(subscription => ({ user_id: domain.user_id, domain_key: key, ...subscription }));
   const pool = { async query(sql, params) {
     if (sql.startsWith('SELECT') && sql.includes('FROM domains')) {
       if (sql.includes('domain_key = ?') && params[0] !== key) return [[]];
       const { vapid_private_key, ...publicDomain } = domain;
-      return [[sql.includes('vapid_private_key') ? domain : publicDomain]];
+      if (sql.startsWith('SELECT domain_name, vapid_public_key, vapid_private_key')) return [[domain]];
+      const isConfigured = Boolean(domain.vapid_public_key && domain.vapid_private_key && stored.some(subscription =>
+        subscription.domain_key === key && subscription.user_id === domain.user_id && subscription.p256dh && subscription.auth));
+      return [[{ ...publicDomain, is_configured: isConfigured ? 1 : 0 }]];
     }
     if (sql.startsWith('SELECT') && sql.includes('FROM subscriptions')) {
-      return [sql.includes('WHERE endpoint') ? subscriptions.filter(s => s.endpoint === params[0]) : subscriptions];
+      return [sql.includes('WHERE endpoint') ? stored.filter(s => s.endpoint === params[0]) : stored.filter(s => s.domain_key === params[0])];
     }
-    if (sql.startsWith('DELETE FROM subscriptions')) { deletes.push(params); return [{ affectedRows: 1 }]; }
-    if (sql.startsWith('INSERT INTO subscriptions')) { inserts.push(params); return [{ affectedRows: 1 }]; }
-    if (sql.startsWith('UPDATE subscriptions')) { updates.push(params); return [{ affectedRows: 1 }]; }
+    if (sql.startsWith('DELETE FROM subscriptions')) {
+      deletes.push(params);
+      const index = stored.findIndex(s => s.id === params[0] && s.domain_key === params[1]);
+      if (index !== -1) stored.splice(index, 1);
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.startsWith('INSERT INTO subscriptions')) {
+      inserts.push(params);
+      stored.push({ id: stored.length + 1, user_id: params[0], domain_key: params[1], endpoint: params[2], p256dh: params[3], auth: params[4] });
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.startsWith('UPDATE subscriptions')) {
+      updates.push(params);
+      const subscription = stored.find(s => s.id === params[2] && s.domain_key === params[3]);
+      if (subscription) Object.assign(subscription, { p256dh: params[0], auth: params[1] });
+      return [{ affectedRows: 1 }];
+    }
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const webpush = { async sendNotification(...args) { calls.push(args); if (sendError) throw sendError; } };
@@ -74,6 +92,54 @@ test('integration returns the public deployment URL and a sender key without VAP
 test('local API addresses are marked as local setup', async t => {
   const f = await fixture(t, { publicApiBase: 'http://localhost:5000' });
   assert.equal(f.config.live_ready, false);
+});
+
+test('an existing subscribed domain is configured even while ownership status is pending', async t => {
+  const f = await fixture(t, { subscriptions: [{ id: 1, endpoint, ...browserKeys }] });
+  for (const route of ['/api/domains', `/api/domains/${key}`, `/api/domains/${key}/integration`]) {
+    const response = await f.request(route, undefined, f.auth);
+    assert.equal(response.status, 200);
+    const data = Array.isArray(response.result.data) ? response.result.data[0] : response.result.data;
+    assert.equal(data.is_configured, true);
+    assert.equal(data.status, 'pending');
+    assert.equal(data.vapid_private_key, undefined);
+  }
+  assert.equal(f.calls.length, 0, 'Reading configuration must not send notifications');
+});
+
+test('registering a browser makes push configuration available on the next domain read', async t => {
+  const f = await fixture(t);
+  assert.equal(f.config.is_configured, false);
+  const saved = await f.request('/api/subscriptions', { domain_key: key, subscription: { endpoint, keys: browserKeys } }, { Origin: 'https://website.test' });
+  assert.equal(saved.status, 200);
+  const listing = await f.request('/api/domains', undefined, f.auth);
+  assert.equal(listing.result.data[0].is_configured, true);
+});
+
+test('ownership verification without a browser subscription does not claim push setup', async t => {
+  const f = await fixture(t, { domainOverrides: { status: 'verified' } });
+  const listing = await f.request('/api/domains', undefined, f.auth);
+  assert.equal(listing.result.data[0].status, 'verified');
+  assert.equal(listing.result.data[0].is_configured, false);
+});
+
+test('another domain, another owner, or incomplete browser keys cannot configure this domain', async t => {
+  for (const subscription of [
+    { domain_key: 'other-domain', ...browserKeys },
+    { user_id: 2, ...browserKeys },
+    { p256dh: browserKeys.p256dh, auth: '' },
+    { p256dh: null, auth: browserKeys.auth },
+  ]) {
+    const f = await fixture(t, { subscriptions: [{ id: 1, endpoint, ...subscription }] });
+    assert.equal(f.config.is_configured, false);
+  }
+});
+
+test('missing domain push keys prevent a configured flag even with stored subscribers', async t => {
+  for (const domainOverrides of [{ vapid_private_key: null }, { vapid_public_key: '' }]) {
+    const f = await fixture(t, { subscriptions: [{ id: 1, endpoint, ...browserKeys }], domainOverrides });
+    assert.equal(f.config.is_configured, false);
+  }
 });
 
 test('forged admin sessions and missing sender credentials cannot send', async t => {

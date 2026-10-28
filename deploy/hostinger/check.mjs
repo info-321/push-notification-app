@@ -20,7 +20,13 @@ const session = await login.json();
 assert.ok(session.token, 'Login must return a session token');
 const domains = await fetch(base + '/api/domains', { headers: { Authorization: `Bearer ${session.token}` } });
 assert.equal(domains.status, 200, 'Authenticated database access must succeed');
+const domainList = await domains.json();
+assert.ok(Array.isArray(domainList.data), 'Domain API must return a list');
+for (const domain of domainList.data) {
+  assert.equal(typeof domain.is_configured, 'boolean', 'Domain push configuration must be an explicit boolean');
+}
 console.log('Admin authentication and domain API: OK');
+console.log('Configured push integrations:', domainList.data.filter(domain => domain.is_configured).length);
 
 const db = await mysql.createConnection({
   host: process.env.DB_HOST,

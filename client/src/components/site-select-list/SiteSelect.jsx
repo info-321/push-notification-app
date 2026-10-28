@@ -36,11 +36,11 @@ const SiteSelect = ({
         if (!res.ok) {
           throw new Error(data.message || 'Failed to load domains');
         }
-        // Normalize status to boolean configured flag for UI
+        // Push installation status comes from the API, not ownership verification.
         const list = (data.data || []).map((d) => ({
           id: d.id,
           name: d.domain_name || d.domain,
-          configured: d.status === 'verified',
+          configured: d.is_configured === true,
           key: d.domain_key,
         }));
 
@@ -171,7 +171,12 @@ const SiteSelect = ({
               <div className="domain-card" key={item.name}>
                 <div className="domain-info">
                   <div className="domain-name">{item.name}</div>
-                  <div className={`domain-status ${item.configured ? 'ok' : 'pending'}`}>
+                  <div
+                    className={`domain-status ${item.configured ? 'ok' : 'pending'}`}
+                    title={item.configured
+                      ? 'Browser notifications have been enabled for this website.'
+                      : 'Finish setup and enable notifications on your website.'}
+                  >
                     {item.configured ? 'Configured' : 'Not Configured'}
                   </div>
                 </div>
