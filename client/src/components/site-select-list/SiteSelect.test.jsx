@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import SiteSelect from './SiteSelect';
 import { apiFetch } from '../../api';
 
@@ -34,4 +34,16 @@ test('ownership verification alone does not display a working push integration',
   render(<SiteSelect />);
   expect(await screen.findByText('Not Configured')).toBeTruthy();
   expect(screen.queryByText('Configured')).toBeNull();
+});
+
+test('the card and arrow open the same domain dashboard while its menu does not navigate', async () => {
+  mockDomain('pending', true);
+  const open = jest.fn();
+  render(<SiteSelect onSelectDomain={open} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Open dashboard for micetraveladvisor.com' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open domain' }));
+  expect(open.mock.calls).toEqual([['test-domain', 'micetraveladvisor.com'], ['test-domain', 'micetraveladvisor.com']]);
+  fireEvent.click(screen.getByRole('button', { name: 'Open domain menu' }));
+  expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
+  expect(open).toHaveBeenCalledTimes(2);
 });

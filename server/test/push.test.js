@@ -23,6 +23,11 @@ async function fixture(t, { subscriptions = [], sendError, publicApiBase = 'http
       return [[{ ...publicDomain, is_configured: isConfigured ? 1 : 0 }]];
     }
     if (sql.startsWith('SELECT') && sql.includes('FROM subscriptions')) {
+      if (sql.includes('COUNT(*) AS subscribers')) {
+        assert.match(sql, /domain_key = \? AND user_id = \?/);
+        assert.match(sql, /COALESCE\(p256dh, ''\) <> '' AND COALESCE\(auth, ''\) <> ''/);
+        return [[{ subscribers: stored.filter(s => s.domain_key === params[0] && s.user_id === params[1] && s.p256dh && s.auth).length }]];
+      }
       return [sql.includes('WHERE endpoint') ? stored.filter(s => s.endpoint === params[0]) : stored.filter(s => s.domain_key === params[0])];
     }
     if (sql.startsWith('DELETE FROM subscriptions')) {
@@ -121,6 +126,48 @@ test('ownership verification without a browser subscription does not claim push 
   const listing = await f.request('/api/domains', undefined, f.auth);
   assert.equal(listing.result.data[0].status, 'verified');
   assert.equal(listing.result.data[0].is_configured, false);
+});
+
+test('overview requires login, isolates the selected audience, and exposes no browser keys or sender secrets', async t => {
+  const f = await fixture(t, { subscriptions: [
+    { id: 1, endpoint, ...browserKeys },
+    { id: 2, endpoint: endpoint + '2', ...browserKeys },
+    { id: 3, endpoint, domain_key: 'other-domain', ...browserKeys },
+    { id: 4, endpoint, user_id: 2, ...browserKeys },
+    { id: 5, endpoint, p256dh: '', auth: browserKeys.auth },
+  ] });
+  const route = `/api/domains/${key}/overview`;
+  assert.equal((await f.request(route)).status, 401);
+  const response = await fetch(f.base + route, { headers: f.auth });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const { data } = await response.json();
+  assert.deepEqual(data.subscribers, { total: 2, web: 2, mobile: null, app: null });
+  assert.equal(data.domain.is_configured, true);
+  assert.equal(data.domain.vapid_private_key, undefined);
+  assert.equal(data.domain.sender_api_key, undefined);
+  assert.ok(Number.isFinite(Date.parse(data.updated_at)));
+  assert.equal(JSON.stringify(data).includes(endpoint), false);
+  assert.equal(JSON.stringify(data).includes(browserKeys.auth), false);
+  assert.equal(f.calls.length, 0);
+});
+
+test('overview reports zero for an empty audience and returns 404 for an unknown domain', async t => {
+  const f = await fixture(t);
+  const { result } = await f.request(`/api/domains/${key}/overview`, undefined, f.auth);
+  assert.equal(result.data.subscribers.total, 0);
+  assert.equal(result.data.domain.is_configured, false);
+  assert.equal((await f.request('/api/domains/unknown/overview', undefined, f.auth)).status, 404);
+});
+
+test('overview reflects new subscriptions and expired removals on refresh', async t => {
+  const f = await fixture(t, { sendError: { statusCode: 410 } });
+  await f.request('/api/subscriptions', { domain_key: key, subscription: { endpoint, keys: browserKeys } }, { Origin: 'https://website.test' });
+  const before = await f.request(`/api/domains/${key}/overview`, undefined, f.auth);
+  assert.equal(before.result.data.subscribers.total, 1);
+  await f.request('/api/notifications', { domain_key: key, title: 'Test' }, f.auth);
+  const after = await f.request(`/api/domains/${key}/overview`, undefined, f.auth);
+  assert.equal(after.result.data.subscribers.total, 0);
 });
 
 test('another domain, another owner, or incomplete browser keys cannot configure this domain', async t => {

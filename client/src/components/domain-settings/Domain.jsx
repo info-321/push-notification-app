@@ -9,6 +9,7 @@ const Domain = ({
   onLogout = () => {},
   onSettings = () => {},
   onSiteSelect = () => {},
+  onDashboard = () => {},
   onSelectDomainTab = () => {},
   selectedDomainKey = '',
   selectedDomainName = '',
@@ -74,12 +75,20 @@ const Domain = ({
   // Keep URL in sync with tab selection (mimic Feedify URLs).
   useEffect(() => {
     if (activeTab === 'config' && selectedDomainKey) {
-      // Use encodeURI to avoid displaying % encodings like %40 in the bar.
-      window.history.pushState({}, '', `/settings/config?domain=${encodeURI(selectedDomainKey)}`);
+      // Preserve the composer anchor when opening Configuration from the overview.
+      const url = `/settings/config?domain=${encodeURIComponent(selectedDomainKey)}`;
+      if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
     } else if (activeTab === 'domain') {
       window.history.pushState({}, '', '/settings/domain');
     }
   }, [activeTab, selectedDomainKey]);
+
+  useEffect(() => {
+    if (configDetails && activeTab === 'config' && window.location.hash === '#send-push') {
+      document.getElementById('send-push')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      document.getElementById('test-title')?.focus({ preventScroll: true });
+    }
+  }, [configDetails, activeTab]);
 
   // Fetch configuration details (including VAPID public key) when config tab is active.
   useEffect(() => {
@@ -280,8 +289,12 @@ const Domain = ({
           </div>
         </div>
         <div className="nav-actions">
-          <div className="top-nav-btn">Dashboard</div>
-          <div className="top-nav-btn">Push Notification</div>
+          <button type="button" className="top-nav-btn" onClick={onDashboard}>Dashboard</button>
+          <button type="button" className="top-nav-btn" onClick={() => {
+            setActiveTab('config'); onSelectDomainTab('config');
+            window.location.hash = 'send-push';
+            document.getElementById('send-push')?.scrollIntoView?.({ behavior: 'smooth' });
+          }}>Push Notification</button>
           <div className="top-nav-btn">Report</div>
           <div className="top-nav-btn badge">Newsroll</div>
           <div className="top-nav-btn badge">Newsbox</div>
@@ -529,7 +542,7 @@ const Domain = ({
                       </div>
                     </div>
                 </div>
-                <form className="config-section" onSubmit={sendTest}>
+                <form className="config-section" id="send-push" onSubmit={sendTest}>
                   <h4>Send a test notification</h4>
                   <p>This sends to all subscribers of this website. Subscribe from your website first.</p>
                   <div className="field">

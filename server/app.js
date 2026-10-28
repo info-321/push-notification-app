@@ -91,6 +91,32 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
     }
   });
 
+  // Counts describe saved browser subscriptions, not unique people or delivery receipts.
+  app.get('/api/domains/:key/overview', async (req, res) => {
+    try {
+      const [rows] = await pool.query(
+        `${selectPublicDomains} WHERE d.domain_key = ? AND d.user_id = 1 LIMIT 1`,
+        [req.params.key]
+      );
+      if (!rows.length) return res.status(404).json({ ok: false, message: 'Domain not found' });
+      const [[counts]] = await pool.query(
+        `SELECT COUNT(*) AS subscribers FROM subscriptions
+         WHERE domain_key = ? AND user_id = ?
+           AND COALESCE(p256dh, '') <> '' AND COALESCE(auth, '') <> ''`,
+        [req.params.key, rows[0].user_id]
+      );
+      res.set('Cache-Control', 'no-store');
+      return res.json({ ok: true, data: {
+        domain: publicDomain(rows[0]),
+        subscribers: { total: Number(counts.subscribers), web: Number(counts.subscribers), mobile: null, app: null },
+        updated_at: new Date().toISOString(),
+      } });
+    } catch (err) {
+      console.error('Error fetching domain overview', err);
+      return res.status(500).json({ ok: false, message: 'Failed to load dashboard.' });
+    }
+  });
+
   // GET /api/domains/:key - fetch a single domain by domain_key.
   app.get('/api/domains/:key', async (req, res) => {
     const domainKey = req.params.key;

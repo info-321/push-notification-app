@@ -20,11 +20,6 @@ const SiteSelect = ({
   const [openMenuFor, setOpenMenuFor] = useState(null); // which domain card menu is open
   const [deletingKey, setDeletingKey] = useState(null); // deletion state
 
-  // Keep URL consistent while on SiteSelect (mimic dashboard route).
-  useEffect(() => {
-    window.history.pushState({}, '', '/dashboard');
-  }, []);
-
   // Fetch domains from backend
   useEffect(() => {
     const fetchDomains = async () => {
@@ -65,6 +60,8 @@ const SiteSelect = ({
       return;
     }
     setSelectedDomain(value);
+    const chosen = domains.find(domain => domain.name === value);
+    if (chosen) onSelectDomain?.(chosen.key, chosen.name);
   };
 
   // Delete a domain on the backend and remove from UI
@@ -169,17 +166,17 @@ const SiteSelect = ({
           <div className="domains-grid">
             {domains.map((item) => (
               <div className="domain-card" key={item.name}>
-                <div className="domain-info">
-                  <div className="domain-name">{item.name}</div>
-                  <div
+                <button type="button" className="domain-info domain-open" onClick={() => onSelectDomain?.(item.key, item.name)} aria-label={`Open dashboard for ${item.name}`}>
+                  <span className="domain-name">{item.name}</span>
+                  <span
                     className={`domain-status ${item.configured ? 'ok' : 'pending'}`}
                     title={item.configured
                       ? 'Browser notifications have been enabled for this website.'
                       : 'Finish setup and enable notifications on your website.'}
                   >
                     {item.configured ? 'Configured' : 'Not Configured'}
-                  </div>
-                </div>
+                  </span>
+                </button>
                 <div className="card-actions">
                   {/* 3-dot menu trigger; toggles a simple menu with Edit/Delete */}
                   <button

@@ -1,19 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import Login from './components/login/Login';
 import Splash from './components/splash/Splash';
 import Domain from './components/domain-settings/Domain';
 import Settings from './components/domain-settings/Settings';
 import SiteSelect from './components/site-select-list/SiteSelect';
+import Dashboard from './components/dashboard/Dashboard';
 // Note: Configuration content now lives inside Domain tabs; no separate view.
 
 const App = () => {
   // Restore persisted auth/view state so reloads stay on the same page.
   const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
-  const initialView = initialAuth ? localStorage.getItem('view') || 'domain' : 'login';
+  const params = new URLSearchParams(window.location.search);
+  const routeKey = params.get('domain') || '';
+  const routeView = window.location.pathname === '/dashboard' ? (routeKey ? 'overview' : 'sites')
+    : window.location.pathname.startsWith('/settings/') ? 'domain' : null;
+  const initialView = initialAuth ? routeView || localStorage.getItem('view') || 'domain' : 'login';
   const initialSplash = initialAuth ? Number(localStorage.getItem('remainingSplash') || 0) : 1;
   const initialDomainSetup = localStorage.getItem('domainSetupComplete') === 'true';
-  const initialDomainKey = localStorage.getItem('selectedDomainKey') || '';
+  const initialDomainKey = routeKey || localStorage.getItem('selectedDomainKey') || '';
   const initialDomainName = localStorage.getItem('selectedDomainName') || '';
 
   const [isAuthenticated, setIsAuthenticated] = useState(initialAuth);
@@ -27,7 +32,7 @@ const App = () => {
   const [selectedDomainKey, setSelectedDomainKey] = useState(initialDomainKey);
   const [selectedDomainName, setSelectedDomainName] = useState(initialDomainName);
   // Which tab should Domain open on (domain/config). Defaults to domain.
-  const [domainTab, setDomainTab] = useState('domain');
+  const [domainTab, setDomainTab] = useState(window.location.pathname === '/settings/config' ? 'config' : 'domain');
 
   useEffect(() => {
     const expire = () => { setIsAuthenticated(false); setView('login'); };
@@ -36,11 +41,13 @@ const App = () => {
   }, []);
 
   // Helper to sync view/tab from the current URL (supports /dashboard, /settings/domain, /settings/config?domain=KEY).
-  const syncViewFromUrl = () => {
+  const syncViewFromUrl = useCallback(() => {
     if (!isAuthenticated) return;
     const path = window.location.pathname;
     if (path === '/dashboard') {
-      setView('sites');
+      const key = new URLSearchParams(window.location.search).get('domain');
+      if (key) setSelectedDomainKey(key);
+      setView(key ? 'overview' : 'sites');
       setDomainTab('domain');
     } else if (path === '/settings/domain') {
       setView('domain');
@@ -54,19 +61,19 @@ const App = () => {
       }
       setView('domain');
     }
-  };
+  }, [isAuthenticated]);
 
   // On first load and whenever auth toggles on, honor direct URLs.
   useEffect(() => {
     syncViewFromUrl();
-  }, [isAuthenticated]);
+  }, [syncViewFromUrl]);
 
   // Listen for manual URL changes (back/forward or typing new path) to resync view.
   useEffect(() => {
     const handler = () => syncViewFromUrl();
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
-  }, [isAuthenticated]);
+  }, [syncViewFromUrl]);
 
   // Apply page-specific body backgrounds.
   useEffect(() => {
@@ -78,10 +85,14 @@ const App = () => {
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
-    } else if (view === 'domain' || view === 'settings' || view === 'sites') {
+    } else if (view === 'domain' || view === 'settings' || view === 'sites' || view === 'overview') {
       document.body.classList.add('domain-bg');
+      if (view === 'sites' || view === 'overview') {
+        const url = view === 'overview' && selectedDomainKey ? `/dashboard?domain=${encodeURIComponent(selectedDomainKey)}` : '/dashboard';
+        if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
+      }
     }
-  }, [view]);
+  }, [view, selectedDomainKey]);
 
   // Persist auth/view/splash counters so refreshes keep the current page.
   useEffect(() => {
@@ -141,6 +152,20 @@ const App = () => {
     setView('domain');
   };
 
+  const openOverview = (key, name) => {
+    setSelectedDomainKey(key);
+    setSelectedDomainName(name || '');
+    setView('overview');
+  };
+
+  const openConfiguration = (key, name, send = false) => {
+    setSelectedDomainKey(key);
+    setSelectedDomainName(name || '');
+    setDomainTab('config');
+    window.history.pushState({}, '', `/settings/config?domain=${encodeURIComponent(key)}${send ? '#send-push' : ''}`);
+    setView('domain');
+  };
+
   if (!isAuthenticated) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -153,6 +178,17 @@ const App = () => {
     return <Settings onBack={() => setView('domain')} onLogout={handleLogout} />;
   }
 
+  if (view === 'overview' && selectedDomainKey) {
+    return <Dashboard
+      domainKey={selectedDomainKey}
+      onAllSites={() => setView('sites')}
+      onSelectDomain={openOverview}
+      onConfiguration={openConfiguration}
+      onSendPush={(key, name) => openConfiguration(key, name, true)}
+      onLogout={handleLogout}
+    />;
+  }
+
   if (view === 'sites') {
     return (
       <SiteSelect
@@ -162,13 +198,8 @@ const App = () => {
         }}
         onSettings={() => setView('settings')}
         onLogout={handleLogout}
-        onSelectDomain={(key, name) => {
-          // When selecting a domain from the list, open Domain with Configuration tab active.
-          setSelectedDomainKey(key);
-          setSelectedDomainName(name);
-          setDomainTab('config');
-          setView('domain');
-        }}
+        onSelectDomain={openOverview}
+        onEditDomain={item => openConfiguration(item.key, item.name)}
       />
     );
   }
@@ -176,6 +207,7 @@ const App = () => {
   // Default post-login destination is Domain page.
   return (
     <Domain
+      onDashboard={() => selectedDomainKey ? openOverview(selectedDomainKey, selectedDomainName) : setView('sites')}
       onLogout={handleLogout}
       onSettings={() => setView('settings')}
       selectedDomainKey={selectedDomainKey}

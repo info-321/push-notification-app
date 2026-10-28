@@ -209,6 +209,11 @@
   gap: 4px;
 }
 
+.domain-open { border:0; padding:14px 16px; margin:-14px -16px; align-self:stretch; flex:1; background:transparent; text-align:left; font:inherit; cursor:pointer; }
+.domain-open::after { content:''; position:absolute; inset:0; border-radius:10px; }
+.domain-open:focus-visible, .domain-action:focus-visible, .menu-trigger:focus-visible { outline:3px solid #279fba; outline-offset:3px; }
+.card-actions { z-index:1; }
+
 .domain-name {
   font-weight: 700;
   color: #111827;

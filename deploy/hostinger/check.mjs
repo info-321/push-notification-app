@@ -24,6 +24,15 @@ const domainList = await domains.json();
 assert.ok(Array.isArray(domainList.data), 'Domain API must return a list');
 for (const domain of domainList.data) {
   assert.equal(typeof domain.is_configured, 'boolean', 'Domain push configuration must be an explicit boolean');
+  const route = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/overview';
+  assert.equal((await fetch(base + route)).status, 401, 'Overview must require login');
+  const response = await fetch(base + route, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(response.status, 200, 'Domain overview must be available');
+  const { data } = await response.json();
+  assert.ok(Number.isSafeInteger(data.subscribers.total) && data.subscribers.total >= 0, 'Subscriber counts must be nonnegative integers');
+  assert.equal(data.subscribers.web, data.subscribers.total, 'Current subscriptions use browser push');
+  assert.equal(data.domain.vapid_private_key, undefined, 'Dashboard must not expose private keys');
+  console.log('Domain overview: OK; saved browser subscriptions:', data.subscribers.total);
 }
 console.log('Admin authentication and domain API: OK');
 console.log('Configured push integrations:', domainList.data.filter(domain => domain.is_configured).length);

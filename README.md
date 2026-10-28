@@ -27,6 +27,12 @@ The default API address is local. It cannot serve visitors on a live WordPress s
 
 Domain cards show **Configured** when the domain has its push keys and at least one saved browser subscription with encryption keys for that same domain and owner. This also recognizes existing imported subscriptions. This installation indicator is separate from the legacy domain verification status; it does not claim ownership verification or confirmed notification delivery.
 
+## Website overview
+
+Click a domain card or its arrow to open `/dashboard?domain=DOMAIN_KEY`. The overview includes current subscriber totals, quick links, audience channel totals, reporting status, and available events. **Send Push** opens the existing notification form in Configuration; sends still target every saved subscriber for that website. Configuration and the website selector remain available from the overview, and **Refresh data** reloads its counts.
+
+The authenticated `/api/domains/:key/overview` endpoint counts saved subscriptions with encryption keys for the selected domain and owner. Total and web counts include desktop and mobile browsers; historical records do not contain device or location information. Mobile/app breakdowns therefore remain unavailable, and counts describe subscriptions rather than unique people or lifetime registrations. Campaign history, delivery/click tracking, templates, and popup events are not enabled in this first overview. Earlier test sends have no saved campaign history. No database migration is required.
+
 ### Repair an installation from an older ZIP
 
 Version 1.1.0 archives built by Windows PowerShell could contain literal backslashes in ZIP paths. Linux hosting can extract these as filenames such as `push-notifications-plugin\push-notifications.php` instead of creating a directory. WordPress then generates an activation path that does not exist.
@@ -45,6 +51,7 @@ For cPanel Application Manager, run `powershell -ExecutionPolicy Bypass -File sc
 
 - `cd server; npm.cmd test`: HTTP route, authentication, subscription, notification delivery, SDK permission, and service worker tests. External push services are mocked.
 - `cd client; npm.cmd run build`: frontend build.
+- `cd client; npm.cmd test -- --watchAll=false --runInBand`: overview counts, navigation, refresh/retry states, and domain-card interactions.
 - `C:\xampp\php\php.exe -l wordpress/push-notifications-plugin/push-notifications.php`: PHP syntax check (or use your installed PHP).
 - `C:\xampp\php\php.exe wordpress/test-plugin.php`: WordPress API contract checks with stubs.
 - `powershell -ExecutionPolicy Bypass -File scripts/package-wordpress.ps1`: copy the current worker into the plugin and rebuild the downloadable ZIP from `wordpress/push-notifications-plugin`.
