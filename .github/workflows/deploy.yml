@@ -1,0 +1,94 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: server
+      - name: Run automated tests
+        run: npm test
+        working-directory: server
+      - name: Check deployment script syntax
+        run: |
+          for script in deploy/hostinger/*.sh; do
+            bash -n "$script"
+          done
+      - name: Install dashboard dependencies
+        run: npm ci
+        working-directory: client
+      - name: Build dashboard
+        run: npm run build
+        working-directory: client
+        env:
+          REACT_APP_API_BASE: https://push.micetraveladvisor.com
+          # Keep existing CRA lint warnings visible without treating them as errors.
+          CI: 'false'
+
+  deploy:
+    name: Deploy production
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: hostinger-push-notification-production
+      cancel-in-progress: false
+    steps:
+      - name: Check deployment credentials
+        id: credentials
+        env:
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.HOSTINGER_KNOWN_HOSTS }}
+        run: |
+          if [[ -z "$SSH_KEY" || -z "$KNOWN_HOSTS" ]]; then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::Deployment skipped. Complete deploy/hostinger/AUTO-DEPLOY.md and add both Hostinger Actions secrets.'
+          else
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Deploy the tested commit over SSH
+        if: steps.credentials.outputs.ready == 'true'
+        env:
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.HOSTINGER_KNOWN_HOSTS }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          umask 077
+          ssh_dir="$RUNNER_TEMP/push-hostinger-ssh"
+          mkdir -p "$ssh_dir"
+          trap 'rm -f -- "$ssh_dir/key" "$ssh_dir/known_hosts"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          ssh -T -i "$ssh_dir/key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o HostKeyAlgorithms=ssh-ed25519 \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            root@147.93.43.76 "deploy $DEPLOY_SHA"
