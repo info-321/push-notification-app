@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { createAdminToken } from './accounts.js';
+import { requestCountry } from './audience.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -85,12 +86,13 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       if (existing.length && existing[0].domain_key !== domainKey) {
         return res.status(409).json({ ok: false, message: 'This browser subscription belongs to a different domain.' });
       }
+      const country = requestCountry(req);
       if (existing.length) {
-        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ? WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, existing[0].id, domainKey]);
+        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = COALESCE(?, country_code) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, country, existing[0].id, domainKey]);
       } else {
         await pool.query(
-          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
-          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth],
+          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, country],
         );
       }
       return res.json({ ok: true });

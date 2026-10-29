@@ -50,6 +50,14 @@ for (const domain of domainList.data) {
   assert.equal(data.subscribers.web, data.subscribers.total, 'Current subscriptions use browser push');
   assert.equal(data.domain.vapid_private_key, undefined, 'Dashboard must not expose private keys');
   console.log('Domain overview: OK; saved browser subscriptions:', data.subscribers.total);
+  const audienceRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/audience';
+  assert.equal((await fetch(base + audienceRoute)).status, 401, 'Audience locations must require login');
+  const audienceResponse = await fetch(base + audienceRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(audienceResponse.status, 200, 'Audience map data must be available');
+  const audience = (await audienceResponse.json()).data;
+  assert.equal(audience.total, data.subscribers.total, 'Country counts must cover only this domain audience');
+  assert.equal(audience.located + audience.unknown, audience.total);
+  console.log('Audience countries: OK; located:', audience.located, 'unknown:', audience.unknown);
   const settingsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/settings';
   assert.equal((await fetch(base + settingsRoute)).status, 401, 'Settings must require login');
   const settingsResponse = await fetch(base + settingsRoute, { headers: { Authorization: `Bearer ${session.token}` } });
@@ -71,6 +79,19 @@ for (const domain of domainList.data) {
 }
 console.log('Admin authentication and domain API: OK');
 console.log('Configured push integrations:', domainList.data.filter(domain => domain.is_configured).length);
+
+// A read-only public probe checks that the existing Cloudflare/Caddy header
+// path can provide a country. It does not save a subscription or retain an IP.
+if (domainList.data.length && process.env.PUBLIC_API_BASE === 'https://push.micetraveladvisor.com') {
+  try {
+    const route = '/api/domains/' + encodeURIComponent(domainList.data[0].domain_key) + '/audience';
+    const response = await fetch(process.env.PUBLIC_API_BASE + route, { headers: { Authorization: `Bearer ${session.token}` }, signal: AbortSignal.timeout(15000) });
+    if (response.ok) {
+      const { data } = await response.json();
+      console.log('Cloudflare country capture on public API:', data.capture_available ? 'available' : 'not available on probe');
+    } else console.log('Cloudflare country capture: public probe unavailable');
+  } catch { console.log('Cloudflare country capture: public probe unavailable'); }
+}
 
 const db = await mysql.createConnection({
   host: process.env.DB_HOST,

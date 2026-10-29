@@ -1,0 +1,32 @@
+.audience-section { min-width:0; }
+.audience-heading { display:flex; justify-content:space-between; align-items:baseline; gap:15px; }
+.audience-heading > button { border:0; background:none; color:#208f92; font-size:14px; padding:0 0 16px; white-space:nowrap; }
+.audience-heading > button:disabled { color:#829498; }
+.audience-panel { overflow:hidden; padding:16px 18px 12px; }
+.audience-map-frame { position:relative; width:100%; aspect-ratio:1.95; }
+.audience-world-map { display:block; width:100%; height:100%; overflow:hidden; touch-action:pan-y; }
+.audience-world-map.is-zoomed { cursor:grab; touch-action:none; }
+.audience-world-map.is-zoomed:active { cursor:grabbing; }
+.audience-world-map path { transition:fill .18s ease; }
+.audience-world-map path:hover,.audience-world-map path:focus { stroke:#315d68; stroke-width:1.3; outline:none; }
+.audience-map-controls { position:absolute; top:7px; right:5px; display:flex; flex-direction:column; gap:3px; }
+.audience-map-controls button { display:grid; place-items:center; width:29px; height:29px; padding:0; border:0; border-radius:2px; color:#27404a; background:#e0e2e3; font-size:18px; line-height:1; }
+.audience-map-controls button:hover:not(:disabled) { background:#c9d7d9; }
+.audience-map-controls button:disabled { color:#8f999c; background:#edf0f1; }
+.audience-map-controls button.audience-map-reset { width:36px; height:23px; font-size:8px; margin-top:3px; }
+.overview-page .audience-map-attribution { position:absolute; bottom:2px; left:1px; color:#98a2a6; font-size:8px; text-decoration:none; background:#ffffffc9; padding:1px 3px; }
+.audience-map-legend { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; font-size:9px; color:#7c8993; padding-top:12px; }
+.audience-map-legend > span { display:flex; align-items:center; gap:4px; }
+.audience-map-legend i { display:inline-block; width:11px; height:8px; border-radius:1px; }
+.audience-map-note { font-size:10px; line-height:1.7; color:#7d8b96; margin:8px 0 0; }
+.audience-map-error { font-size:11px; color:#a53845; line-height:1.7; }
+.audience-map-error button { border:0; background:none; color:inherit; font-size:inherit; padding:0; text-decoration:underline; }
+.audience-country-details { margin-top:16px; border-top:1px solid #e8edf0; padding-top:15px; }
+.audience-country-details h3 { font-size:14px; font-weight:500; margin:0 0 7px; }
+.audience-country-details p { font-size:10px; line-height:1.7; color:#7d8b96; }
+.audience-country-details table { width:100%; border-collapse:collapse; font-size:11px; text-align:left; }
+.audience-country-details th { font-weight:500; background:#f5f8fa; }
+.audience-country-details th,.audience-country-details td { padding:9px 7px; border-bottom:1px solid #edf0f2; }
+.audience-country-details th:last-child,.audience-country-details td:last-child { text-align:right; }
+@media(max-width:760px) { .audience-panel { padding:15px 14px 12px; } .audience-map-frame { aspect-ratio:1.8; } }
+@media(prefers-reduced-motion:reduce) { .audience-world-map path { transition:none; } }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import './dashboard.css';
+import AudienceMap from './AudienceMap';
 
 function Icon({ name, ...props }) {
   const paths = {
@@ -126,12 +127,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
                 <a className="overview-panel overview-quick" href="#overview-reports"><Icon name="report" /><span>Push Reports<small>Reporting status</small></span><span className="overview-quick-arrow" aria-hidden="true">↗</span></a>
               </div>
             </section>
-            <section aria-labelledby="overview-audience"><h2 className="overview-section-title" id="overview-audience">Audience</h2>
-              <div className="overview-panel overview-audience">
-                <div className={`overview-audience-ring ${counts.total ? 'has-subscribers' : ''}`}><div><strong>{number(counts.total)}</strong><span>subscribers</span></div></div>
-                <div className="overview-audience-detail"><h3>Browser push audience</h3><p><span className="overview-legend-dot" />Web subscriptions <strong>{number(counts.web)}</strong></p><small>{counts.total ? 'Your saved audience includes desktop and mobile browsers.' : 'Visit your website and enable notifications to add your first subscriber.'}</small><small>Audience locations and device types are not collected yet.</small></div>
-              </div>
-            </section>
+            <AudienceMap key={domainKey} domainKey={domainKey} refresh={refresh} />
           </div>
 
           <section id="overview-reports" aria-labelledby="overview-reports-heading">

@@ -7,6 +7,7 @@ import { deleteOwnedDomain } from './domain-management.js';
 import { installDomainSettings, validTimeZone, defaultTimeZone } from './domain-settings.js';
 import { installAccountRoutes, memoryAccountRepository, verifyPassword } from './accounts.js';
 import { installPwa, pwaBodyParser } from './pwa.js';
+import { installAudience } from './audience.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository }) {
   const app = express();
@@ -57,6 +58,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   app.use('/api/domains', requireAdmin);
   installDomainSettings(app, pool);
   installPwa(app, pool);
+  installAudience(app, pool);
 
   app.post('/api/domains', async (req, res) => {
     const { name, domain, domain_name } = req.body || {};

@@ -10,7 +10,7 @@ const overview = total => ({ domain, subscribers: { total, web: total, mobile: n
 
 beforeEach(() => jest.resetAllMocks());
 function respond(total = 7) {
-  apiFetch.mockImplementation(async url => ({ ok: true, json: async () => ({ ok: true, data: url.endsWith('/overview') ? overview(total) : [domain] }) }));
+  apiFetch.mockImplementation(async url => ({ ok: true, json: async () => ({ ok: true, data: url.endsWith('/overview') ? overview(total) : url.endsWith('/audience') ? { countries: [], located: 0, unknown: total, total, capture_available: false } : [domain] }) }));
 }
 
 test('uses the selected domain counts, marks unknown breakdowns, and routes quick links', async () => {
