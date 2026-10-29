@@ -37,7 +37,9 @@
 .overview-data-note { font-size:11px; color:#697687; margin:13px 0 0; }
 .overview-section-title { font-size:27px; font-weight:400; margin:0 0 16px; }
 .overview-middle { display:grid; grid-template-columns:1fr 1fr; gap:30px; margin:46px 0; }
-.overview-quick-grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+.overview-middle > section { display:flex; flex-direction:column; min-width:0; }
+.overview-middle .audience-panel { flex:1; }
+.overview-quick-grid { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(2,minmax(0,1fr)); gap:22px; flex:1; }
 .overview-quick { min-height:122px; display:flex; align-items:center; gap:16px; text-align:left; padding:20px; color:#445062; text-decoration:none; position:relative; }
 .overview-quick svg { width:42px; height:42px; color:#388b99; flex-shrink:0; }
 .overview-quick > span { font-size:15px; }
