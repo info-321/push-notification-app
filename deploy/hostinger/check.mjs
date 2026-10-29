@@ -59,6 +59,15 @@ for (const domain of domainList.data) {
   new Intl.DateTimeFormat('en', { timeZone: settings.time_zone });
   assert.equal(settings.vapid_private_key, undefined, 'Settings must not expose private push credentials');
   console.log('Domain settings: OK');
+  const pwaRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/pwa';
+  assert.equal((await fetch(base + pwaRoute)).status, 401, 'PWA settings must require login');
+  const pwaResponse = await fetch(base + pwaRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(pwaResponse.status, 200, 'PWA settings must be available');
+  const pwa = (await pwaResponse.json()).data;
+  assert.equal(typeof pwa.settings.name, 'string');
+  assert.equal(typeof pwa.saved, 'boolean');
+  assert.equal(pwa.vapid_private_key, undefined);
+  console.log('PWA settings: OK');
 }
 console.log('Admin authentication and domain API: OK');
 console.log('Configured push integrations:', domainList.data.filter(domain => domain.is_configured).length);

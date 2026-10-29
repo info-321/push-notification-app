@@ -4,7 +4,7 @@ import './domain-list.css';
 
 const labelFor = domain => domain.display_name || domain.domain_name;
 
-export default function DomainList({ selectedDomainKey, onNew, onConfiguration, onDashboard, onSettings, onAccount, onLogout, onDeleted }) {
+export default function DomainList({ selectedDomainKey, onNew, onConfiguration, onDashboard, onSettings, onPwa = () => {}, onAccount, onLogout, onDeleted }) {
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -133,7 +133,7 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
         <button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeDomain}>Configuration</button>
         <button className="is-active" aria-current="page">Domain</button>
-        <button disabled title="PWA settings are not available yet">PWA Setting</button>
+        <button onClick={onPwa}>PWA Setting</button>
         <button disabled title="User management is not available yet">User</button>
       </nav>
 

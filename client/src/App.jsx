@@ -8,6 +8,7 @@ import SiteSelect from './components/site-select-list/SiteSelect';
 import Dashboard from './components/dashboard/Dashboard';
 import DomainList from './components/domain-settings/DomainList';
 import Account from './components/domain-settings/Account';
+import PwaSettings from './components/domain-settings/PwaSettings';
 // Note: Configuration content now lives inside Domain tabs; no separate view.
 
 const App = () => {
@@ -15,7 +16,8 @@ const App = () => {
   const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
   const params = new URLSearchParams(window.location.search);
   const routeKey = params.get('domain') || '';
-  const routeView = window.location.pathname === '/settings/account' ? 'account'
+  const routeView = window.location.pathname === '/settings/pwa' ? 'pwa'
+    : window.location.pathname === '/settings/account' ? 'account'
     : ['/settings', '/settings/general'].includes(window.location.pathname) ? 'settings'
     : window.location.pathname === '/settings/domains' ? 'domains'
     : window.location.pathname === '/dashboard' ? (routeKey ? 'overview' : 'sites')
@@ -54,6 +56,10 @@ const App = () => {
       if (key) setSelectedDomainKey(key);
       setView(key ? 'overview' : 'sites');
       setDomainTab('domain');
+    } else if (path === '/settings/pwa') {
+      const key = new URLSearchParams(window.location.search).get('domain');
+      if (key) setSelectedDomainKey(key);
+      setView('pwa');
     } else if (path === '/settings/account') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
@@ -100,15 +106,15 @@ const App = () => {
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
-    } else if (view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
+    } else if (view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
       document.body.classList.add('domain-bg');
       if (view === 'sites' || view === 'overview') {
         const url = view === 'overview' && selectedDomainKey ? `/dashboard?domain=${encodeURIComponent(selectedDomainKey)}` : '/dashboard';
         if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
       }
       if (view === 'domains' && window.location.pathname !== '/settings/domains') window.history.pushState({}, '', '/settings/domains');
-      if (view === 'settings' || view === 'account') {
-        const url = `/settings${view === 'account' ? '/account' : ''}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
+      if (view === 'settings' || view === 'account' || view === 'pwa') {
+        const url = `/settings${view === 'account' ? '/account' : view === 'pwa' ? '/pwa' : ''}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
         if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
       }
     }
@@ -196,6 +202,7 @@ const App = () => {
 
   if (view === 'settings') {
     return <Settings
+      onPwa={() => setView('pwa')}
       key={selectedDomainKey}
       selectedDomainKey={selectedDomainKey}
       onSelectDomain={(key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name); }}
@@ -207,8 +214,23 @@ const App = () => {
     />;
   }
 
+  if (view === 'pwa') {
+    return <PwaSettings
+      key={selectedDomainKey}
+      selectedDomainKey={selectedDomainKey}
+      onSelectDomain={(key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name); }}
+      onSettings={() => setView('settings')}
+      onAccount={() => setView('account')}
+      onDomains={() => setView('domains')}
+      onConfiguration={openConfiguration}
+      onDashboard={(key, name) => key ? openOverview(key, name) : setView('sites')}
+      onLogout={handleLogout}
+    />;
+  }
+
   if (view === 'account') {
     return <Account
+      onPwa={() => setView('pwa')}
       selectedDomainKey={selectedDomainKey}
       onSelectDomain={(key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name); }}
       onSettings={() => setView('settings')}
@@ -221,6 +243,7 @@ const App = () => {
 
   if (view === 'domains') {
     return <DomainList
+      onPwa={() => setView('pwa')}
       onAccount={() => setView('account')}
       selectedDomainKey={selectedDomainKey}
       onNew={() => { setDomainTab('domain'); setView('domain'); }}
@@ -270,6 +293,7 @@ const App = () => {
   // Default post-login destination is Domain page.
   return (
     <Domain
+      onPwa={() => setView('pwa')}
       onAccount={() => setView('account')}
       onDomains={() => setView('domains')}
       onDashboard={() => selectedDomainKey ? openOverview(selectedDomainKey, selectedDomainName) : setView('sites')}

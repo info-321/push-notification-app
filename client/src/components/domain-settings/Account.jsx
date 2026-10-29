@@ -3,7 +3,7 @@ import { API_BASE, apiFetch } from '../../api';
 import './domain-list.css';
 import './account.css';
 
-export default function Account({ selectedDomainKey = '', onSelectDomain = () => {}, onSettings = () => {}, onDomains = () => {}, onConfiguration = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
+export default function Account({ selectedDomainKey = '', onSelectDomain = () => {}, onSettings = () => {}, onDomains = () => {}, onConfiguration = () => {}, onPwa = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
   const [profile, setProfile] = useState(null);
   const [domains, setDomains] = useState([]);
   const [error, setError] = useState('');
@@ -87,7 +87,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
     <main className="domain-list-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation"><button onClick={onSettings}>Settings</button><button className="is-active" aria-current="page">Account</button>
         <button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button>
-        <button onClick={onDomains}>Domain</button><button disabled title="PWA settings are not available yet">PWA Setting</button><button disabled title="User management is not available yet">User</button>
+        <button onClick={onDomains}>Domain</button><button onClick={onPwa}>PWA Setting</button><button disabled title="User management is not available yet">User</button>
       </nav>
       <div className="account-grid">
         <section className="account-panel" aria-label="Account profile">

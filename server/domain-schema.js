@@ -11,6 +11,13 @@ export async function ensureDomainDisplayName(pool) {
   }
 }
 
+export async function ensureDomainPwa(pool) {
+  const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'pwa_settings'");
+  if (columns.length) return;
+  try { await pool.query('ALTER TABLE domains ADD COLUMN pwa_settings JSON NULL'); }
+  catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+}
+
 export async function ensureDomainTimeZone(pool) {
   const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'time_zone'");
   if (columns.length) return;

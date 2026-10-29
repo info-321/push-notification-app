@@ -23,7 +23,7 @@ function EmailToggle({ label, id }) {
   return <div className="settings-toggle-field"><label htmlFor={id}>{label}</label><button type="button" id={id} className="settings-switch" role="switch" aria-checked="false" aria-label={label} disabled><span />OFF</button></div>;
 }
 
-export default function Settings({ selectedDomainKey = '', onSelectDomain = () => {}, onBack = () => {}, onAccount = () => {}, onConfiguration = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
+export default function Settings({ selectedDomainKey = '', onSelectDomain = () => {}, onBack = () => {}, onAccount = () => {}, onConfiguration = () => {}, onPwa = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
   const [domains, setDomains] = useState([]);
   const [domainsError, setDomainsError] = useState('');
   const [domainsLoading, setDomainsLoading] = useState(true);
@@ -117,7 +117,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
       <nav className="domain-list-tabs" aria-label="Settings navigation">
         <button className="is-active" aria-current="page">Settings</button><button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeKey || loading}>Configuration</button>
-        <button onClick={onBack}>Domain</button><button disabled title="PWA settings are not available yet">PWA Setting</button><button disabled title="User management is not available yet">User</button>
+        <button onClick={onBack}>Domain</button><button onClick={onPwa}>PWA Setting</button><button disabled title="User management is not available yet">User</button>
       </nav>
       {domainsError && <p className="settings-error" role="alert">{domainsError} <button onClick={retry}>Try again</button></p>}
       {domainsLoading && !activeKey && <p role="status" className="settings-page-note">Loading websites…</p>}

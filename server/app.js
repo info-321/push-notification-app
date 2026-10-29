@@ -6,11 +6,13 @@ import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { deleteOwnedDomain } from './domain-management.js';
 import { installDomainSettings, validTimeZone, defaultTimeZone } from './domain-settings.js';
 import { installAccountRoutes, memoryAccountRepository, verifyPassword } from './accounts.js';
+import { installPwa, pwaBodyParser } from './pwa.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository }) {
   const app = express();
   const accounts = accountRepository || memoryAccountRepository(adminUsername, adminPassword);
   app.use(cors());
+  pwaBodyParser(app);
   app.use(express.json({ limit: '32kb' }));
   const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts });
   installAccountRoutes(app, { accounts, requireAdmin, createToken });
@@ -54,6 +56,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   // POST /api/domains - create a domain record after frontend validation.
   app.use('/api/domains', requireAdmin);
   installDomainSettings(app, pool);
+  installPwa(app, pool);
 
   app.post('/api/domains', async (req, res) => {
     const { name, domain, domain_name } = req.body || {};

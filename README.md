@@ -47,6 +47,14 @@ Open **Settings** from the overview or settings navigation, or use `/settings?do
 
 Push Sending Settings displays the current domain key, a masked sender API key, and the VAPID public key. Private VAPID keys remain on the server; the card links to Configuration rather than replacing keys. Native iOS/Android push, email notifications/reports, SMTP, and Mailchimp are not implemented. Their reference-style cards and controls are disabled and do not save credentials, accept uploads, download a native SDK, or send test email.
 
+## PWA settings
+
+The **PWA Setting** tab at `/settings/pwa?domain=DOMAIN_KEY` uses the shared settings layout and saves a separate app name, short name, HTTPS start URL, colors, and two PNG icons for each website. The phone previews update as you edit and illustrate the install flow; actual prompts depend on the browser. Required icons are exactly 192x192 and 512x512 pixels, non-interlaced PNGs up to 512 KB each. The API validates dimensions, compressed and inflated sizes, names, colors, and the start URL's website hostname (including its `www` equivalent).
+
+Authenticated `GET`/`PUT /api/domains/:key/pwa` endpoints read and save the form. Startup adds nullable `domains.pwa_settings JSON` storage without modifying push keys or subscriptions; full database backups include the settings and icon bytes. Public `/api/pwa/:key/icon-192.png` and `icon-512.png` endpoints serve only saved app icons with PNG content types. JSON uploads have a larger bounded limit only for this form; other routes keep their existing request limit.
+
+After saving, download `push-pwa-manifest.json`, upload it to the website root, and add `<link rel="manifest" href="/push-pwa-manifest.json">` to the website's HTML head. Replace that file after changing PWA settings. Its icons point to the API's public icon URLs, so keep the API accessible and allow it in any website image CSP. The manifest uses standalone display and a website-root scope. This dashboard does not automatically change WordPress or provide offline page caching. WordPress installations should keep the plugin's existing worker; the optional `push-sw.js` download is the existing notification worker, not a second worker to register over it.
+
 ## Administrator account
 
 The **Account** tab at `/settings/account` displays the actual administrator username (or email when the login uses an email address), account status, and the most recent successful login recorded by the API. Login history starts with this feature; older logins show **Not recorded yet**. Connection IP is the address seen by the API socket and may be a reverse proxy address; untrusted forwarded headers do not overwrite it. Dates use the selected website's time zone when available. The avatar is a generic local illustration, and deletion of the sole administrator is disabled.

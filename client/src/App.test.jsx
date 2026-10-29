@@ -18,6 +18,7 @@ beforeEach(() => {
     const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
     return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/api/account')
       ? { username: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
+      : url.endsWith('/pwa') ? { domain_key: 'mice-key', domain_name: domain.domain_name, saved: false, settings: { name: domain.display_name, short_name: 'MICE', start_url: 'https://micetraveladvisor.com/', theme_color: '#ffffff', background_color: '#ffffff', icon_192: '', icon_512: '' } }
       : url.endsWith('/settings')
       ? { ...domain, time_zone: 'Asia/Kolkata' }
       : url.endsWith('/integration') ? { ...domain, vapid_public_key: 'public-key', sender_api_key: 'test-sender' }
@@ -113,4 +114,18 @@ test('Account opens from Settings and survives direct URL navigation', async () 
   window.history.replaceState({}, '', '/settings/account?domain=mice-key');
   fireEvent(window, new PopStateEvent('popstate'));
   expect(await screen.findByRole('heading', { name: 'Change Password' })).toBeTruthy();
+});
+
+test('PWA tab opens with the selected website and supports direct URLs and browser navigation', async () => {
+  window.history.replaceState({}, '', '/settings?domain=mice-key');
+  render(<App />);
+  await screen.findByRole('heading', { name: 'General Setting' });
+  fireEvent.click(screen.getByRole('button', { name: 'PWA Setting', exact: true }));
+  await waitFor(() => expect(screen.getByLabelText('Name *').value).toBe('MICE Travel Advisor'));
+  expect(window.location.pathname + window.location.search).toBe('/settings/pwa?domain=mice-key');
+  fireEvent.click(screen.getByRole('button', { name: 'Account', exact: true }));
+  await screen.findByRole('heading', { name: 'Change Password' });
+  window.history.replaceState({}, '', '/settings/pwa?domain=mice-key');
+  fireEvent(window, new PopStateEvent('popstate'));
+  await waitFor(() => expect(screen.getByLabelText('Name *').value).toBe('MICE Travel Advisor'));
 });

@@ -12,6 +12,7 @@ const Domain = ({
   onLogout = () => {},
   onSettings = () => {},
   onAccount = () => {},
+  onPwa = () => {},
   onSiteSelect = () => {},
   onDashboard = () => {},
   onDomains = () => {},
@@ -191,7 +192,7 @@ const Domain = ({
           <button onClick={onAccount}>Account</button>
           <button className={activeTab === 'config' ? 'is-active' : ''} aria-current={activeTab === 'config' ? 'page' : undefined} disabled={activeTab !== 'config' && !selectedDomainKey} onClick={() => { setActiveTab('config'); onSelectDomainTab('config'); }}>Configuration</button>
           <button className={activeTab === 'domain' ? 'is-active' : ''} aria-current={activeTab === 'domain' ? 'page' : undefined} onClick={onDomains}>Domain</button>
-          <button disabled title="PWA settings are not available yet">PWA Setting</button>
+          <button onClick={onPwa}>PWA Setting</button>
           <button disabled title="User management is not available yet">User</button>
         </nav>
 
