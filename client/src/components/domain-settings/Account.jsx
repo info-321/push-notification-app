@@ -86,7 +86,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
     </header>
     <main className="domain-list-main account-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation"><button onClick={onSettings}>Settings</button><button className="is-active" aria-current="page">Account</button>
-        <button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button><button disabled title="Billing is not available yet">Plan &amp; Billing</button>
+        <button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button>
         <button onClick={onDomains}>Domain</button><button disabled title="PWA settings are not available yet">PWA Setting</button><button disabled title="User management is not available yet">User</button>
       </nav>
       <div className="account-grid">

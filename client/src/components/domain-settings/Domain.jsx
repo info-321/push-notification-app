@@ -247,7 +247,7 @@ const Domain = ({
         {activeTab === 'config' ? (
           <nav className="domain-list-tabs" aria-label="Settings navigation">
             <button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button className="is-active" aria-current="page">Configuration</button>
-            <button disabled title="Billing is not available yet">Plan &amp; Billing</button><button onClick={onDomains}>Domain</button>
+            <button onClick={onDomains}>Domain</button>
             <button disabled title="PWA settings are not available yet">PWA Setting</button><button disabled title="User management is not available yet">User</button>
           </nav>
         ) : (

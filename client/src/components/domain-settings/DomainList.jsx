@@ -132,7 +132,6 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
         <button onClick={onSettings}>Settings</button>
         <button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeDomain}>Configuration</button>
-        <button disabled title="Billing is not available yet">Plan &amp; Billing</button>
         <button className="is-active" aria-current="page">Domain</button>
         <button disabled title="PWA settings are not available yet">PWA Setting</button>
         <button disabled title="User management is not available yet">User</button>
