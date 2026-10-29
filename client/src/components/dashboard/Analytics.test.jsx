@@ -53,7 +53,7 @@ test('date presets and custom ranges request the selected domain and keep unknow
   await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('https://api.example.test/api/domains/mice/analytics?start=2024-01-01&end=2024-01-03'));
   await within(subscribers).findByRole('img', { name: 'Saved subscriptions added per day' });
   const updatedSummary = within(subscribers).getByRole('table', { name: 'Subscriber period summary' });
-  const additions = within(updatedSummary).getByRole('row', { name: 'Subscriptions Added 2' });
+  const additions = within(updatedSummary).getByRole('row', { name: 'Subscribers Added 2' });
   expect(additions).toBeInTheDocument();
   expect(apiFetch.mock.calls.every(([, options]) => !options?.method)).toBe(true);
 });

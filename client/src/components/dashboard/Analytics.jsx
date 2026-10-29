@@ -3,12 +3,13 @@ import { API_BASE, apiFetch } from '../../api';
 import WebsiteHeader from './WebsiteHeader';
 import AudienceMap from './AudienceMap';
 import AudienceGeography from './AudienceGeography';
+import SubscriberChart from './SubscriberChart';
 import './dashboard.css';
 import './analytics.css';
 
 const number = value => new Intl.NumberFormat().format(value);
 const todayUtc = () => new Date().toISOString().slice(0, 10);
-const formatDate = date => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z'));
+const formatDate = date => new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z')).replace(',', '');
 
 export function presetRange(preset, today = todayUtc()) {
   const day = new Date(today + 'T00:00:00Z');
@@ -39,22 +40,6 @@ function DateFilter({ label, range, onChange }) {
   </div>;
 }
 
-function SubscriberChart({ daily }) {
-  if (!daily.length) return <p className="analytics-note">No saved subscription dates are available.</p>;
-  const max = Math.max(1, ...daily.map(day => day.added)), step = Math.max(1, Math.ceil(max / 4)), top = step * 4;
-  const x = index => 42 + index / Math.max(1, daily.length - 1) * 534;
-  const y = count => 224 - count / top * 200;
-  const points = daily.map((day, index) => `${x(index)},${y(day.added)}`).join(' ');
-  const labels = [...new Set([0, Math.floor((daily.length - 1) / 2), daily.length - 1])];
-  return <div className="analytics-chart"><svg viewBox="0 0 600 262" role="img" aria-label="Saved subscriptions added per day">
-    <title>Daily additions among currently saved subscriptions</title>
-    {Array.from({ length: 5 }, (_, index) => <g key={index}><line x1="42" x2="576" y1={y(index * step)} y2={y(index * step)} stroke="#e6ebee" /><text x="33" y={y(index * step) + 4} textAnchor="end">{index * step}</text></g>)}
-    {labels.map(index => <text key={index} x={x(index)} y="248" textAnchor={index === 0 ? 'start' : index === daily.length - 1 ? 'end' : 'middle'}>{daily[index].date.slice(5)}</text>)}
-    <polyline points={points} fill="none" stroke="#18a4a3" strokeWidth="2" />
-    {daily.map((day, index) => <circle key={day.date} cx={x(index)} cy={y(day.added)} r={day.added ? 3.5 : 2} fill="#18a4a3"><title>{formatDate(day.date)}: {number(day.added)} saved subscriptions added</title></circle>)}
-  </svg><p><span />Saved web subscriptions added</p></div>;
-}
-
 function PeriodReport({ domainKey, refresh, browser = false }) {
   const [range, setRange] = useState(() => presetRange('month'));
   const [report, setReport] = useState(null);
@@ -78,13 +63,13 @@ function PeriodReport({ domainKey, refresh, browser = false }) {
   return <section className="analytics-period-section" aria-labelledby={id}>
     <h2 id={id}>{heading}</h2>
     <DateFilter label={`${heading} date range`} range={range} onChange={setRange} />
-    <div className={`overview-panel analytics-report-panel ${browser ? 'analytics-browser-panel' : ''}`}>
+    <div className={`overview-panel analytics-report-panel ${browser ? 'analytics-browser-panel' : 'analytics-subscribers-panel'}`}>
       <p className="analytics-range-label">{formatDate(range.start)} – {formatDate(range.end)} <span>UTC</span></p>
       {loading && <p className="analytics-note" role="status">Loading analytics...</p>}
       {error && <p className="analytics-error" role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></p>}
       {report && !browser && <>
-        <div className="analytics-chart-layout"><SubscriberChart daily={report.daily} /><table className="analytics-summary"><caption className="overview-sr-only">Subscriber period summary</caption><tbody>
-          {[['Mobile', report.mobile], ['Desktop', report.desktop], ['App', report.app], ['Subscriptions Added', report.added], ['Unsubscribers', report.unsubscribed], ['Net Subscribers', report.net]].map(([label, value]) => <tr key={label}><th scope="row">{label}</th><td>{value === null ? <span aria-label="Not recorded" title="Not recorded">—</span> : number(value)}</td></tr>)}
+        <div className="analytics-chart-layout"><SubscriberChart key={`${range.start}-${range.end}`} daily={report.daily} /><table className="analytics-summary"><caption className="overview-sr-only">Subscriber period summary</caption><tbody>
+          {[['Mobile', report.mobile], ['Desktop', report.desktop], ['App', report.app], ['Subscribers Added', report.added], ['Un-Subscribers', report.unsubscribed], ['Net Subscribers', report.net]].map(([label, value]) => <tr key={label}><th scope="row">{label}</th><td>{value === null ? <span aria-label="Not recorded" title="Not recorded">—</span> : number(value)}</td></tr>)}
         </tbody></table></div>
         <p className="analytics-note">{report.basis}</p>
       </>}
