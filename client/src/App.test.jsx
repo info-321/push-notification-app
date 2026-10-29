@@ -22,6 +22,7 @@ beforeEach(() => {
       : url.endsWith('/settings')
       ? { ...domain, time_zone: 'Asia/Kolkata' }
       : url.endsWith('/integration') ? { ...domain, vapid_public_key: 'public-key', sender_api_key: 'test-sender' }
+      : url.includes('/analytics?') ? { range: { start: '2024-01-01', end: '2024-01-01', time_zone: 'UTC' }, daily: [{ date: '2024-01-01', added: 7 }], added: 7, mobile: null, desktop: null, app: null, unsubscribed: null, net: null, browser: { available: false, rows: [] }, basis: 'Currently saved subscription records.' }
       : url.endsWith('/audience') ? { countries: [], located: 0, unknown: 7, total: 7, capture_available: false }
       : url.endsWith('/overview')
       ? { domain, subscribers: { total: 7, web: 7, mobile: null, app: null }, updated_at: '2026-10-28T08:00:00Z' }
@@ -129,4 +130,20 @@ test('PWA tab opens with the selected website and supports direct URLs and brows
   window.history.replaceState({}, '', '/settings/pwa?domain=mice-key');
   fireEvent(window, new PopStateEvent('popstate'));
   await waitFor(() => expect(screen.getByLabelText('Name *').value).toBe('MICE Travel Advisor'));
+});
+
+
+test('Analytics direct URLs restore the selected website despite stale view and support dashboard navigation', async () => {
+  localStorage.setItem('view', 'domain');
+  window.history.replaceState({}, '', '/analytics?domain=mice-key');
+  render(<App />);
+  expect(await screen.findByRole('heading', { name: 'MICE Travel Advisor Analytics' })).toBeTruthy();
+  expect(screen.getByLabelText('Total Subscribers: 7')).toBeTruthy();
+  expect(window.location.pathname + window.location.search).toBe('/analytics?domain=mice-key');
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboard', exact: true }));
+  await screen.findByRole('heading', { name: 'micetraveladvisor.com', exact: true });
+  expect(window.location.pathname).toBe('/dashboard');
+  window.history.replaceState({}, '', '/analytics?domain=mice-key');
+  fireEvent(window, new PopStateEvent('popstate'));
+  expect(await screen.findByRole('heading', { name: 'MICE Travel Advisor Analytics' })).toBeTruthy();
 });

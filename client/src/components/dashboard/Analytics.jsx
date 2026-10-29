@@ -1,0 +1,149 @@
+import React, { useEffect, useId, useState } from 'react';
+import { API_BASE, apiFetch } from '../../api';
+import WebsiteHeader from './WebsiteHeader';
+import AudienceMap from './AudienceMap';
+import './dashboard.css';
+import './analytics.css';
+
+const number = value => new Intl.NumberFormat().format(value);
+const todayUtc = () => new Date().toISOString().slice(0, 10);
+const formatDate = date => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z'));
+
+export function presetRange(preset, today = todayUtc()) {
+  const day = new Date(today + 'T00:00:00Z');
+  if (preset === 'week') day.setUTCDate(day.getUTCDate() - (day.getUTCDay() + 6) % 7);
+  if (preset === 'month') day.setUTCDate(1);
+  return { start: day.toISOString().slice(0, 10), end: today };
+}
+
+function DateFilter({ label, range, onChange }) {
+  const [selected, setSelected] = useState('month');
+  const [draft, setDraft] = useState(range);
+  const [error, setError] = useState('');
+  const id = useId();
+  return <div className="analytics-date-filter" aria-label={label}>
+    <div className="analytics-period-tabs" role="group" aria-label={label}>
+      {[['today', 'Today'], ['week', 'This Week'], ['month', 'This Month'], ['custom', 'Custom Dates']].map(([value, text]) => <button type="button" key={value} aria-pressed={selected === value} className={selected === value ? 'is-active' : ''} onClick={() => {
+        setSelected(value); setError('');
+        if (value !== 'custom') { const next = presetRange(value); setDraft(next); onChange(next); }
+      }}>{text}</button>)}
+    </div>
+    {selected === 'custom' && <form className="analytics-custom-dates" onSubmit={event => {
+      event.preventDefault();
+      const days = (Date.parse(draft.end) - Date.parse(draft.start)) / 86400000;
+      if (!Number.isFinite(days) || days < 0 || days >= 366 || draft.end > todayUtc()) { setError('Choose dates in order, up to today, spanning at most 366 days.'); return; }
+      setError(''); onChange(draft);
+    }}><label htmlFor={`${id}-from`}>From<input id={`${id}-from`} type="date" required min="1970-01-01" max={todayUtc()} value={draft.start} onChange={event => setDraft(current => ({ ...current, start: event.target.value }))} /></label><label htmlFor={`${id}-to`}>To<input id={`${id}-to`} type="date" required min={draft.start || '1970-01-01'} max={todayUtc()} value={draft.end} onChange={event => setDraft(current => ({ ...current, end: event.target.value }))} /></label><button type="submit">Apply dates</button></form>}
+    {error && <p className="analytics-error" role="alert">{error}</p>}
+  </div>;
+}
+
+function SubscriberChart({ daily }) {
+  if (!daily.length) return <p className="analytics-note">No saved subscription dates are available.</p>;
+  const max = Math.max(1, ...daily.map(day => day.added)), step = Math.max(1, Math.ceil(max / 4)), top = step * 4;
+  const x = index => 42 + index / Math.max(1, daily.length - 1) * 534;
+  const y = count => 224 - count / top * 200;
+  const points = daily.map((day, index) => `${x(index)},${y(day.added)}`).join(' ');
+  const labels = [...new Set([0, Math.floor((daily.length - 1) / 2), daily.length - 1])];
+  return <div className="analytics-chart"><svg viewBox="0 0 600 262" role="img" aria-label="Saved subscriptions added per day">
+    <title>Daily additions among currently saved subscriptions</title>
+    {Array.from({ length: 5 }, (_, index) => <g key={index}><line x1="42" x2="576" y1={y(index * step)} y2={y(index * step)} stroke="#e6ebee" /><text x="33" y={y(index * step) + 4} textAnchor="end">{index * step}</text></g>)}
+    {labels.map(index => <text key={index} x={x(index)} y="248" textAnchor={index === 0 ? 'start' : index === daily.length - 1 ? 'end' : 'middle'}>{daily[index].date.slice(5)}</text>)}
+    <polyline points={points} fill="none" stroke="#18a4a3" strokeWidth="2" />
+    {daily.map((day, index) => <circle key={day.date} cx={x(index)} cy={y(day.added)} r={day.added ? 3.5 : 2} fill="#18a4a3"><title>{formatDate(day.date)}: {number(day.added)} saved subscriptions added</title></circle>)}
+  </svg><p><span />Saved web subscriptions added</p></div>;
+}
+
+function PeriodReport({ domainKey, refresh, browser = false }) {
+  const [range, setRange] = useState(() => presetRange('month'));
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const heading = browser ? 'Audience Browser Analytic' : 'Subscribers';
+  const id = useId();
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setReport(null); setError('');
+    const query = new URLSearchParams(range);
+    apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/analytics?${query}`).then(async response => {
+      const result = await response.json();
+      if (!response.ok || !result.ok || !Array.isArray(result.data?.daily)) throw new Error(result.message || 'Could not load analytics.');
+      if (!cancelled) setReport(result.data);
+    }).catch(err => { if (!cancelled) setError(err.message); }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [domainKey, refresh, range, retry]);
+
+  return <section className="analytics-period-section" aria-labelledby={id}>
+    <h2 id={id}>{heading}</h2>
+    <DateFilter label={`${heading} date range`} range={range} onChange={setRange} />
+    <div className={`overview-panel analytics-report-panel ${browser ? 'analytics-browser-panel' : ''}`}>
+      <p className="analytics-range-label">{formatDate(range.start)} – {formatDate(range.end)} <span>UTC</span></p>
+      {loading && <p className="analytics-note" role="status">Loading analytics...</p>}
+      {error && <p className="analytics-error" role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></p>}
+      {report && !browser && <>
+        <div className="analytics-chart-layout"><SubscriberChart daily={report.daily} /><table className="analytics-summary"><caption className="overview-sr-only">Subscriber period summary</caption><tbody>
+          {[['Mobile', report.mobile], ['Desktop', report.desktop], ['App', report.app], ['Subscriptions Added', report.added], ['Unsubscribers', report.unsubscribed], ['Net Subscribers', report.net]].map(([label, value]) => <tr key={label}><th scope="row">{label}</th><td>{value === null ? <span aria-label="Not recorded" title="Not recorded">—</span> : number(value)}</td></tr>)}
+        </tbody></table></div>
+        <p className="analytics-note">{report.basis}</p>
+      </>}
+      {report && browser && <div className="analytics-browser-empty"><p>Browser history has not been recorded.</p><p>No browser breakdown is available for this period.</p></div>}
+    </div>
+  </section>;
+}
+
+export default function Analytics({ domainKey, onAllSites, onManageDomains, onSettings, onSelectDomain, onConfiguration, onSendPush, onDashboard, onLogout }) {
+  const [overview, setOverview] = useState(null);
+  const [audience, setAudience] = useState(null);
+  const [domains, setDomains] = useState([]);
+  const [errors, setErrors] = useState({});
+  const [refresh, setRefresh] = useState(0);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setOverview(null); setAudience(null); setErrors({});
+    const read = async suffix => {
+      const response = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/${suffix}`);
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || `Could not load ${suffix}.`);
+      return result.data;
+    };
+    Promise.allSettled([read('overview'), read('audience')]).then(([summary, geography]) => {
+      if (cancelled) return;
+      if (summary.status === 'fulfilled') setOverview(summary.value); else setErrors(current => ({ ...current, overview: summary.reason.message }));
+      if (geography.status === 'fulfilled') setAudience(geography.value); else setErrors(current => ({ ...current, audience: geography.reason.message }));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [domainKey, refresh]);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`${API_BASE}/api/domains`).then(async response => { const result = await response.json(); if (!cancelled && response.ok && result.ok) setDomains(result.data); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const domain = overview?.domain, counts = overview?.subscribers;
+  const openDashboard = () => onDashboard?.(domainKey, domain?.domain_name || '');
+  return <div className="overview-page analytics-page">
+    <WebsiteHeader analytics domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={onAllSites} onManageDomains={onManageDomains} onSettings={onSettings} onSelectDomain={onSelectDomain} onConfiguration={onConfiguration} onSendPush={onSendPush} onDashboard={openDashboard} onLogout={onLogout} />
+    <main className="overview-main analytics-main">
+      <nav className="analytics-navigation" aria-label="Push navigation"><button onClick={() => onSendPush?.(domainKey, domain?.domain_name || '')}>Send Push</button><button disabled title="Segments are not available yet">Segments</button><a href={`/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports`}>Reports</a><button disabled title="Scheduling is not available yet">Schedule List</button><button disabled title="Templates are not available yet">Template Gallery</button><button onClick={() => onConfiguration?.(domainKey, domain?.domain_name || '')}>Push Setting</button><span aria-current="page">Analytics</span></nav>
+      <div className="analytics-heading"><h1>{domain?.display_name || domain?.domain_name || 'Website'} Analytics</h1><button className="overview-refresh" disabled={loading} onClick={() => setRefresh(value => value + 1)}>{loading ? 'Refreshing...' : 'Refresh data'}</button></div>
+      {loading && <p className="analytics-note" role="status">Loading website analytics...</p>}
+      {Object.entries(errors).map(([key, message]) => <p key={key} className="analytics-error" role="alert">{message} <button onClick={() => setRefresh(value => value + 1)}>Try again</button></p>)}
+      {counts && <section className="overview-metrics" aria-label="Subscriber statistics">{[['Total Subscribers', counts.total], ['Web Subscribers', counts.web], ['Mobile Subscribers', counts.mobile], ['App Subscribers', counts.app]].map(([label, value]) => <article className="overview-panel overview-metric" key={label}><strong aria-label={`${label}: ${value === null ? 'Not available' : value}`}>{value === null ? '—' : number(value)}</strong><h2>{label}</h2>{value === null && <p>Not recorded</p>}</article>)}</section>}
+      <section className="analytics-geography" aria-labelledby="analytics-geo-heading"><h2 id="analytics-geo-heading">Audience Geo Location</h2>
+        <div className="overview-panel analytics-country-panel"><div className="analytics-geo-tabs" aria-label="Geography level"><span aria-current="true">Country</span><button disabled title="State locations are not recorded">State</button><button disabled title="City locations are not recorded">City</button></div>
+          <div className="analytics-table-scroll"><table><caption className="overview-sr-only">Audience by country</caption><thead><tr><th scope="col">S. No.</th><th scope="col">Country Name</th><th scope="col">Number Of Subscribers</th></tr></thead><tbody>
+            {audience?.countries.map((country, index) => <tr key={country.code}><td>{index + 1}</td><td>{country.name}</td><td>{number(country.subscribers)}</td></tr>)}
+            {audience?.unknown > 0 && <tr><td>—</td><td>Location unknown</td><td>{number(audience.unknown)}</td></tr>}
+            {audience?.total === 0 && <tr><td colSpan="3">No subscribers yet.</td></tr>}
+          </tbody></table></div>
+          <p className="analytics-note">Country locations are approximate. State and city locations are not recorded.</p>
+        </div>
+      </section>
+      {audience && <div className="analytics-map"><AudienceMap domainKey={domainKey} data={audience} showHeading={false} /></div>}
+      <PeriodReport key={`${domainKey}-subscribers`} domainKey={domainKey} refresh={refresh} />
+      <PeriodReport key={`${domainKey}-browser`} domainKey={domainKey} refresh={refresh} browser />
+    </main>
+  </div>;
+}

@@ -6,6 +6,7 @@ import Domain from './components/domain-settings/Domain';
 import Settings from './components/domain-settings/Settings';
 import SiteSelect from './components/site-select-list/SiteSelect';
 import Dashboard from './components/dashboard/Dashboard';
+import Analytics from './components/dashboard/Analytics';
 import DomainList from './components/domain-settings/DomainList';
 import Account from './components/domain-settings/Account';
 import PwaSettings from './components/domain-settings/PwaSettings';
@@ -16,7 +17,8 @@ const App = () => {
   const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
   const params = new URLSearchParams(window.location.search);
   const routeKey = params.get('domain') || '';
-  const routeView = window.location.pathname === '/settings/pwa' ? 'pwa'
+  const routeView = window.location.pathname === '/analytics' ? 'analytics'
+    : window.location.pathname === '/settings/pwa' ? 'pwa'
     : window.location.pathname === '/settings/account' ? 'account'
     : ['/settings', '/settings/general'].includes(window.location.pathname) ? 'settings'
     : window.location.pathname === '/settings/domains' ? 'domains'
@@ -51,7 +53,11 @@ const App = () => {
   const syncViewFromUrl = useCallback(() => {
     if (!isAuthenticated) return;
     const path = window.location.pathname;
-    if (path === '/dashboard') {
+    if (path === '/analytics') {
+      const key = new URLSearchParams(window.location.search).get('domain');
+      if (key) setSelectedDomainKey(key);
+      setView('analytics');
+    } else if (path === '/dashboard') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
       setView(key ? 'overview' : 'sites');
@@ -106,8 +112,12 @@ const App = () => {
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
-    } else if (view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
+    } else if (view === 'analytics' || view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
       document.body.classList.add('domain-bg');
+      if (view === 'analytics') {
+        const url = `/analytics${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
+        if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
+      }
       if (view === 'sites' || view === 'overview') {
         const url = view === 'overview' && selectedDomainKey ? `/dashboard?domain=${encodeURIComponent(selectedDomainKey)}` : '/dashboard';
         if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
@@ -258,6 +268,24 @@ const App = () => {
         }
       }}
     />;
+  }
+
+  if (view === 'analytics' && selectedDomainKey) {
+    return <Analytics
+      key={selectedDomainKey}
+      domainKey={selectedDomainKey}
+      onAllSites={() => setView('sites')}
+      onManageDomains={() => setView('domains')}
+      onSettings={() => setView('settings')}
+      onSelectDomain={(key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name); }}
+      onDashboard={openOverview}
+      onConfiguration={openConfiguration}
+      onSendPush={(key, name) => openConfiguration(key, name, true)}
+      onLogout={handleLogout}
+    />;
+  }
+  if (view === 'analytics' && !selectedDomainKey) {
+    return <SiteSelect onAccount={() => setView('account')} onAddDomain={() => { setDomainTab('domain'); setView('domain'); }} onSettings={() => setView('settings')} onManageDomains={() => setView('domains')} onLogout={handleLogout} onSelectDomain={openOverview} />;
   }
 
   if (view === 'overview' && selectedDomainKey) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import world from './world-map.json';
 import './audience-map.css';
@@ -7,17 +7,17 @@ const number = value => new Intl.NumberFormat().format(value);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const initialView = { x: 0, y: 0, zoom: 1 };
 
-export default function AudienceMap({ domainKey, refresh = 0 }) {
-  const [audience, setAudience] = useState(null);
+export default function AudienceMap({ domainKey, refresh = 0, data, showHeading = true }) {
+  const [fetchedAudience, setAudience] = useState(null);
+  const audience = data === undefined ? fetchedAudience : data;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [expanded, setExpanded] = useState(false);
   const [view, setView] = useState(initialView);
   const drag = useRef(null);
-  const detailsId = useId();
 
   useEffect(() => {
+    if (data !== undefined) { setLoading(false); setError(''); return; }
     let cancelled = false;
     setLoading(true); setError(''); setAudience(null);
     apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/audience`).then(async response => {
@@ -26,9 +26,9 @@ export default function AudienceMap({ domainKey, refresh = 0 }) {
       if (!cancelled) setAudience(result.data);
     }).catch(err => { if (!cancelled) setError(err.message); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [domainKey, refresh, retry]);
+  }, [domainKey, refresh, retry, data]);
 
-  useEffect(() => { setExpanded(false); setView(initialView); drag.current = null; }, [domainKey]);
+  useEffect(() => { setView(initialView); drag.current = null; }, [domainKey]);
 
   const located = audience?.located || 0;
   const countries = new Map((audience?.countries || []).map(country => [country.code, country]));
@@ -44,8 +44,8 @@ export default function AudienceMap({ domainKey, refresh = 0 }) {
   });
   const move = (dx, dy) => setView(current => ({ ...current, x: clamp(current.x + dx, 0, world.width - world.width / current.zoom), y: clamp(current.y + dy, 0, world.height - world.height / current.zoom) }));
 
-  return <section className="audience-section" aria-labelledby="overview-audience">
-    <div className="audience-heading"><h2 className="overview-section-title" id="overview-audience">Audience</h2><button type="button" disabled={!audience} aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpanded(value => !value)}>{expanded ? 'Hide details' : 'View All'}</button></div>
+  return <section className="audience-section" aria-labelledby={showHeading ? 'overview-audience' : undefined} aria-label={showHeading ? undefined : 'Audience country map'}>
+    {showHeading && <div className="audience-heading"><h2 className="overview-section-title" id="overview-audience">Audience</h2><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`} target="_blank" rel="noopener noreferrer">View All<span className="overview-sr-only"> (opens in a new tab)</span></a></div>}
     <div className="overview-panel audience-panel">
       <div className="audience-map-frame">
         <svg className={`audience-world-map ${view.zoom > 1 ? 'is-zoomed' : ''}`} viewBox={`${view.x} ${view.y} ${world.width / view.zoom} ${world.height / view.zoom}`} role="group" aria-label="World map of audience countries" tabIndex={0}
@@ -82,14 +82,7 @@ export default function AudienceMap({ domainKey, refresh = 0 }) {
         <div className="audience-map-legend"><span><i style={{ background: '#d8dcdf' }} />No located subscriptions</span><span><i style={{ background: '#a6d6d7' }} /><i style={{ background: '#63adb0' }} /><i style={{ background: '#168b8e' }} />Fewer to more</span></div>
         <p className="audience-map-note">{audience.total === 0 ? 'No subscriptions yet. Countries appear as browsers subscribe.' : located === 0 ? 'Country locations will appear as subscribed browsers revisit your website.' : 'Approximate countries from browser connections.'}{audience.unknown > 0 ? ` Location unknown for ${number(audience.unknown)} ${audience.unknown === 1 ? 'subscription' : 'subscriptions'}.` : ''}</p>
       </>}
-      {expanded && audience && <div className="audience-country-details" id={detailsId}>
-        <h3>Audience by country</h3><p>Counts are saved browser subscriptions. IP country estimates can reflect VPNs or proxies.</p>
-        <table><thead><tr><th scope="col">Country</th><th scope="col">Subscriptions</th></tr></thead><tbody>
-          {audience.countries.map(country => <tr key={country.code}><td>{country.name}</td><td>{number(country.subscribers)}</td></tr>)}
-          {audience.unknown > 0 && <tr><td>Location unknown</td><td>{number(audience.unknown)}</td></tr>}
-          {audience.total === 0 && <tr><td colSpan="2">No audience data yet.</td></tr>}
-        </tbody></table>
-      </div>}
+
     </div>
   </section>;
 }

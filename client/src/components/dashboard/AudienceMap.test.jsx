@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import AudienceMap from './AudienceMap';
 import { apiFetch } from '../../api';
@@ -9,17 +9,18 @@ const data = { countries: [{ code: 'IN', name: 'India', subscribers: 4 }, { code
 const response = value => ({ ok: true, json: async () => ({ ok: true, data: value }) });
 beforeEach(() => { jest.resetAllMocks(); apiFetch.mockResolvedValue(response(data)); });
 
-test('shades countries using real per-domain counts and View All includes unknown locations', async () => {
+test('shades real country counts and View All links to Analytics in a new tab', async () => {
   render(<AudienceMap domainKey="mice" />);
   const india = await screen.findByRole('img', { name: 'India: 4 located subscriptions' });
   expect(india).toHaveAttribute('fill', '#168b8e');
   expect(screen.getByRole('img', { name: 'United States: 2 located subscriptions' })).toHaveAttribute('fill', '#63adb0');
   expect(screen.getByRole('img', { name: 'France: 0 located subscriptions' })).toHaveAttribute('fill', '#d8dcdf');
   expect(screen.getByText(/Location unknown for 1 subscription/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'View All' }));
-  const table = screen.getByRole('table');
-  expect(within(table).getByText('India')).toBeInTheDocument();
-  expect(within(table).getByText('Location unknown')).toBeInTheDocument();
+  const link = screen.getByRole('link', { name: 'View All (opens in a new tab)' });
+  expect(link).toHaveAttribute('href', '/analytics?domain=mice');
+  expect(link).toHaveAttribute('target', '_blank');
+  expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
   expect(apiFetch).toHaveBeenCalledWith('https://api.example.test/api/domains/mice/audience');
 });
 

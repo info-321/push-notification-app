@@ -58,6 +58,16 @@ for (const domain of domainList.data) {
   assert.equal(audience.total, data.subscribers.total, 'Country counts must cover only this domain audience');
   assert.equal(audience.located + audience.unknown, audience.total);
   console.log('Audience countries: OK; located:', audience.located, 'unknown:', audience.unknown);
+  const analyticsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/analytics';
+  assert.equal((await fetch(base + analyticsRoute)).status, 401, 'Subscriber analytics must require login');
+  const analyticsResponse = await fetch(base + analyticsRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(analyticsResponse.status, 200, 'Subscriber date analytics must be available');
+  const analytics = (await analyticsResponse.json()).data;
+  assert.ok(Array.isArray(analytics.daily) && analytics.daily.length > 0);
+  assert.equal(analytics.daily.reduce((total, day) => total + day.added, 0), analytics.added);
+  assert.equal(analytics.range.time_zone, 'UTC');
+  assert.equal(analytics.unsubscribed, null);
+  console.log('Subscriber analytics: OK; saved additions in period:', analytics.added);
   const settingsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/settings';
   assert.equal((await fetch(base + settingsRoute)).status, 401, 'Settings must require login');
   const settingsResponse = await fetch(base + settingsRoute, { headers: { Authorization: `Bearer ${session.token}` } });

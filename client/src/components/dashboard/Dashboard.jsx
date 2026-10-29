@@ -2,22 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import './dashboard.css';
 import AudienceMap from './AudienceMap';
+import Icon from './DashboardIcon';
+import WebsiteHeader from './WebsiteHeader';
 
-function Icon({ name, ...props }) {
-  const paths = {
-    home: <><path d="m3 10 9-7 9 7v11H3Z" /><path d="M9 21v-8h6v8" /></>,
-    send: <><path d="m21 3-7 18-4-7-7-4Z" /><path d="m10 14 5-5" /></>,
-    template: <><rect x="3" y="3" width="14" height="14" rx="2" /><path d="M8 21h13V8M7 10h6m-3-3v6" /></>,
-    report: <><path d="M6 3h12v18H6Z" /><path d="M9 8h6m-6 4h6m-6 4h4" /></>,
-    bell: <><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5ZM10 21h4" /><path d="M12 2v2" /></>,
-    globe: <><circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><path d="M3 12h18" /></>,
-    settings: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="8" cy="6" r="2" /><circle cx="16" cy="12" r="2" /><circle cx="10" cy="18" r="2" /></>,
-    popup: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 8h18m-13 6h8" /></>,
-    exit: <><path d="M14 3h6v18h-6M3 12h12m-7-5-5 5 5 5" /></>,
-    mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 6 9 7 9-7" /></>,
-  };
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{paths[name] || paths.report}</svg>;
-}
 
 const number = value => new Intl.NumberFormat().format(value);
 
@@ -66,33 +53,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
 
   return (
     <div className="overview-page">
-      <header className="overview-hero">
-        <div className="overview-header-inner">
-          <div className="overview-topbar">
-            <div className="overview-brand">
-              <button className="overview-logo" onClick={onAllSites} aria-label="Back to all websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
-              <label className="overview-domain-picker"><span className="overview-sr-only">Website</span>
-                <select value={domainKey} onChange={event => {
-                  const selected = domains.find(item => item.domain_key === event.target.value);
-                  if (selected) onSelectDomain(selected.domain_key, selected.domain_name);
-                }}>
-                  {!domains.some(item => item.domain_key === domainKey) && <option value={domainKey}>{domain?.domain_name || 'Selected website'}</option>}
-                  {domains.map(item => <option key={item.domain_key} value={item.domain_key}>{item.domain_name}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="overview-account"><button onClick={onAllSites}>All websites</button><button onClick={onManageDomains}>Manage domains</button><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>
-          </div>
-          <nav className="overview-navigation" aria-label="Website navigation">
-            <button className="overview-nav-active" aria-current="page"><Icon name="home" />Dashboard</button>
-            <button onClick={sendPush}><Icon name="send" />Push Notification</button>
-            <a href="#overview-reports"><Icon name="report" />Reports</a>
-            <button disabled title="Newsroll is not available yet">Newsroll <span>Coming soon</span></button>
-            <button disabled title="Newsbox is not available yet">Newsbox <span>Coming soon</span></button>
-            <button onClick={openConfig}><Icon name="settings" />Configuration</button>
-          </nav>
-        </div>
-      </header>
+      <WebsiteHeader domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={onAllSites} onManageDomains={onManageDomains} onSettings={onSettings} onSelectDomain={onSelectDomain} onConfiguration={openConfig} onSendPush={sendPush} onLogout={onLogout} />
 
       <main className="overview-main">
         <div className="overview-heading">
