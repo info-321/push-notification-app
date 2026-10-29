@@ -1,6 +1,4 @@
 .account-screen { color:#17304a; }
-.account-main { max-width:1450px; padding-top:20px; }
-.account-screen .domain-list-tabs { min-height:56px; }
 .account-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:30px; }
 .account-panel { background:#fff; border:1px solid #e5eaed; border-radius:7px; padding:30px; box-shadow:0 3px 10px #243b5012; }
 .account-profile-box { border:1px solid #d7dce0; border-radius:4px; padding:12px 10px; }
@@ -30,4 +28,4 @@
 .account-error button { border:0; background:none; color:inherit; text-decoration:underline; }
 .account-success { color:#188169; background:#ebf7f1; border-radius:4px; padding:10px; font-size:12px; line-height:1.7; }
 .account-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
-@media(max-width:800px) { .account-grid { grid-template-columns:1fr; gap:24px; } .account-panel { padding:24px; } .account-main { padding-top:14px; } .account-password-panel h1 { font-size:22px; } .account-password-panel form { padding:0; } .account-screen .domain-list-tabs { margin-bottom:16px; } }
+@media(max-width:800px) { .account-grid { grid-template-columns:1fr; gap:24px; } .account-panel { padding:24px; } .account-password-panel h1 { font-size:22px; } .account-password-panel form { padding:0; } }

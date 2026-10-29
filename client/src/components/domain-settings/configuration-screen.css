@@ -1,6 +1,4 @@
 .configuration-screen { color:#506175; }
-.configuration-main { max-width:1450px; padding:20px 20px 42px; }
-.configuration-screen .domain-list-tabs { padding:0 12px; }
 .configuration-card { background:#fff; border:1px solid #e8ecef; border-radius:8px; box-shadow:0 3px 10px #25394e12; margin-bottom:24px; }
 .configuration-summary { min-height:156px; padding:28px 39px; }
 .configuration-summary dl { margin:0; }
@@ -50,4 +48,4 @@
 .configuration-error { background:#fff0f1; color:#a83849; }
 .configuration-message { padding:32px 39px; font-size:14px; }
 @media(prefers-reduced-motion:reduce) { .configuration-install-toggle > svg { transition:none; } }
-@media(max-width:760px) { .configuration-main { padding:16px 14px 32px; } .configuration-summary,.configuration-send { padding:22px; } .configuration-install { padding:22px 20px 28px; } .configuration-install h1 { padding-top:40px; font-size:22px; } .configuration-accordions { margin:16px 0 0; } .configuration-install-content { padding-left:0; } .configuration-subtabs button { padding:8px 10px; min-height:39px; font-size:12px; } .configuration-summary dl > div { flex-wrap:wrap; } .configuration-summary dt { font-size:12px; } .configuration-summary dd { font-size:12px; } .configuration-wordpress-values dd { gap:6px; padding:8px; } .configuration-copy { padding:5px 7px; } }
+@media(max-width:760px) { .configuration-summary,.configuration-send { padding:22px; } .configuration-install { padding:22px 20px 28px; } .configuration-install h1 { padding-top:40px; font-size:22px; } .configuration-accordions { margin:16px 0 0; } .configuration-install-content { padding-left:0; } .configuration-subtabs button { padding:8px 10px; min-height:39px; font-size:12px; } .configuration-summary dl > div { flex-wrap:wrap; } .configuration-summary dt { font-size:12px; } .configuration-summary dd { font-size:12px; } .configuration-wordpress-values dd { gap:6px; padding:8px; } .configuration-copy { padding:5px 7px; } }

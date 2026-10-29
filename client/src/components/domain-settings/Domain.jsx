@@ -169,9 +169,8 @@ const Domain = ({
   };
 
   return (
-    <div className={activeTab === 'config' ? 'domain-list-page configuration-screen' : 'domain-page'}>
-      {activeTab === 'config' ? (
-        <header className="domain-list-header">
+    <div className={activeTab === 'config' ? 'domain-list-page configuration-screen' : 'domain-list-page'}>
+        <header className="domain-list-header"><div className="domain-list-header-inner">
           <div className="domain-list-brand">
             <button type="button" className="domain-list-logo" aria-label="Website dashboard" onClick={onDashboard}><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
             <select aria-label="Select website" value={dropdownValue} onChange={handleSiteChange}>
@@ -184,96 +183,17 @@ const Domain = ({
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">&#8964;</span>
             </button>{showMenu && <div className="domain-list-profile-menu"><button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button onClick={onLogout}>Log out</button></div>}</div>
           </div>
-        </header>
-      ) : (
-      <header className="domain-hero">
-        <div className="brand">
-          <div className="logo">
-            <img src="/images/TTWLogo.jpg" alt="TTW Logo" />
-          </div>
-          <div className="site-select">
-            {/* Navbar domain selector shows all domains plus the add option */}
-            <select value={dropdownValue} onChange={handleSiteChange}>
-              <option value="add">Add Domain +</option>
-              {domains.map((d) => (
-                <option key={d.key || d.name} value={d.name}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="nav-actions">
-          <button type="button" className="top-nav-btn" onClick={onDashboard}>Dashboard</button>
-          <button type="button" className="top-nav-btn" onClick={() => {
-            setActiveTab('config'); onSelectDomainTab('config');
-            window.location.hash = 'send-push';
-            document.getElementById('send-push')?.scrollIntoView?.({ behavior: 'smooth' });
-          }}>Push Notification</button>
-          <div className="top-nav-btn">Report</div>
-          <div className="top-nav-btn badge">Newsroll</div>
-          <div className="top-nav-btn badge">Newsbox</div>
-          <div className="top-nav-btn">More ▼</div>
-        </div>
-        <div className="top-right">
-          <span>Support</span>
-          <span className="icon" role="img" aria-label="notifications">🔔</span>
-          <div className="profile">
-            <button
-              type="button"
-              className="profile-trigger"
-              onClick={() => setShowMenu((open) => !open)}
-            >
-              <span className="icon" role="img" aria-label="profile">👤</span>
-              <span className="caret">▼</span>
-            </button>
-            {showMenu && (
-              <div className="profile-menu">
-                <button type="button" className="menu-item" onClick={onSettings}>
-                  <span className="menu-icon" role="img" aria-label="settings">⚙️</span> Setting
-                </button>
-                <div className="menu-sep" />
-                <button type="button" className="menu-item" onClick={onLogout}>
-                  <span className="menu-icon" role="img" aria-label="logout">↩️</span> Logout
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-      )}
+        </div></header>
 
-      <div className={activeTab === 'config' ? 'domain-list-main configuration-main' : 'domain-content'}>
-        {activeTab === 'config' ? (
-          <nav className="domain-list-tabs" aria-label="Settings navigation">
-            <button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button className="is-active" aria-current="page">Configuration</button>
-            <button onClick={onDomains}>Domain</button>
-            <button disabled title="PWA settings are not available yet">PWA Setting</button><button disabled title="User management is not available yet">User</button>
-          </nav>
-        ) : (
-        <nav className="tabs">
-          <button className="tab" onClick={onSettings}>Settings</button>
-          <button
-            className={`tab ${activeTab === 'config' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('config');
-              onSelectDomainTab('config');
-            }}
-          >
-            Configuration
-          </button>
-          <button
-            className={`tab ${activeTab === 'domain' ? 'active' : ''}`}
-            onClick={() => {
-              onDomains();
-            }}
-          >
-            Domain
-          </button>
-          <button className="tab" onClick={onAccount}>Account</button>
-          <button className="tab">User</button>
+      <div className="domain-list-main">
+        <nav className="domain-list-tabs" aria-label="Settings navigation">
+          <button onClick={onSettings}>Settings</button>
+          <button onClick={onAccount}>Account</button>
+          <button className={activeTab === 'config' ? 'is-active' : ''} aria-current={activeTab === 'config' ? 'page' : undefined} disabled={activeTab !== 'config' && !selectedDomainKey} onClick={() => { setActiveTab('config'); onSelectDomainTab('config'); }}>Configuration</button>
+          <button className={activeTab === 'domain' ? 'is-active' : ''} aria-current={activeTab === 'domain' ? 'page' : undefined} onClick={onDomains}>Domain</button>
+          <button disabled title="PWA settings are not available yet">PWA Setting</button>
+          <button disabled title="User management is not available yet">User</button>
         </nav>
-        )}
 
         {activeTab === 'domain' && (
           <section className="form-card">

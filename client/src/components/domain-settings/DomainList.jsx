@@ -105,7 +105,7 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
   };
 
   return <div className="domain-list-page">
-    <header className="domain-list-header">
+    <header className="domain-list-header"><div className="domain-list-header-inner">
       <div className="domain-list-brand">
         <button type="button" className="domain-list-logo" onClick={() => onDashboard()} aria-label="All websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
         <select aria-label="Select website" value={activeDomain?.domain_key || ''} disabled={!domains.length || deleting} onChange={event => {
@@ -125,7 +125,7 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
           {showProfile && <div className="domain-list-profile-menu"><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>}
         </div>
       </div>
-    </header>
+    </div></header>
 
     <main className="domain-list-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation">

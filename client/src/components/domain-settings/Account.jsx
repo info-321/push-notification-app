@@ -68,7 +68,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
   }
 
   return <div className="domain-list-page account-screen">
-    <header className="domain-list-header">
+    <header className="domain-list-header"><div className="domain-list-header-inner">
       <div className="domain-list-brand"><button type="button" className="domain-list-logo" aria-label="All websites" onClick={() => onDashboard()}><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
         <select aria-label="Select website" value={activeKey} disabled={!domains.length || saving} onChange={event => {
           const selected = domains.find(item => item.domain_key === event.target.value);
@@ -83,8 +83,8 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">⌄</span>
         </button>{showProfileMenu && <div className="domain-list-profile-menu"><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>}</div>
       </div>
-    </header>
-    <main className="domain-list-main account-main">
+    </div></header>
+    <main className="domain-list-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation"><button onClick={onSettings}>Settings</button><button className="is-active" aria-current="page">Account</button>
         <button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button>
         <button onClick={onDomains}>Domain</button><button disabled title="PWA settings are not available yet">PWA Setting</button><button disabled title="User management is not available yet">User</button>

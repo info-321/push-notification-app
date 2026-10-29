@@ -95,7 +95,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
   const retry = () => setReload(value => value + 1);
 
   return <div className="domain-list-page settings-screen">
-    <header className="domain-list-header"><div className="settings-header-inner">
+    <header className="domain-list-header"><div className="domain-list-header-inner">
       <div className="domain-list-brand">
         <button type="button" className="domain-list-logo" onClick={() => onDashboard()} aria-label="All websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
         <select aria-label="Select website" value={activeKey} disabled={!domains.length || saving} onChange={event => {
@@ -113,7 +113,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
       </div>
     </div></header>
 
-    <main className="settings-main">
+    <main className="domain-list-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation">
         <button className="is-active" aria-current="page">Settings</button><button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeKey || loading}>Configuration</button>

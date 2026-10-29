@@ -3,7 +3,8 @@
 .domain-list-page button { cursor:pointer; }
 .domain-list-page button:disabled { cursor:default; }
 .domain-list-page button:focus-visible,.domain-list-page input:focus-visible,.domain-list-page select:focus-visible { outline:3px solid #2ab7b3; outline-offset:3px; }
-.domain-list-header { background:linear-gradient(105deg,#1d427e,#207d99); color:#fff; min-height:70px; padding:14px 34px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.domain-list-header { background:linear-gradient(105deg,#1d427e,#207d99); color:#fff; min-height:70px; padding:14px 28px; }
+.domain-list-header-inner { width:100%; max-width:1000px; margin:auto; display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .domain-list-brand,.domain-list-account { display:flex; align-items:center; gap:26px; }
 .domain-list-logo { background:#ffffff18; border:0; padding:5px; border-radius:6px; display:flex; align-items:center; }
 .domain-list-logo img { width:34px; height:30px; object-fit:contain; }
@@ -16,9 +17,9 @@
 .domain-list-profile-menu { position:absolute; top:36px; right:0; z-index:5; width:140px; padding:6px; border-radius:7px; background:#fff; box-shadow:0 8px 24px #20314730; }
 .domain-list-profile-menu button { display:block; width:100%; border:0; color:#29364d; background:#fff; text-align:left; padding:9px 12px; font-size:13px; border-radius:4px; }
 .domain-list-profile-menu button:hover { background:#eef5f8; }
-.domain-list-main { max-width:1450px; margin:auto; padding:18px 34px 42px; }
-.domain-list-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); align-items:stretch; min-height:57px; gap:10px; padding:0 10px; }
-.domain-list-tabs button { border:0; border-bottom:3px solid transparent; background:none; padding:16px 5px 18px; color:#7c8594; font-size:14px; white-space:nowrap; }
+.domain-list-main { width:100%; max-width:1048px; margin:auto; padding:16px 28px 48px; }
+.domain-list-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); align-items:stretch; min-height:57px; gap:2px; padding:0; margin-bottom:30px; }
+.domain-list-tabs button { border:0; border-bottom:3px solid transparent; background:none; padding:16px 5px 18px; color:#7c8594; font-size:12px; white-space:nowrap; }
 .domain-list-tabs button.is-active { color:#101b2d; border-bottom-color:#18b486; }
 .domain-list-tabs button:disabled { color:#7f8896; }
 .domain-list-panel { border-radius:10px; padding:16px; background:#fff; box-shadow:0 2px 14px #213c5510; }
@@ -58,4 +59,6 @@
 .domain-list-modal form > p:not(.domain-list-error) { font-size:12px; color:#66758a; line-height:1.7; }
 .domain-list-modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:26px; }
 .domain-list-cancel { border:1px solid #d4dde5; border-radius:24px; background:#fff; color:#526479; padding:8px 20px; font-size:14px!important; }
-@media(max-width:760px) { .domain-list-header { padding:14px 18px; gap:12px; flex-wrap:wrap; } .domain-list-brand { gap:12px; } .domain-list-brand select { max-width:240px; font-size:12px; } .domain-list-main { padding:16px 14px 32px; } .domain-list-tabs { display:flex; overflow-x:auto; gap:12px; padding:0 4px; } .domain-list-tabs button { padding:16px 15px; font-size:12px; } .domain-list-panel { padding:10px; } .domain-list-toolbar { padding:12px 10px; } .domain-list-new,.domain-list-delete { padding:8px 18px; } .domain-list-modal { padding:24px 20px; } }
+@media(max-width:850px) { .domain-list-tabs { display:flex; overflow-x:auto; } .domain-list-tabs button { padding:16px 14px; flex-shrink:0; } }
+@media(max-width:760px) { .domain-list-brand { gap:12px; } .domain-list-brand select { max-width:240px; font-size:12px; } .domain-list-panel { padding:10px; } .domain-list-toolbar { padding:12px 10px; } .domain-list-new,.domain-list-delete { padding:8px 18px; } .domain-list-modal { padding:24px 20px; } }
+@media(max-width:620px) { .domain-list-main { padding:14px 18px 36px; } .domain-list-header { padding:14px 18px; } .domain-list-header-inner { flex-wrap:wrap; gap:14px; } .domain-list-tabs { margin-bottom:24px; } }
