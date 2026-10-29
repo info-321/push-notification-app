@@ -34,10 +34,10 @@ test('legend toggles recorded totals and identifies missing device and unsubscri
   expect(total).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(total);
   expect(total).toHaveAttribute('aria-pressed', 'false');
-  expect(screen.getByText(/Total Subs hidden/)).toBeInTheDocument();
+  expect(screen.getByText(/All series hidden/)).toBeInTheDocument();
   fireEvent.click(total);
   expect(total).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.queryByText(/Total Subs hidden/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/All series hidden/)).not.toBeInTheDocument();
 });
 
 test('a one-day zero report remains inspectable and missing dates use an empty state', () => {
@@ -49,4 +49,21 @@ test('a one-day zero report remains inspectable and missing dates use an empty s
   rerender(<SubscriberChart daily={[]} />);
   expect(screen.getByText('No saved subscription dates are available.')).toBeInTheDocument();
   expect(screen.queryByRole('img')).not.toBeInTheDocument();
+});
+
+test('recorded desktop/mobile counts enable their series, show exact tooltips and toggle independently', () => {
+  render(<SubscriberChart devicesAvailable daily={[{ date: '2026-10-01', added: 8, desktop: 5, mobile: 1, device_unknown: 2 }]} />);
+  const desktop = screen.getByRole('button', { name: 'Desktop Subs', exact: true });
+  const mobile = screen.getByRole('button', { name: 'Mobile Subs', exact: true });
+  expect(desktop).toBeEnabled(); expect(mobile).toBeEnabled();
+  const chart = screen.getByRole('img', { name: 'Saved subscriptions added per day' });
+  fireEvent.focus(chart);
+  expect(screen.getByRole('status')).toHaveTextContent('Desktop Subs: 5');
+  expect(screen.getByRole('status')).toHaveTextContent('Mobile Subs: 1');
+  expect(screen.getByRole('status')).toHaveTextContent('Total Subs: 8');
+  expect(screen.getByRole('status')).toHaveTextContent('Device unknown: 2');
+  fireEvent.click(desktop); fireEvent.focus(chart);
+  expect(desktop).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByRole('status')).not.toHaveTextContent('Desktop Subs:');
+  expect(screen.getByRole('status')).toHaveTextContent('Total Subs: 8');
 });

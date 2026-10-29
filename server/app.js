@@ -1,3 +1,4 @@
+import { deviceCountSql, summarizeDevices } from './subscriber-device.js';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
@@ -128,7 +129,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
       );
       if (!rows.length) return res.status(404).json({ ok: false, message: 'Domain not found' });
       const [[counts]] = await pool.query(
-        `SELECT COUNT(*) AS subscribers FROM subscriptions
+        `SELECT COUNT(*) AS subscribers, ${deviceCountSql} FROM subscriptions
          WHERE domain_key = ? AND user_id = ?
            AND COALESCE(p256dh, '') <> '' AND COALESCE(auth, '') <> ''`,
         [req.params.key, rows[0].user_id]
@@ -136,7 +137,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
       res.set('Cache-Control', 'no-store');
       return res.json({ ok: true, data: {
         domain: publicDomain(rows[0]),
-        subscribers: { total: Number(counts.subscribers), web: Number(counts.subscribers), mobile: null, app: null },
+        subscribers: { total: Number(counts.subscribers), web: Number(counts.subscribers), ...summarizeDevices(counts), app: null },
         updated_at: new Date().toISOString(),
       } });
     } catch (err) {

@@ -26,7 +26,8 @@ async function fixture(t, { subscriptions = [], sendError, publicApiBase = 'http
       if (sql.includes('COUNT(*) AS subscribers')) {
         assert.match(sql, /domain_key = \? AND user_id = \?/);
         assert.match(sql, /COALESCE\(p256dh, ''\) <> '' AND COALESCE\(auth, ''\) <> ''/);
-        return [[{ subscribers: stored.filter(s => s.domain_key === params[0] && s.user_id === params[1] && s.p256dh && s.auth).length }]];
+        const scoped = stored.filter(s => s.domain_key === params[0] && s.user_id === params[1] && s.p256dh && s.auth);
+        return [[{ subscribers: scoped.length, desktop: scoped.filter(s => s.device_type === 'desktop').length, mobile: scoped.filter(s => s.device_type === 'mobile').length }]];
       }
       return [sql.includes('WHERE endpoint') ? stored.filter(s => s.endpoint === params[0]) : stored.filter(s => s.domain_key === params[0])];
     }
@@ -38,13 +39,13 @@ async function fixture(t, { subscriptions = [], sendError, publicApiBase = 'http
     }
     if (sql.startsWith('INSERT INTO subscriptions')) {
       inserts.push(params);
-      stored.push({ id: stored.length + 1, user_id: params[0], domain_key: params[1], endpoint: params[2], p256dh: params[3], auth: params[4], country_code: params[5], region_name: params[6], region_code: params[7], city_name: params[8] });
+      stored.push({ id: stored.length + 1, user_id: params[0], domain_key: params[1], endpoint: params[2], p256dh: params[3], auth: params[4], country_code: params[5], region_name: params[6], region_code: params[7], city_name: params[8], device_type: params[9] });
       return [{ affectedRows: 1 }];
     }
     if (sql.startsWith('UPDATE subscriptions')) {
       updates.push(params);
-      const subscription = stored.find(s => s.id === params[6] && s.domain_key === params[7]);
-      if (subscription) Object.assign(subscription, { p256dh: params[0], auth: params[1], country_code: params[2], region_name: params[3], region_code: params[4], city_name: params[5] });
+      const subscription = stored.find(s => s.id === params[7] && s.domain_key === params[8]);
+      if (subscription) Object.assign(subscription, { p256dh: params[0], auth: params[1], country_code: params[2], region_name: params[3], region_code: params[4], city_name: params[5], device_type: params[6] || subscription.device_type });
       return [{ affectedRows: 1 }];
     }
     throw new Error(`Unexpected SQL: ${sql}`);
@@ -142,7 +143,7 @@ test('overview requires login, isolates the selected audience, and exposes no br
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
   const { data } = await response.json();
-  assert.deepEqual(data.subscribers, { total: 2, web: 2, mobile: null, app: null });
+  assert.deepEqual(data.subscribers, { total: 2, web: 2, mobile: null, desktop: null, device_recorded: 0, device_unknown: 2, device_available: false, app: null });
   assert.equal(data.domain.is_configured, true);
   assert.equal(data.domain.vapid_private_key, undefined);
   assert.equal(data.domain.sender_api_key, undefined);
@@ -266,5 +267,21 @@ test('resubscribing updates encryption keys only for the same domain', async t =
   const result = await f.request('/api/subscriptions', { domain_key: key, subscription: { endpoint, keys: browserKeys } }, { Origin: 'https://website.test' });
   assert.equal(result.status, 200);
   assert.equal(f.inserts.length, 0);
-  assert.deepEqual(f.updates[0], [browserKeys.p256dh, browserKeys.auth, null, null, null, null, 9, key]);
+  assert.deepEqual(f.updates[0], [browserKeys.p256dh, browserKeys.auth, null, null, null, null, null, 9, key]);
+});
+
+test('browser revisits capture device type without replacing subscriptions and preserve it on unknown clients', async t => {
+  const f = await fixture(t);
+  const save = async agent => f.request('/api/subscriptions', { domain_key: key, device_type: 'mobile', subscription: { endpoint, keys: browserKeys } }, { Origin: 'https://website.test', 'User-Agent': agent });
+  assert.equal((await save('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0')).status, 200);
+  assert.equal(f.inserts.length, 1); assert.equal(f.inserts[0][9], 'desktop');
+  let data = (await f.request(`/api/domains/${key}/overview`, undefined, f.auth)).result.data.subscribers;
+  assert.equal(data.desktop, 1); assert.equal(data.mobile, 0); assert.equal(data.device_unknown, 0);
+  await save('unknown');
+  data = (await f.request(`/api/domains/${key}/overview`, undefined, f.auth)).result.data.subscribers;
+  assert.equal(data.desktop, 1); assert.equal(f.updates[0][6], null);
+  await save('Mozilla/5.0 (Linux; Android 14) Mobile Chrome/140.0');
+  data = (await f.request(`/api/domains/${key}/overview`, undefined, f.auth)).result.data.subscribers;
+  assert.equal(data.total, 1); assert.equal(data.desktop, 0); assert.equal(data.mobile, 1);
+  assert.equal(f.inserts.length, 1);
 });

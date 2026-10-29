@@ -71,13 +71,13 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
             {[
               ['Total Subscribers', counts.total, 'Current saved subscriptions'],
               ['Web Subscribers', counts.web, 'Desktop and mobile browsers'],
-              ['Mobile Subscribers', counts.mobile, 'Device breakdown not tracked'],
+              ['Mobile Subscribers', counts.mobile, counts.mobile === null ? 'Waiting for browsers to revisit' : 'Recorded mobile browsers (including tablets)'],
               ['App Subscribers', counts.app, 'Native app integration not enabled'],
             ].map(([label, value, detail]) => <article className="overview-panel overview-metric" key={label}>
               <strong aria-label={`${label}: ${value === null ? 'Not available' : value}`}>{value === null ? '—' : number(value)}</strong><h2>{label}</h2><p>{detail}</p>
             </article>)}
           </section>
-          <p className="overview-data-note">Counts represent browser subscriptions, not unique people. Last refreshed {new Date(overview.updated_at).toLocaleString(undefined, { timeZone: domain.time_zone || undefined })}{domain.time_zone ? ` (${domain.time_zone})` : ''}.</p>
+          <p className="overview-data-note">Counts represent browser subscriptions, not unique people. {counts.device_unknown > 0 && <>Device type is unknown for {number(counts.device_unknown)} subscriptions. </>}Last refreshed {new Date(overview.updated_at).toLocaleString(undefined, { timeZone: domain.time_zone || undefined })}{domain.time_zone ? ` (${domain.time_zone})` : ''}.</p>
 
           <div className="overview-middle">
             <section aria-labelledby="overview-quick-links"><h2 className="overview-section-title" id="overview-quick-links">Quick Links</h2>

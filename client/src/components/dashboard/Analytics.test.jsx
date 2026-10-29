@@ -64,6 +64,24 @@ test('date presets use UTC and Monday week starts across month and year boundari
   expect(presetRange('today', '2024-02-29')).toEqual({ start: '2024-02-29', end: '2024-02-29' });
 });
 
+test('recorded desktop counts replace null and remaining unknown subscriptions are explained', async () => {
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation(async url => {
+    const result = await original(url);
+    if (!url.includes('/analytics?')) return result;
+    const body = await result.json();
+    return response({ ...body.data, desktop: 1, mobile: 0, device_unknown: 1, device_recorded: 1, device_available: true,
+      daily: body.data.daily.map(day => ({ ...day, desktop: 1, mobile: 0, device_unknown: 1 })) });
+  });
+  render(<Analytics domainKey="mice" />);
+  const subscribers = screen.getByRole('region', { name: 'Subscribers', exact: true });
+  const summary = await within(subscribers).findByRole('table', { name: 'Subscriber period summary' });
+  expect(within(summary).getByRole('row', { name: 'Desktop 1', exact: true })).toBeInTheDocument();
+  expect(within(summary).getByRole('row', { name: 'Mobile 0', exact: true })).toBeInTheDocument();
+  expect(within(subscribers).getByRole('note')).toHaveTextContent('Device type is unknown for 1 subscription');
+  expect(within(subscribers).getByRole('button', { name: 'Desktop Subs', exact: true })).toBeEnabled();
+});
+
 test('country errors can retry without displaying invented zero totals and navigation keeps the website', async () => {
   const original = apiFetch.getMockImplementation();
   apiFetch.mockImplementation(async url => url.endsWith('/audience') ? response(null, false, 'Locations unavailable') : original(url));

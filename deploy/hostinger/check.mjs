@@ -49,7 +49,9 @@ for (const domain of domainList.data) {
   assert.ok(Number.isSafeInteger(data.subscribers.total) && data.subscribers.total >= 0, 'Subscriber counts must be nonnegative integers');
   assert.equal(data.subscribers.web, data.subscribers.total, 'Current subscriptions use browser push');
   assert.equal(data.domain.vapid_private_key, undefined, 'Dashboard must not expose private keys');
+  assert.equal((data.subscribers.desktop || 0) + (data.subscribers.mobile || 0) + data.subscribers.device_unknown, data.subscribers.total);
   console.log('Domain overview: OK; saved browser subscriptions:', data.subscribers.total);
+  console.log('Subscriber devices: OK; desktop:', data.subscribers.desktop, 'mobile:', data.subscribers.mobile, 'unknown:', data.subscribers.device_unknown);
   const audienceRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/audience';
   assert.equal((await fetch(base + audienceRoute)).status, 401, 'Audience locations must require login');
   const audienceResponse = await fetch(base + audienceRoute, { headers: { Authorization: `Bearer ${session.token}` } });
@@ -71,6 +73,8 @@ for (const domain of domainList.data) {
   assert.equal(analytics.daily.reduce((total, day) => total + day.added, 0), analytics.added);
   assert.equal(analytics.range.time_zone, 'UTC');
   assert.equal(analytics.unsubscribed, null);
+  assert.equal((analytics.desktop || 0) + (analytics.mobile || 0) + analytics.device_unknown, analytics.added);
+  for (const day of analytics.daily) assert.equal(day.desktop + day.mobile + day.device_unknown, day.added);
   console.log('Subscriber analytics: OK; saved additions in period:', analytics.added);
   const settingsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/settings';
   assert.equal((await fetch(base + settingsRoute)).status, 401, 'Settings must require login');

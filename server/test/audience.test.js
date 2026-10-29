@@ -53,12 +53,12 @@ async function fixture(t, subscriptions = []) {
     }
     if (sql.startsWith('SELECT id, domain_key')) return [stored.filter(row => row.endpoint === params[0])];
     if (sql.startsWith('INSERT INTO subscriptions')) {
-      stored.push({ id: stored.length + 1, user_id: params[0], domain_key: params[1], endpoint: params[2], p256dh: params[3], auth: params[4], country_code: params[5], region_name: params[6], region_code: params[7], city_name: params[8] });
+      stored.push({ id: stored.length + 1, user_id: params[0], domain_key: params[1], endpoint: params[2], p256dh: params[3], auth: params[4], country_code: params[5], region_name: params[6], region_code: params[7], city_name: params[8], device_type: params[9] });
       return [{ affectedRows: 1 }];
     }
     assert.match(sql, /country_code = \?, region_name = \?, region_code = \?, city_name = \?/);
-    const row = stored.find(row => row.id === params[6] && row.domain_key === params[7]);
-    if (row) Object.assign(row, { p256dh: params[0], auth: params[1], country_code: params[2], region_name: params[3], region_code: params[4], city_name: params[5] });
+    const row = stored.find(row => row.id === params[7] && row.domain_key === params[8]);
+    if (row) Object.assign(row, { p256dh: params[0], auth: params[1], country_code: params[2], region_name: params[3], region_code: params[4], city_name: params[5], device_type: params[6] || row.device_type });
     return [{ affectedRows: row ? 1 : 0 }];
   } };
   const app = createApp({ pool, webpush: {}, adminUsername: 'admin', adminPassword: 'audience-test', secret: 'audience-test-secret-long-enough-for-auth', publicApiBase: 'https://push.example.test', vapidSubject: 'mailto:test@example.test' });

@@ -1,3 +1,5 @@
+import { deviceCountSql, summarizeDevices } from './subscriber-device.js';
+
 const dayMs = 86400000;
 
 function parseDate(value) {
@@ -25,20 +27,26 @@ export function installAnalytics(app, pool) {
       const [domains] = await pool.query('SELECT user_id FROM domains WHERE domain_key = ? AND user_id = ?', [req.params.key, 1]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
       // TIMESTAMP -> epoch makes UTC grouping independent of MySQL session zone.
-      const [rows] = await pool.query(`SELECT FLOOR(UNIX_TIMESTAMP(created_at) / 86400) AS day_number, COUNT(*) AS subscribers
+      const [rows] = await pool.query(`SELECT FLOOR(UNIX_TIMESTAMP(created_at) / 86400) AS day_number, COUNT(*) AS subscribers, ${deviceCountSql}
         FROM subscriptions WHERE domain_key = ? AND user_id = ?
         AND COALESCE(p256dh, '') <> '' AND COALESCE(auth, '') <> ''
         AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)
         GROUP BY day_number ORDER BY day_number`, [req.params.key, domains[0].user_id, range.first.getTime() / 1000, range.afterLast.getTime() / 1000]);
-      const counts = new Map(rows.map(row => [Number(row.day_number), Number(row.subscribers)]));
+      const counts = new Map(rows.map(row => [Number(row.day_number), row]));
       const daily = [];
-      for (let timestamp = range.first.getTime(); timestamp < range.afterLast.getTime(); timestamp += dayMs) daily.push({ date: new Date(timestamp).toISOString().slice(0, 10), added: counts.get(timestamp / dayMs) || 0 });
+      for (let timestamp = range.first.getTime(); timestamp < range.afterLast.getTime(); timestamp += dayMs) {
+        const row = counts.get(timestamp / dayMs) || {};
+        const devices = summarizeDevices(row);
+        daily.push({ date: new Date(timestamp).toISOString().slice(0, 10), added: Number(row.subscribers || 0),
+          desktop: devices.desktop || 0, mobile: devices.mobile || 0, device_unknown: devices.device_unknown });
+      }
+      const totals = daily.reduce((sum, day) => ({ subscribers: sum.subscribers + day.added, desktop: sum.desktop + day.desktop, mobile: sum.mobile + day.mobile }), { subscribers: 0, desktop: 0, mobile: 0 });
       return res.json({ ok: true, data: {
         range: { start: range.start, end: range.end, time_zone: 'UTC' }, daily,
-        added: daily.reduce((total, day) => total + day.added, 0),
-        mobile: null, desktop: null, app: null, unsubscribed: null, net: null,
+        added: totals.subscribers, ...summarizeDevices(totals),
+        app: null, unsubscribed: null, net: null,
         browser: { available: false, rows: [] },
-        basis: 'Currently saved subscription records created during this period. Removal history and browser/device metadata were not recorded.',
+        basis: 'Currently saved subscription records created during this period. Device categories are approximate and update when subscribed browsers revisit. Removal history and browser names are not recorded.',
       } });
     } catch (error) {
       console.error('Analytics lookup failed:', error.code);

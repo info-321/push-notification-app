@@ -1,14 +1,14 @@
 import React, { useId, useState } from 'react';
 
 const series = [
-  ['App Subs', '#ff2626'], ['Desktop Subs', '#008e16'], ['Mobile Subs', '#173bff'],
-  ['Total Subs', '#ff9d00'], ['Unsubscribers', '#222222'],
+  ['App Subs', '#ff2626', 'app'], ['Desktop Subs', '#008e16', 'desktop'], ['Mobile Subs', '#173bff', 'mobile'],
+  ['Total Subs', '#ff9d00', 'added'], ['Unsubscribers', '#222222', 'unsubscribed'],
 ];
 const number = value => new Intl.NumberFormat().format(value);
 const dateLabel = date => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 
-export default function SubscriberChart({ daily }) {
-  const [visible, setVisible] = useState(true);
+export default function SubscriberChart({ daily, devicesAvailable = false }) {
+  const [hidden, setHidden] = useState({});
   const [selected, setSelected] = useState(null);
   const id = useId();
   if (!daily.length) return <p className="analytics-note">No saved subscription dates are available.</p>;
@@ -18,14 +18,15 @@ export default function SubscriberChart({ daily }) {
   const top = Math.max(4, Math.ceil(max / step)) * step;
   const x = index => daily.length === 1 ? 275 : 44 + index / (daily.length - 1) * 462;
   const y = count => 246 - count / top * 228;
-  const points = daily.map((day, index) => `${x(index)},${y(day.added)}`).join(' ');
+  const available = series.filter(([, , key]) => key === 'added' || (devicesAvailable && ['desktop', 'mobile'].includes(key)));
+  const shown = available.filter(([, , key]) => !hidden[key]);
   const interval = Math.max(1, Math.ceil((daily.length - 1) / 14));
   const labels = daily.map((_, index) => index).filter(index => index % interval === 0 || index === daily.length - 1);
-  const active = visible ? daily.findIndex(day => day.date === selected) : -1;
+  const active = shown.length ? daily.findIndex(day => day.date === selected) : -1;
 
   return <div className="analytics-subscriber-chart">
     <div className="analytics-chart" onPointerLeave={() => setSelected(null)}>
-      <p id={`${id}-help`} className="overview-sr-only">Use the left and right arrow keys to inspect daily totals, or Home and End to jump to the first and last day.</p>
+      <p id={`${id}-help`} className="overview-sr-only">Use the left and right arrow keys to inspect daily counts, or Home and End to jump to the first and last day.</p>
       <svg viewBox="0 0 520 338" role="img" aria-label="Saved subscriptions added per day" aria-describedby={`${id}-help`} tabIndex={0}
         onFocus={() => setSelected(daily[0].date)} onBlur={() => setSelected(null)}
         onKeyDown={event => {
@@ -49,22 +50,23 @@ export default function SubscriberChart({ daily }) {
           <text transform={`translate(${x(index) + 3},262) rotate(-50)`} textAnchor="end">{dateLabel(daily[index].date)}</text>
         </g>)}
         <path d="M44 18V246H506" className="analytics-chart-axis" />
-        {visible && <g>
-          <polyline points={points} fill="none" stroke="#ff9d00" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-          {daily.map((day, index) => <circle key={day.date} cx={x(index)} cy={y(day.added)} r={index === active ? 4.5 : 2.5} fill="#fff" stroke="#ff9d00" strokeWidth={index === active ? 2.5 : 1.5} />)}
-        </g>}
+        {shown.map(([label, color, key]) => <g key={key} aria-label={label}>
+          <polyline points={daily.map((day, index) => `${x(index)},${y(day[key] || 0)}`).join(' ')} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {daily.map((day, index) => <circle key={day.date} cx={x(index)} cy={y(day[key] || 0)} r={index === active ? 4.5 : 2.5} fill="#fff" stroke={color} strokeWidth={index === active ? 2.5 : 1.5} />)}
+        </g>)}
         {active >= 0 && <line x1={x(active)} x2={x(active)} y1="18" y2="246" className="analytics-chart-guide" />}
       </svg>
-      {active >= 0 && <div role="status" className="analytics-chart-tooltip" style={{ left: `${Math.max(18, Math.min(78, x(active) / 520 * 100))}%`, top: `${Math.max(7, Math.min(55, y(daily[active].added) / 338 * 100))}%` }}>
-        <strong>{dateLabel(daily[active].date)}</strong><span><i />Total Subs: {number(daily[active].added)}</span>
+      {active >= 0 && <div role="status" className="analytics-chart-tooltip" style={{ left: `${Math.max(18, Math.min(78, x(active) / 520 * 100))}%`, top: `${Math.max(9, Math.min(55, y(daily[active].added) / 338 * 100 + 5))}%` }}>
+        <strong>{dateLabel(daily[active].date)}</strong>{shown.map(([label, color, key]) => <span key={key}><i style={{ background: color }} />{label}: {number(daily[active][key] || 0)}</span>)}
+        {devicesAvailable && daily[active].device_unknown > 0 && <span>Device unknown: {number(daily[active].device_unknown)}</span>}
       </div>}
-      {!visible && <p className="analytics-chart-hidden">Total Subs hidden. Select it in the legend to show the chart.</p>}
+      {!shown.length && <p className="analytics-chart-hidden">All series hidden. Select a legend item to show the chart.</p>}
     </div>
     <div className="analytics-chart-legend" role="group" aria-label="Subscriber chart series">
-      {series.map(([label, color]) => <button type="button" key={label} disabled={label !== 'Total Subs'} aria-pressed={label === 'Total Subs' ? visible : undefined}
-        title={label === 'Total Subs' ? 'Show or hide daily saved subscription additions' : `${label}: not recorded`}
-        onClick={() => { setVisible(value => !value); setSelected(null); }}>
-        <span className="analytics-legend-swatch" style={{ borderColor: color }} /><span>{label}</span>{label !== 'Total Subs' && <span className="overview-sr-only"> (Not recorded)</span>}
+      {series.map(([label, color, key]) => <button type="button" key={label} disabled={!available.some(item => item[2] === key)} aria-pressed={available.some(item => item[2] === key) ? !hidden[key] : undefined}
+        title={available.some(item => item[2] === key) ? `Show or hide ${label}` : `${label}: not recorded`}
+        onClick={() => { setHidden(current => ({ ...current, [key]: !current[key] })); setSelected(null); }}>
+        <span className="analytics-legend-swatch" style={{ borderColor: color }} /><span>{label}</span>{!available.some(item => item[2] === key) && <span className="overview-sr-only"> (Not recorded)</span>}
       </button>)}
     </div>
   </div>;
