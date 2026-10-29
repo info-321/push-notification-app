@@ -3,11 +3,7 @@
 }
 
 .sites-page {
-  min-height: 100vh;
-  background: #eef3f7;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  color: #4e5359;
 }
 
 .sites-hero {
@@ -129,19 +125,18 @@
 
 .sites-card {
   background: #fff;
-  border: 1px solid #dbe2ea;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  width: 95%;
-  max-width: 1200px;
-  margin: 0 auto 32px;
+  border: 1px solid #e9edef;
+  border-radius: 7px;
+  padding: 24px 34px 36px;
+  box-shadow: 0 3px 10px #1b2f4812;
 }
 
 .sites-header h1 {
-  margin: 0 0 12px;
-  font-size: 26px;
-  color: #1f2937;
+  margin: 0 0 25px;
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #464b50;
 }
 
 .ghost-btn,
@@ -187,12 +182,13 @@
 
 .domains-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 16px;
 }
 
 .domain-card {
   display: flex;
+  gap: 12px;
   justify-content: space-between;
   align-items: center;
   position: relative;
@@ -204,17 +200,19 @@
 }
 
 .domain-info {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.domain-open { border:0; padding:14px 16px; margin:-14px -16px; align-self:stretch; flex:1; background:transparent; text-align:left; font:inherit; cursor:pointer; }
+.domain-open { border:0; padding:0; margin:0; align-self:stretch; flex:1; background:transparent; text-align:left; font:inherit; cursor:pointer; }
 .domain-open::after { content:''; position:absolute; inset:0; border-radius:10px; }
 .domain-open:focus-visible, .domain-action:focus-visible, .menu-trigger:focus-visible { outline:3px solid #279fba; outline-offset:3px; }
 .card-actions { z-index:1; }
 
 .domain-name {
+  overflow-wrap: anywhere;
   font-weight: 700;
   color: #111827;
 }
@@ -256,6 +254,7 @@
 
 .card-actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
 }
@@ -303,4 +302,15 @@
 
 .card-menu-item:hover {
   background: #f1f5f9;
+}
+
+@media(max-width:850px) {
+  .sites-card { padding:24px 22px 30px; }
+  .sites-header h1 { font-size:19px; }
+}
+
+@media(max-width:620px) {
+  .sites-card { padding:24px 26px 30px; }
+  .sites-header h1 { font-size:20px; }
+  .sites-page .domain-name { font-size:14px; }
 }

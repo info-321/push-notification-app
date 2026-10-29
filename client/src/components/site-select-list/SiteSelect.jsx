@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import '../domain-settings/domain-list.css';
 import './siteselect.css';
 
 import { API_BASE, apiFetch } from '../../api';
@@ -100,64 +101,33 @@ const SiteSelect = ({
 
 
   return (
-    <div className="sites-page">
-      <header className="sites-hero">
-        <div className="brand">
-          <div className="logo">
-            <img src="/images/TTWLogo.jpg" alt="TTW Logo" />
-          </div>
-          <div className="site-select">
-            {/* Domain selector with "Add Domain" option */}
-            <select value={selectedDomain} onChange={handleDomainSelect} aria-label="Select domain or add a domain">
-              {!selectedDomain && <option value="" disabled>Select a domain</option>}
-              <option value="add">Add Domain +</option>
-              {domains.map((d) => (
-                <option key={d.name} value={d.name}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="domain-list-page sites-page">
+      <header className="domain-list-header"><div className="domain-list-header-inner">
+        <div className="domain-list-brand">
+          <div className="domain-list-logo"><img src="/images/TTWLogo.jpg" alt="TTW" /></div>
+          <select value={selectedDomain} onChange={handleDomainSelect} aria-label="Select domain or add a domain">
+            {!selectedDomain && <option value="" disabled>Select a domain</option>}
+            <option value="add">Add Domain +</option>
+            {domains.map(item => <option key={item.key || item.name} value={item.name}>{item.name}</option>)}
+          </select>
         </div>
-        <div className="top-right">
-          <span>Support</span>
-          <span className="icon" role="img" aria-label="bell">
-            🔔
-          </span>
-          <div className="profile">
-            <button
-              type="button"
-              className="profile-trigger"
-              onClick={() => setShowProfileMenu((open) => !open)}
-            >
-              <span className="icon" role="img" aria-label="profile">
-                👤
-              </span>
-              <span className="caret">▼</span>
+        <div className="domain-list-account">
+          <button type="button" className="domain-list-dashboard-link" disabled={!domains.length} onClick={() => { const chosen = domains.find(item => item.name === selectedDomain) || domains[0]; if (chosen) onSelectDomain?.(chosen.key, chosen.name); }}>Dashboard</button>
+          <div className="domain-list-profile">
+            <button type="button" className="domain-list-profile-trigger" aria-label="Account menu" aria-expanded={showProfileMenu} onClick={() => setShowProfileMenu(open => !open)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">&#8964;</span>
             </button>
-            {showProfileMenu && (
-              <div className="profile-menu">
-                <button type="button" className="menu-item" onClick={onAccount}>Account</button>
-                <button type="button" className="menu-item" onClick={onManageDomains}>Domains</button>
-                <button type="button" className="menu-item" onClick={onSettings}>
-                  <span className="menu-icon" role="img" aria-label="settings">
-                    ⚙️
-                  </span>{' '}
-                  Setting
-                </button>
-                <div className="menu-sep" />
-                <button type="button" className="menu-item" onClick={onLogout}>
-                  <span className="menu-icon" role="img" aria-label="logout">
-                    ↩️
-                  </span>{' '}
-                  Logout
-                </button>
-              </div>
-            )}
+            {showProfileMenu && <div className="domain-list-profile-menu">
+              <button type="button" onClick={onAccount}>Account</button>
+              <button type="button" onClick={onManageDomains}>Domains</button>
+              <button type="button" onClick={onSettings}>Settings</button>
+              <button type="button" onClick={onLogout}>Log out</button>
+            </div>}
           </div>
         </div>
-      </header>
+      </div></header>
 
+      <main className="domain-list-main">
       <div className="sites-card">
         <div className="sites-header">
           <h1>Select Domain</h1>
@@ -235,6 +205,7 @@ const SiteSelect = ({
           </div>
         )}
       </div>
+      </main>
     </div>
   );
 };
