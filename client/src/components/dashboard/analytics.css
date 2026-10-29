@@ -12,15 +12,23 @@
 .analytics-geography h2,.analytics-period-section > h2 { font-size:27px; font-weight:400; margin:0 0 18px; }
 .analytics-country-panel { overflow:hidden; padding:0 10px 12px; }
 .analytics-geo-tabs { display:flex; align-items:stretch; gap:6px; margin:0 -10px 10px; border-bottom:1px solid #e8edef; }
-.analytics-geo-tabs > span,.analytics-geo-tabs > button { min-width:110px; padding:17px 20px; border:0; border-bottom:2px solid transparent; background:none; color:#6a7a86; font-size:12px!important; text-align:center; }
-.analytics-geo-tabs > span { color:#258b8d; background:#d8eeee; border-bottom-color:#279c9e; }
+.analytics-geo-tabs > button { min-width:110px; padding:17px 20px; border:0; border-bottom:2px solid transparent; background:none; color:#6a7a86; font-size:12px!important; text-align:center; }
+.analytics-geo-tabs > button[aria-selected=true] { color:#258b8d; background:#d8eeee; border-bottom-color:#279c9e; }
+.analytics-geo-tabs { overflow-x:auto; }
+.analytics-geo-tabs > button { flex-shrink:0; }
 .analytics-table-scroll { overflow-x:auto; }
 .analytics-table-scroll table { border-collapse:collapse; width:100%; text-align:left; font-size:12px; min-width:480px; }
 .analytics-table-scroll th { font-weight:500; color:#424e5a; background:#f7f9fa; }
 .analytics-table-scroll th,.analytics-table-scroll td { border-bottom:1px solid #e6ebef; padding:15px 12px; }
 .analytics-table-scroll th:first-child { width:12%; }
 .analytics-table-scroll th:nth-child(2) { width:42%; }
+.analytics-table-scroll table.analytics-detailed-geography { min-width:660px; }
+.analytics-detailed-geography th:first-child { width:8%; }
+.analytics-detailed-geography th:nth-child(2) { width:28%; }
 .analytics-country-panel > .analytics-note { padding:0 12px; }
+.analytics-country-panel [role=tabpanel] > .analytics-note { padding:0 12px; }
+.analytics-location-setup { border-top:1px solid #edf0f2; padding-top:12px!important; }
+.analytics-location-setup a { color:#228d91; }
 .analytics-map { margin-top:28px; }
 .analytics-map .audience-panel { padding:24px 28px 18px; }
 .analytics-map .audience-map-frame { aspect-ratio:2.2; }

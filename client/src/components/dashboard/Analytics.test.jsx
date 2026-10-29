@@ -29,8 +29,8 @@ test('Analytics shows real totals, countries and map while unavailable metadata 
   expect(within(countryTable).getByText('India')).toBeInTheDocument();
   expect(within(countryTable).getByText('Location unknown')).toBeInTheDocument();
   expect(screen.getByRole('img', { name: 'India: 5 located subscriptions' })).toHaveAttribute('fill', '#168b8e');
-  expect(screen.getByRole('button', { name: 'State', exact: true })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'City', exact: true })).toBeDisabled();
+  expect(screen.getByRole('tab', { name: 'State', exact: true })).toBeEnabled();
+  expect(screen.getByRole('tab', { name: 'City', exact: true })).toBeEnabled();
   expect(await screen.findByText('Browser history has not been recorded.')).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /View All/ })).not.toBeInTheDocument();
   // The large map reuses the country result, rather than loading it twice.

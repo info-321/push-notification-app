@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { createAdminToken } from './accounts.js';
-import { requestCountry } from './audience.js';
+import { requestLocation, mergeLocation } from './audience.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -82,17 +82,17 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
         (origin.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(origin.hostname))) {
         return res.status(403).json({ ok: false, message: 'This website does not match the registered domain.' });
       }
-      const [existing] = await pool.query('SELECT id, domain_key FROM subscriptions WHERE endpoint = ? LIMIT 1', [subscription.endpoint]);
+      const [existing] = await pool.query('SELECT id, domain_key, country_code, region_name, region_code, city_name FROM subscriptions WHERE endpoint = ? LIMIT 1', [subscription.endpoint]);
       if (existing.length && existing[0].domain_key !== domainKey) {
         return res.status(409).json({ ok: false, message: 'This browser subscription belongs to a different domain.' });
       }
-      const country = requestCountry(req);
+      const location = mergeLocation(existing[0], requestLocation(req));
       if (existing.length) {
-        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = COALESCE(?, country_code) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, country, existing[0].id, domainKey]);
+        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ? WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, existing[0].id, domainKey]);
       } else {
         await pool.query(
-          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, country],
+          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name],
         );
       }
       return res.json({ ok: true });

@@ -25,6 +25,15 @@ export async function ensureSubscriptionCountry(pool) {
   catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
 }
 
+export async function ensureSubscriptionLocations(pool) {
+  for (const [column, type] of [['region_name', 'VARCHAR(128) CHARACTER SET utf8mb4'], ['region_code', 'VARCHAR(16)'], ['city_name', 'VARCHAR(128) CHARACTER SET utf8mb4']]) {
+    const [columns] = await pool.query(`SHOW COLUMNS FROM subscriptions LIKE '${column}'`);
+    if (columns.length) continue;
+    try { await pool.query(`ALTER TABLE subscriptions ADD COLUMN ${column} ${type} NULL`); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
+}
+
 export async function ensureDomainTimeZone(pool) {
   const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'time_zone'");
   if (columns.length) return;

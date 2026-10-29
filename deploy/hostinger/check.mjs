@@ -58,6 +58,10 @@ for (const domain of domainList.data) {
   assert.equal(audience.total, data.subscribers.total, 'Country counts must cover only this domain audience');
   assert.equal(audience.located + audience.unknown, audience.total);
   console.log('Audience countries: OK; located:', audience.located, 'unknown:', audience.unknown);
+  assert.equal(audience.state_located + audience.state_unknown, audience.total);
+  assert.equal(audience.city_located + audience.city_unknown, audience.total);
+  assert.ok(Array.isArray(audience.states) && Array.isArray(audience.cities));
+  console.log('Audience state/city: OK; states located:', audience.state_located, 'cities located:', audience.city_located);
   const analyticsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/analytics';
   assert.equal((await fetch(base + analyticsRoute)).status, 401, 'Subscriber analytics must require login');
   const analyticsResponse = await fetch(base + analyticsRoute, { headers: { Authorization: `Bearer ${session.token}` } });
@@ -99,6 +103,7 @@ if (domainList.data.length && process.env.PUBLIC_API_BASE === 'https://push.mice
     if (response.ok) {
       const { data } = await response.json();
       console.log('Cloudflare country capture on public API:', data.capture_available ? 'available' : 'not available on probe');
+      console.log('Cloudflare state/city capture on public API:', 'state:', Boolean(data.capture?.state), 'city:', Boolean(data.capture?.city));
     } else console.log('Cloudflare country capture: public probe unavailable');
   } catch { console.log('Cloudflare country capture: public probe unavailable'); }
 }

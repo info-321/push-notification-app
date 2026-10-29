@@ -2,6 +2,7 @@ import React, { useEffect, useId, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import WebsiteHeader from './WebsiteHeader';
 import AudienceMap from './AudienceMap';
+import AudienceGeography from './AudienceGeography';
 import './dashboard.css';
 import './analytics.css';
 
@@ -131,16 +132,7 @@ export default function Analytics({ domainKey, onAllSites, onManageDomains, onSe
       {loading && <p className="analytics-note" role="status">Loading website analytics...</p>}
       {Object.entries(errors).map(([key, message]) => <p key={key} className="analytics-error" role="alert">{message} <button onClick={() => setRefresh(value => value + 1)}>Try again</button></p>)}
       {counts && <section className="overview-metrics" aria-label="Subscriber statistics">{[['Total Subscribers', counts.total], ['Web Subscribers', counts.web], ['Mobile Subscribers', counts.mobile], ['App Subscribers', counts.app]].map(([label, value]) => <article className="overview-panel overview-metric" key={label}><strong aria-label={`${label}: ${value === null ? 'Not available' : value}`}>{value === null ? '—' : number(value)}</strong><h2>{label}</h2>{value === null && <p>Not recorded</p>}</article>)}</section>}
-      <section className="analytics-geography" aria-labelledby="analytics-geo-heading"><h2 id="analytics-geo-heading">Audience Geo Location</h2>
-        <div className="overview-panel analytics-country-panel"><div className="analytics-geo-tabs" aria-label="Geography level"><span aria-current="true">Country</span><button disabled title="State locations are not recorded">State</button><button disabled title="City locations are not recorded">City</button></div>
-          <div className="analytics-table-scroll"><table><caption className="overview-sr-only">Audience by country</caption><thead><tr><th scope="col">S. No.</th><th scope="col">Country Name</th><th scope="col">Number Of Subscribers</th></tr></thead><tbody>
-            {audience?.countries.map((country, index) => <tr key={country.code}><td>{index + 1}</td><td>{country.name}</td><td>{number(country.subscribers)}</td></tr>)}
-            {audience?.unknown > 0 && <tr><td>—</td><td>Location unknown</td><td>{number(audience.unknown)}</td></tr>}
-            {audience?.total === 0 && <tr><td colSpan="3">No subscribers yet.</td></tr>}
-          </tbody></table></div>
-          <p className="analytics-note">Country locations are approximate. State and city locations are not recorded.</p>
-        </div>
-      </section>
+      <AudienceGeography key={domainKey} audience={audience} loading={loading} />
       {audience && <div className="analytics-map"><AudienceMap domainKey={domainKey} data={audience} showHeading={false} /></div>}
       <PeriodReport key={`${domainKey}-subscribers`} domainKey={domainKey} refresh={refresh} />
       <PeriodReport key={`${domainKey}-browser`} domainKey={domainKey} refresh={refresh} browser />
