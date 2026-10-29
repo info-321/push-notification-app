@@ -4,6 +4,7 @@ import WebsiteHeader from './WebsiteHeader';
 import AudienceMap from './AudienceMap';
 import AudienceGeography from './AudienceGeography';
 import SubscriberChart from './SubscriberChart';
+import BrowserChart from './BrowserChart';
 import './dashboard.css';
 import './analytics.css';
 
@@ -74,7 +75,7 @@ function PeriodReport({ domainKey, refresh, browser = false }) {
         {report.device_unknown > 0 && <p className="analytics-note analytics-device-note" role="note">Device type is unknown for {number(report.device_unknown)} {report.device_unknown === 1 ? 'subscription' : 'subscriptions'} in this period. Desktop and mobile counts include recorded devices only. Visit the website from those subscribed browsers, then refresh data.</p>}
         <p className="analytics-note">{report.basis}</p>
       </>}
-      {report && browser && <div className="analytics-browser-empty"><p>Browser history has not been recorded.</p><p>No browser breakdown is available for this period.</p></div>}
+      {report && browser && <BrowserChart key={`${range.start}-${range.end}`} browser={report.browser} total={report.added} />}
     </div>
   </section>;
 }

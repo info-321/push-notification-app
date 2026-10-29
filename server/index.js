@@ -3,7 +3,7 @@ import mysql from 'mysql2/promise';
 import webpush from 'web-push';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
-import { ensureDomainDisplayName, ensureDomainTimeZone, ensureDomainPwa, ensureSubscriptionCountry, ensureSubscriptionLocations, ensureSubscriptionDevice } from './domain-schema.js';
+import { ensureDomainDisplayName, ensureDomainTimeZone, ensureDomainPwa, ensureSubscriptionCountry, ensureSubscriptionLocations, ensureSubscriptionDevice, ensureSubscriptionBrowser } from './domain-schema.js';
 import { mysqlAccountRepository } from './accounts.js';
 
 dotenv.config({ path: fileURLToPath(new URL('.env', import.meta.url)) });
@@ -30,6 +30,7 @@ await ensureDomainPwa(pool);
 await ensureSubscriptionCountry(pool);
 await ensureSubscriptionLocations(pool);
 await ensureSubscriptionDevice(pool);
+await ensureSubscriptionBrowser(pool);
 const accountRepository = mysqlAccountRepository(pool);
 await accountRepository.initialize(process.env.ADMIN_USERNAME || 'admin', process.env.ADMIN_PASSWORD || 'admin');
 const app = createApp({

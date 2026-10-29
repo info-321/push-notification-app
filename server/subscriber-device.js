@@ -8,6 +8,25 @@ export function requestDevice(req) {
   return null;
 }
 
+export const browserFamilies = ['Chrome', 'Firefox', 'Edge', 'Safari', 'Opera', 'Samsung Internet', 'Brave', 'Other'];
+
+// Test derivative browsers before Chrome/Safari compatibility tokens. Only a
+// family is retained; versions and the original identifying headers are not.
+export function requestBrowser(req) {
+  const agent = req.get('User-Agent');
+  if (typeof agent !== 'string' || !agent || agent.length > 2048 || /bot|spider|crawler|curl|wget|undici|python-requests/i.test(agent)) return null;
+  const brands = req.get('Sec-CH-UA') || '';
+  if (/Edg(?:e|A|iOS)?\//i.test(agent) || /"Microsoft Edge"\s*;/i.test(brands)) return 'Edge';
+  if (/(?:OPR|OPiOS|Opera)\//i.test(agent) || /"Opera"\s*;/i.test(brands)) return 'Opera';
+  if (/SamsungBrowser\//i.test(agent)) return 'Samsung Internet';
+  if (/Brave\//i.test(agent) || /"Brave"\s*;/i.test(brands)) return 'Brave';
+  if (/(?:Vivaldi|YaBrowser|UCBrowser|DuckDuckGo)\//i.test(agent)) return 'Other';
+  if (/(?:Firefox|FxiOS)\//i.test(agent)) return 'Firefox';
+  if (/(?:Chrome|CriOS|Chromium)\//i.test(agent)) return 'Chrome';
+  if (/Version\//i.test(agent) && /Safari\//i.test(agent)) return 'Safari';
+  return null;
+}
+
 export const deviceCountSql = `SUM(CASE WHEN device_type = 'desktop' THEN 1 ELSE 0 END) AS desktop,
   SUM(CASE WHEN device_type = 'mobile' THEN 1 ELSE 0 END) AS mobile`;
 

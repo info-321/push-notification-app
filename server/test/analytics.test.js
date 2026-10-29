@@ -12,7 +12,7 @@ test('analytics date ranges handle leap days, UTC month defaults and bounded inc
   for (const query of [{ start: '2024-01-01', end: '2025-01-01' }, { start: '2025-02-29', end: '2025-03-01' }, { start: '2024-01-02', end: '2024-01-01' }, { start: '2024-01-01' }, { start: ['2024-01-01'], end: '2024-01-01' }, { start: '1960-01-01', end: '1960-01-01' }, { start: '2099-01-01', end: '2099-01-01' }, { start: 'bad', end: 'bad' }]) assert.equal(analyticsRange(query, now), null);
 });
 
-async function fixture(t, deviceTypes = []) {
+async function fixture(t, deviceTypes = [], browserNames = []) {
   const records = [
     { day: '2024-01-01', owner: 1, key: 'mice', complete: true },
     { day: '2024-01-02', owner: 1, key: 'mice', complete: true },
@@ -22,7 +22,7 @@ async function fixture(t, deviceTypes = []) {
     { day: '2024-01-01', owner: 1, key: 'second', complete: true },
     { day: '2024-01-01', owner: 1, key: 'mice', complete: false },
   ];
-  records.forEach((row, index) => { row.device_type = deviceTypes[index]; });
+  records.forEach((row, index) => { row.device_type = deviceTypes[index]; row.browser_family = browserNames[index]; });
   let reads = 0;
   const pool = { query: async (sql, params) => {
     if (sql.startsWith('SELECT user_id FROM domains')) return [[...(['mice', 'second'].includes(params[0]) && params[1] === 1 ? [{ user_id: 1 }] : [])]];
@@ -35,12 +35,13 @@ async function fixture(t, deviceTypes = []) {
     for (const row of records) {
       const timestamp = Date.parse(row.day + 'T00:00:00Z') / 1000;
       if (row.key === params[0] && row.owner === params[1] && row.complete && timestamp >= params[2] && timestamp < params[3]) {
-        const bucket = grouped.get(timestamp / 86400) || { subscribers: 0, desktop: 0, mobile: 0 };
+        const groupKey = JSON.stringify([timestamp / 86400, row.browser_family || null]);
+        const bucket = grouped.get(groupKey) || { day_number: timestamp / 86400, browser_family: row.browser_family || null, subscribers: 0, desktop: 0, mobile: 0 };
         bucket.subscribers++; if (['desktop', 'mobile'].includes(row.device_type)) bucket[row.device_type]++;
-        grouped.set(timestamp / 86400, bucket);
+        grouped.set(groupKey, bucket);
       }
     }
-    return [[...grouped].map(([day_number, counts]) => ({ day_number, ...Object.fromEntries(Object.entries(counts).map(([key, value]) => [key, String(value)])) }))];
+    return [[...grouped.values()].map(row => ({ ...row, subscribers: String(row.subscribers), desktop: String(row.desktop), mobile: String(row.mobile) }))];
   } };
   const app = createApp({ pool, webpush: {}, adminUsername: 'admin', adminPassword: 'analytics-test', secret: 'analytics-test-secret-long-enough-for-auth', publicApiBase: 'https://push.example.test', vapidSubject: 'mailto:test@example.test' });
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
@@ -94,4 +95,24 @@ test('an all-desktop audience reports real desktop counts and zero mobile instea
   const { data } = await f.request();
   assert.equal(data.desktop, 3); assert.equal(data.mobile, 0); assert.equal(data.device_unknown, 0);
   assert.equal(data.device_available, true); assert.equal(data.app, null); assert.equal(data.unsubscribed, null);
+});
+
+
+test('browser totals combine daily groups and retain unknowns within the selected owner, domain and date range', async t => {
+  const f = await fixture(t, ['desktop', 'desktop', 'mobile'], ['Chrome', 'Edge', null, 'Safari', 'Firefox', 'Opera', 'Brave']);
+  const { data } = await f.request();
+  assert.deepEqual(data.daily.map(day => day.added), [1, 2]);
+  assert.equal(data.desktop, 2); assert.equal(data.mobile, 1);
+  assert.deepEqual(data.browser, { available: true, total: 3, recorded: 2, unknown: 1, rows: [{ name: 'Chrome', subscribers: 1 }, { name: 'Edge', subscribers: 1 }] });
+  assert.equal(data.browser.rows.reduce((sum, row) => sum + row.subscribers, 0) + data.browser.unknown, data.added);
+  assert.equal((await f.request('second')).data.browser.rows[0].name, 'Opera');
+});
+
+test('unsupported browser values stay unknown and empty periods do not invent a browser distribution', async t => {
+  const f = await fixture(t, [], ['private-UA-data', null, 'unsupported']);
+  const { data } = await f.request();
+  assert.deepEqual(data.browser, { available: false, total: 3, recorded: 0, unknown: 3, rows: [] });
+  assert.equal(JSON.stringify(data).includes('private-UA-data'), false);
+  const empty = await f.request('mice', 'start=2024-02-01&end=2024-02-02');
+  assert.deepEqual(empty.data.browser, { available: true, total: 0, recorded: 0, unknown: 0, rows: [] });
 });

@@ -41,6 +41,13 @@ export async function ensureSubscriptionDevice(pool) {
   catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
 }
 
+export async function ensureSubscriptionBrowser(pool) {
+  const [columns] = await pool.query("SHOW COLUMNS FROM subscriptions LIKE 'browser_family'");
+  if (columns.length) return;
+  try { await pool.query('ALTER TABLE subscriptions ADD COLUMN browser_family VARCHAR(32) NULL'); }
+  catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+}
+
 export async function ensureDomainTimeZone(pool) {
   const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'time_zone'");
   if (columns.length) return;

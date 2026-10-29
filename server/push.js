@@ -5,7 +5,7 @@ import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { createAdminToken } from './accounts.js';
 import { requestLocation, mergeLocation } from './audience.js';
-import { requestDevice } from './subscriber-device.js';
+import { requestDevice, requestBrowser } from './subscriber-device.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -89,12 +89,13 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       }
       const location = mergeLocation(existing[0], requestLocation(req));
       const device = requestDevice(req);
+      const browser = requestBrowser(req);
       if (existing.length) {
-        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, existing[0].id, domainKey]);
+        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, existing[0].id, domainKey]);
       } else {
         await pool.query(
-          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
-          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device],
+          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, browser_family, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser],
         );
       }
       return res.json({ ok: true });

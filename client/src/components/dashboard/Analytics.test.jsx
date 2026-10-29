@@ -31,7 +31,7 @@ test('Analytics shows real totals, countries and map while unavailable metadata 
   expect(screen.getByRole('img', { name: 'India: 5 located subscriptions' })).toHaveAttribute('fill', '#168b8e');
   expect(screen.getByRole('tab', { name: 'State', exact: true })).toBeEnabled();
   expect(screen.getByRole('tab', { name: 'City', exact: true })).toBeEnabled();
-  expect(await screen.findByText('Browser history has not been recorded.')).toBeInTheDocument();
+  expect(await screen.findByRole('img', { name: 'Subscriber browser distribution' })).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /View All/ })).not.toBeInTheDocument();
   // The large map reuses the country result, rather than loading it twice.
   expect(apiFetch.mock.calls.filter(([url]) => url.endsWith('/audience'))).toHaveLength(1);
@@ -80,6 +80,26 @@ test('recorded desktop counts replace null and remaining unknown subscriptions a
   expect(within(summary).getByRole('row', { name: 'Mobile 0', exact: true })).toBeInTheDocument();
   expect(within(subscribers).getByRole('note')).toHaveTextContent('Device type is unknown for 1 subscription');
   expect(within(subscribers).getByRole('button', { name: 'Desktop Subs', exact: true })).toBeEnabled();
+});
+
+test('browser chart uses saved counts and its own date filters without changing the Subscribers period', async () => {
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation(async url => {
+    const result = await original(url);
+    if (!url.includes('/analytics?')) return result;
+    const body = await result.json();
+    return response({ ...body.data, browser: { available: true, rows: [{ name: 'Edge', subscribers: 1 }], total: 2, unknown: 1, recorded: 1 } });
+  });
+  render(<Analytics domainKey="mice" />);
+  const browser = screen.getByRole('region', { name: 'Audience Browser Analytic', exact: true });
+  expect(await within(browser).findByRole('row', { name: 'Edge 1 50.0%' })).toBeInTheDocument();
+  expect(within(browser).getByRole('row', { name: 'Unknown 1 50.0%' })).toBeInTheDocument();
+  fireEvent.click(within(browser).getByRole('button', { name: 'Today', exact: true }));
+  const today = new Date().toISOString().slice(0, 10);
+  await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(`https://api.example.test/api/domains/mice/analytics?start=${today}&end=${today}`));
+  const subscribers = screen.getByRole('region', { name: 'Subscribers', exact: true });
+  expect(within(subscribers).getByRole('button', { name: 'This Month', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(apiFetch.mock.calls.every(([, options]) => !options?.method)).toBe(true);
 });
 
 test('country errors can retry without displaying invented zero totals and navigation keeps the website', async () => {

@@ -75,7 +75,11 @@ for (const domain of domainList.data) {
   assert.equal(analytics.unsubscribed, null);
   assert.equal((analytics.desktop || 0) + (analytics.mobile || 0) + analytics.device_unknown, analytics.added);
   for (const day of analytics.daily) assert.equal(day.desktop + day.mobile + day.device_unknown, day.added);
+  assert.equal(analytics.browser.total, analytics.added);
+  assert.equal(analytics.browser.rows.reduce((sum, row) => sum + row.subscribers, 0) + analytics.browser.unknown, analytics.added);
+  assert.equal(analytics.browser.recorded + analytics.browser.unknown, analytics.added);
   console.log('Subscriber analytics: OK; saved additions in period:', analytics.added);
+  console.log('Browser analytics: OK; recorded:', analytics.browser.recorded, 'unknown:', analytics.browser.unknown);
   const settingsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/settings';
   assert.equal((await fetch(base + settingsRoute)).status, 401, 'Settings must require login');
   const settingsResponse = await fetch(base + settingsRoute, { headers: { Authorization: `Bearer ${session.token}` } });
