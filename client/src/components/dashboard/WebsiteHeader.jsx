@@ -16,7 +16,6 @@ export default function WebsiteHeader({ domains = [], domainKey, domainName, ana
       <button className={analytics ? '' : 'overview-nav-active'} aria-current={analytics ? undefined : 'page'} onClick={onDashboard}><Icon name="home" />Dashboard</button>
       <button onClick={() => onSendPush(domainKey, domainName || '')}><Icon name="send" />Push Notification</button>
       <a href={analytics ? `/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports` : '#overview-reports'}><Icon name="report" />Reports</a>
-      <button disabled title="Newsroll is not available yet">Newsroll <span>Coming soon</span></button><button disabled title="Newsbox is not available yet">Newsbox <span>Coming soon</span></button>
       <button onClick={() => onConfiguration(domainKey, domainName || '')}><Icon name="settings" />Configuration</button>
     </nav>
   </div></header>;
