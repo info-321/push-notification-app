@@ -1,7 +1,7 @@
 import React from 'react';
 import Icon from './DashboardIcon';
 
-export default function WebsiteHeader({ domains = [], domainKey, domainName, analytics = false, onAllSites, onManageDomains, onSettings, onSelectDomain, onConfiguration = () => {}, onSendPush = () => {}, onDashboard, onLogout }) {
+export default function WebsiteHeader({ domains = [], domainKey, domainName, analytics = false, activePage = analytics ? 'analytics' : 'dashboard', onAllSites, onManageDomains, onSettings, onSelectDomain, onConfiguration = () => {}, onDashboard, onLogout }) {
   return <header className="overview-hero"><div className="overview-header-inner">
     <div className="overview-topbar">
       <div className="overview-brand"><button className="overview-logo" onClick={onAllSites} aria-label="Back to all websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
@@ -13,9 +13,9 @@ export default function WebsiteHeader({ domains = [], domainKey, domainName, ana
       <div className="overview-account"><button onClick={onAllSites}>All websites</button><button onClick={onManageDomains}>Manage domains</button><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>
     </div>
     <nav className="overview-navigation" aria-label="Website navigation">
-      <button className={analytics ? '' : 'overview-nav-active'} aria-current={analytics ? undefined : 'page'} onClick={onDashboard}><Icon name="home" />Dashboard</button>
-      <button onClick={() => onSendPush(domainKey, domainName || '')}><Icon name="send" />Push Notification</button>
-      <a href={analytics ? `/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports` : '#overview-reports'}><Icon name="report" />Reports</a>
+      <button className={activePage === 'dashboard' ? 'overview-nav-active' : ''} aria-current={activePage === 'dashboard' ? 'page' : undefined} onClick={onDashboard}><Icon name="home" />Dashboard</button>
+      <a className={activePage === 'push' ? 'overview-nav-active' : ''} aria-current={activePage === 'push' ? 'page' : undefined} href={`/push?domain=${encodeURIComponent(domainKey)}`} target="_blank" rel="noopener noreferrer" title="Open Push Notification in a new tab"><Icon name="send" />Push Notification</a>
+      <a href={activePage !== 'dashboard' ? `/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports` : '#overview-reports'}><Icon name="report" />Reports</a>
       <button onClick={() => onConfiguration(domainKey, domainName || '')}><Icon name="settings" />Configuration</button>
     </nav>
   </div></header>;

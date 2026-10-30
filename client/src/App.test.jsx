@@ -36,8 +36,10 @@ test('domain card opens the overview, Send Push targets the composer, and Config
   expect(await screen.findByLabelText('Total Subscribers: 7')).toBeTruthy();
   expect(window.location.pathname + window.location.search).toBe('/dashboard?domain=mice-key');
   fireEvent.click(screen.getByRole('button', { name: /Send Push/ }));
+  expect(await screen.findByRole('heading', { name: 'Send Push for micetraveladvisor.com' })).toBeTruthy();
+  expect(window.location.pathname + window.location.search).toBe('/push?domain=mice-key');
+  fireEvent.click(screen.getByRole('button', { name: 'Configuration', exact: true }));
   expect(await screen.findByText('Configuration screen')).toBeTruthy();
-  expect(window.location.pathname + window.location.search + window.location.hash).toBe('/settings/config?domain=mice-key#send-push');
   fireEvent.click(screen.getByRole('button', { name: 'Return to dashboard' }));
   expect(await screen.findByLabelText('Total Subscribers: 7')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'All websites', exact: true }));
@@ -146,4 +148,19 @@ test('Analytics direct URLs restore the selected website despite stale view and 
   window.history.replaceState({}, '', '/analytics?domain=mice-key');
   fireEvent(window, new PopStateEvent('popstate'));
   expect(await screen.findByRole('heading', { name: 'MICE Travel Advisor Analytics' })).toBeTruthy();
+});
+
+test('Push Notification opens a dedicated new-tab URL and the composer restores its route on direct navigation', async () => {
+  window.history.replaceState({}, '', '/dashboard?domain=mice-key');
+  render(<App />);
+  await screen.findByLabelText('Total Subscribers: 7');
+  const menu = screen.getByRole('link', { name: 'Push Notification', exact: true });
+  expect(menu.getAttribute('href')).toBe('/push?domain=mice-key');
+  expect(menu.getAttribute('target')).toBe('_blank');
+  expect(menu.getAttribute('rel')).toBe('noopener noreferrer');
+  window.history.replaceState({}, '', '/push?domain=mice-key');
+  fireEvent(window, new PopStateEvent('popstate'));
+  expect(await screen.findByRole('button', { name: 'Create New Push' })).toBeTruthy();
+  expect(window.location.pathname + window.location.search).toBe('/push?domain=mice-key');
+  expect(apiFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
 });

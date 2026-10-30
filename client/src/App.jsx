@@ -7,6 +7,7 @@ import Settings from './components/domain-settings/Settings';
 import SiteSelect from './components/site-select-list/SiteSelect';
 import Dashboard from './components/dashboard/Dashboard';
 import Analytics from './components/dashboard/Analytics';
+import PushComposer from './components/dashboard/PushComposer';
 import DomainList from './components/domain-settings/DomainList';
 import Account from './components/domain-settings/Account';
 import PwaSettings from './components/domain-settings/PwaSettings';
@@ -17,7 +18,7 @@ const App = () => {
   const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
   const params = new URLSearchParams(window.location.search);
   const routeKey = params.get('domain') || '';
-  const routeView = window.location.pathname === '/analytics' ? 'analytics'
+  const routeView = window.location.pathname === '/push' ? 'push' : window.location.pathname === '/analytics' ? 'analytics'
     : window.location.pathname === '/settings/pwa' ? 'pwa'
     : window.location.pathname === '/settings/account' ? 'account'
     : ['/settings', '/settings/general'].includes(window.location.pathname) ? 'settings'
@@ -53,10 +54,10 @@ const App = () => {
   const syncViewFromUrl = useCallback(() => {
     if (!isAuthenticated) return;
     const path = window.location.pathname;
-    if (path === '/analytics') {
+    if (path === '/push' || path === '/analytics') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
-      setView('analytics');
+      setView(path === '/push' ? 'push' : 'analytics');
     } else if (path === '/dashboard') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
@@ -112,10 +113,10 @@ const App = () => {
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
-    } else if (view === 'analytics' || view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
+    } else if (view === 'push' || view === 'analytics' || view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
       document.body.classList.add('domain-bg');
-      if (view === 'analytics') {
-        const url = `/analytics${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
+      if (view === 'push' || view === 'analytics') {
+        const url = `/${view === 'push' ? 'push' : 'analytics'}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
         if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
       }
       if (view === 'sites' || view === 'overview') {
@@ -194,6 +195,8 @@ const App = () => {
     setView('overview');
   };
 
+  const openComposer = (key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name || ''); setView('push'); };
+
   const openConfiguration = (key, name, send = false) => {
     setSelectedDomainKey(key);
     setSelectedDomainName(name || '');
@@ -270,6 +273,12 @@ const App = () => {
     />;
   }
 
+  if (view === 'push' && selectedDomainKey) {
+    return <PushComposer key={selectedDomainKey} domainKey={selectedDomainKey}
+      onAllSites={() => setView('sites')} onManageDomains={() => setView('domains')} onSettings={() => setView('settings')}
+      onSelectDomain={openComposer} onDashboard={openOverview} onConfiguration={openConfiguration} onLogout={handleLogout} />;
+  }
+
   if (view === 'analytics' && selectedDomainKey) {
     return <Analytics
       key={selectedDomainKey}
@@ -280,11 +289,11 @@ const App = () => {
       onSelectDomain={(key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name); }}
       onDashboard={openOverview}
       onConfiguration={openConfiguration}
-      onSendPush={(key, name) => openConfiguration(key, name, true)}
+      onSendPush={openComposer}
       onLogout={handleLogout}
     />;
   }
-  if (view === 'analytics' && !selectedDomainKey) {
+  if ((view === 'analytics' || view === 'push') && !selectedDomainKey) {
     return <SiteSelect onAccount={() => setView('account')} onAddDomain={() => { setDomainTab('domain'); setView('domain'); }} onSettings={() => setView('settings')} onManageDomains={() => setView('domains')} onLogout={handleLogout} onSelectDomain={openOverview} />;
   }
 
@@ -296,7 +305,7 @@ const App = () => {
       onSettings={() => setView('settings')}
       onSelectDomain={openOverview}
       onConfiguration={openConfiguration}
-      onSendPush={(key, name) => openConfiguration(key, name, true)}
+      onSendPush={openComposer}
       onLogout={handleLogout}
     />;
   }

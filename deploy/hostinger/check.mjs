@@ -52,6 +52,18 @@ for (const domain of domainList.data) {
   assert.equal((data.subscribers.desktop || 0) + (data.subscribers.mobile || 0) + data.subscribers.device_unknown, data.subscribers.total);
   console.log('Domain overview: OK; saved browser subscriptions:', data.subscribers.total);
   console.log('Subscriber devices: OK; desktop:', data.subscribers.desktop, 'mobile:', data.subscribers.mobile, 'unknown:', data.subscribers.device_unknown);
+  const sendAudienceRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/send-audience';
+  assert.equal((await fetch(base + sendAudienceRoute)).status, 401);
+  const countResponse = await fetch(base + sendAudienceRoute + '?platform=all&subscribed=all', { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(countResponse.status, 200);
+  const sendAudience = (await countResponse.json()).data;
+  assert.equal(sendAudience.matching, data.subscribers.total);
+  assert.equal(sendAudience.total, data.subscribers.total);
+  const filteredResponse = await fetch(base + sendAudienceRoute + '?platform=desktop&subscribed=7d', { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(filteredResponse.status, 200);
+  const filteredAudience = (await filteredResponse.json()).data;
+  assert.ok(filteredAudience.matching >= 0 && filteredAudience.matching <= sendAudience.matching);
+  console.log('Push composer audience: OK; matching subscriptions:', sendAudience.matching);
   const audienceRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/audience';
   assert.equal((await fetch(base + audienceRoute)).status, 401, 'Audience locations must require login');
   const audienceResponse = await fetch(base + audienceRoute, { headers: { Authorization: `Bearer ${session.token}` } });

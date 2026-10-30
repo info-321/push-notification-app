@@ -23,13 +23,22 @@ async function fixture(t, { subscriptions = [], sendError, publicApiBase = 'http
       return [[{ ...publicDomain, is_configured: isConfigured ? 1 : 0 }]];
     }
     if (sql.startsWith('SELECT') && sql.includes('FROM subscriptions')) {
+      const scope = () => {
+        let rows = stored.filter(row => row.domain_key === params[0]);
+        if (sql.includes('AND user_id = ?')) rows = rows.filter(row => row.user_id === params[1]);
+        if (sql.includes("COALESCE(p256dh, '') <> ''")) rows = rows.filter(row => row.p256dh && row.auth);
+        let index = 2;
+        if (sql.includes('FROM_UNIXTIME')) { rows = rows.filter(row => Date.parse(row.created_at) / 1000 >= params[2] && Date.parse(row.created_at) / 1000 < params[3]); index = 4; }
+        if (sql.includes('AND device_type = ?')) rows = rows.filter(row => row.device_type === params[index]);
+        return rows;
+      };
       if (sql.includes('COUNT(*) AS subscribers')) {
         assert.match(sql, /domain_key = \? AND user_id = \?/);
         assert.match(sql, /COALESCE\(p256dh, ''\) <> '' AND COALESCE\(auth, ''\) <> ''/);
-        const scoped = stored.filter(s => s.domain_key === params[0] && s.user_id === params[1] && s.p256dh && s.auth);
+        const scoped = scope();
         return [[{ subscribers: scoped.length, desktop: scoped.filter(s => s.device_type === 'desktop').length, mobile: scoped.filter(s => s.device_type === 'mobile').length }]];
       }
-      return [sql.includes('WHERE endpoint') ? stored.filter(s => s.endpoint === params[0]) : stored.filter(s => s.domain_key === params[0])];
+      return [sql.includes('WHERE endpoint') ? stored.filter(s => s.endpoint === params[0]) : scope()];
     }
     if (sql.startsWith('DELETE FROM subscriptions')) {
       deletes.push(params);
@@ -209,7 +218,7 @@ test('sending uses stored browser keys and per-domain VAPID credentials', async 
   assert.equal(result.status, 200);
   assert.equal(result.result.sent, 1);
   assert.equal(f.calls[0][0].keys.auth, browserKeys.auth);
-  assert.equal(JSON.parse(f.calls[0][1]).url, 'https://website.test/article');
+  assert.equal(JSON.parse(f.calls[0][1]).url, '/article');
   assert.deepEqual(f.calls[0][2].vapidDetails, { subject: 'mailto:owner@website.test', publicKey: 'public-key', privateKey: 'private-key' });
 });
 
@@ -286,4 +295,77 @@ test('browser revisits capture device type without replacing subscriptions and p
   assert.equal(f.inserts.length, 1);
   await save('Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36 Edg/140.0');
   assert.equal(f.updates[f.updates.length - 1][7], 'Edge');
+});
+
+test('send audience counts require login, exclude other owners and incomplete records, and retain unknown devices', async t => {
+  const f = await fixture(t, { subscriptions: [
+    { id: 1, endpoint, ...browserKeys, device_type: 'desktop' },
+    { id: 2, endpoint: endpoint + '2', ...browserKeys, device_type: 'mobile' },
+    { id: 3, endpoint: endpoint + '3', ...browserKeys },
+    { id: 4, endpoint: endpoint + '4', ...browserKeys, user_id: 2, device_type: 'desktop' },
+    { id: 5, endpoint: endpoint + '5', p256dh: '', auth: browserKeys.auth },
+  ] });
+  const route = `/api/domains/${key}/send-audience`;
+  assert.equal((await f.request(route)).status, 401);
+  const { result } = await f.request(route + '?platform=desktop&subscribed=all', undefined, f.auth);
+  assert.equal(result.data.total, 3); assert.equal(result.data.matching, 1); assert.equal(result.data.device_unknown, 1);
+  assert.equal(JSON.stringify(result).includes(endpoint), false);
+  assert.equal((await f.request('/api/domains/other/send-audience', undefined, f.auth)).status, 404);
+  assert.equal((await f.request(route + '?platform=app', undefined, f.auth)).status, 400);
+  assert.equal(f.calls.length, 0);
+});
+
+test('platform filters target only matching complete subscriptions and removal stays within the chosen audience', async t => {
+  const f = await fixture(t, { sendError: { statusCode: 410 }, subscriptions: [
+    { id: 1, endpoint, ...browserKeys, device_type: 'desktop' },
+    { id: 2, endpoint: endpoint + '2', ...browserKeys, device_type: 'mobile' },
+    { id: 3, endpoint: endpoint + '3', ...browserKeys },
+    { id: 4, endpoint: endpoint + '4', ...browserKeys, user_id: 2, device_type: 'desktop' },
+  ] });
+  const { result } = await f.request('/api/notifications', { domain_key: key, title: 'Hello', audience: { platform: 'desktop', subscribed: 'all' } }, f.auth);
+  assert.equal(result.total, 1); assert.equal(result.removed, 1);
+  assert.equal(f.calls.length, 1); assert.equal(f.calls[0][0].endpoint, endpoint);
+  assert.deepEqual(f.deletes, [[1, key]]);
+});
+
+test('date filters use the same matching set for preview and send', async t => {
+  const now = Date.now();
+  const f = await fixture(t, { subscriptions: [
+    { id: 1, endpoint, ...browserKeys, created_at: new Date(now - 86400000).toISOString() },
+    { id: 2, endpoint: endpoint + '2', ...browserKeys, created_at: new Date(now - 8 * 86400000).toISOString() },
+    { id: 3, endpoint: endpoint + '3', ...browserKeys, created_at: new Date(now + 86400000).toISOString() },
+  ] });
+  const preview = await f.request(`/api/domains/${key}/send-audience?platform=all&subscribed=7d`, undefined, f.auth);
+  assert.equal(preview.result.data.matching, 1);
+  const { result } = await f.request('/api/notifications', { domain_key: key, title: 'Hello', audience: { subscribed: '7d' } }, f.auth);
+  assert.equal(result.total, 1); assert.equal(f.calls.length, 1);
+});
+
+test('unsupported audience settings never send and an empty filtered audience does not fall back to all', async t => {
+  const f = await fixture(t, { subscriptions: [{ id: 1, endpoint, ...browserKeys }] });
+  assert.equal((await f.request('/api/notifications', { domain_key: key, title: 'Hello', audience: { platform: 'app' } }, f.auth)).status, 400);
+  const { result } = await f.request('/api/notifications', { domain_key: key, title: 'Hello', audience: { platform: 'desktop' } }, f.auth);
+  assert.equal(result.total, 0); assert.match(result.message, /No subscribers match/);
+  assert.equal(f.calls.length, 0);
+});
+
+test('validated article paths preserve queries and fragments for installed apex and www workers', async t => {
+  const f = await fixture(t, { subscriptions: [{ id: 1, endpoint, ...browserKeys }] });
+  const result = await f.request('/api/notifications', { domain_key: key, title: 'Article', url: 'https://www.website.test/article?source=push#details' }, f.auth);
+  assert.equal(result.status, 200);
+  const path = JSON.parse(f.calls[0][1]).url;
+  assert.equal(path, '/article?source=push#details');
+  for (const origin of ['https://website.test', 'https://www.website.test']) assert.equal(new URL(path, origin).href, origin + '/article?source=push#details');
+});
+
+test('the composer send URL requires an explicit audience and applies its filters before sending', async t => {
+  const f = await fixture(t, { subscriptions: [
+    { id: 1, endpoint, ...browserKeys, device_type: 'desktop' },
+    { id: 2, endpoint: endpoint + '2', ...browserKeys, device_type: 'mobile' },
+  ] });
+  const payload = { domain_key: key, title: 'Composer message' };
+  assert.equal((await f.request('/api/notifications/compose', payload, f.auth)).status, 400);
+  assert.equal(f.calls.length, 0);
+  const result = await f.request('/api/notifications/compose', { ...payload, audience: { platform: 'desktop', subscribed: 'all' } }, f.auth);
+  assert.equal(result.status, 200); assert.equal(result.result.total, 1); assert.equal(f.calls.length, 1);
 });

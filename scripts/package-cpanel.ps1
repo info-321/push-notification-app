@@ -33,6 +33,7 @@ $files = [ordered]@{
     'server/audience.js' = 'server/audience.js'
     'server/analytics.js' = 'server/analytics.js'
     'server/subscriber-device.js' = 'server/subscriber-device.js'
+    'server/push-audience.js' = 'server/push-audience.js'
     'server/package.json' = 'server/package.json'
     'server/.env.example' = 'server/.env.example'
     'server/db/schema.sql' = 'server/db/schema.sql'

@@ -5,7 +5,8 @@ import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { createAdminToken } from './accounts.js';
 import { requestLocation, mergeLocation } from './audience.js';
-import { requestDevice, requestBrowser } from './subscriber-device.js';
+import { requestDevice, requestBrowser, deviceCountSql, summarizeDevices } from './subscriber-device.js';
+import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -106,7 +107,26 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
     }
   });
 
-  app.post('/api/notifications', async (req, res) => {
+  app.get('/api/domains/:key/send-audience', requireAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const audience = parsePushAudience(req.query);
+    if (!audience) return res.status(400).json({ ok: false, message: 'Choose a supported platform and subscription period.' });
+    try {
+      const [domains] = await pool.query('SELECT domain_key FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [req.params.key]);
+      if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
+      const where = pushAudienceWhere(req.params.key, audience, false);
+      const [[counts]] = await pool.query(`SELECT COUNT(*) AS subscribers, ${deviceCountSql} FROM subscriptions WHERE ${where.sql}`, where.params);
+      const devices = summarizeDevices(counts);
+      return res.json({ ok: true, data: { domain_key: req.params.key, platform: audience.platform, subscribed: audience.subscribed,
+        matching: audience.platform === 'all' ? Number(counts.subscribers) : Number(counts[audience.platform] || 0),
+        total: Number(counts.subscribers), device_unknown: devices.device_unknown, time_zone: 'UTC' } });
+    } catch (error) {
+      console.error('Send audience lookup failed:', error.code);
+      return res.status(500).json({ ok: false, message: 'Could not load the selected audience.' });
+    }
+  });
+
+  app.post(['/api/notifications', '/api/notifications/compose'], async (req, res) => {
     const { domain_key: domainKey, title, body = '', url, icon = '' } = req.body || {};
     let authorized = typeof domainKey === 'string' && equal(req.get('X-Api-Key'), senderKey(domainKey));
     if (!authorized) {
@@ -119,6 +139,13 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
     if (typeof title !== 'string' || !title.trim() || title.length > 150 || typeof body !== 'string' || body.length > 1000 || typeof icon !== 'string') {
       return res.status(400).json({ ok: false, message: 'Provide a title (up to 150 characters) and body (up to 1000 characters).' });
     }
+    // A separate composer URL fails closed against older API deployments that
+    // would ignore audience filters on the legacy notification endpoint.
+    if (req.path.endsWith('/compose') && (!Object.hasOwn(req.body?.audience || {}, 'platform') || !Object.hasOwn(req.body?.audience || {}, 'subscribed'))) {
+      return res.status(400).json({ ok: false, message: 'Choose the audience platform and subscription period.' });
+    }
+    const audience = parsePushAudience(req.body?.audience);
+    if (!audience) return res.status(400).json({ ok: false, message: 'Choose a supported platform and subscription period.' });
     try {
       const [domains] = await pool.query('SELECT domain_name, vapid_public_key, vapid_private_key FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [domainKey]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
@@ -132,9 +159,12 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
         try { if (new URL(icon).protocol !== 'https:') throw new Error(); }
         catch { return res.status(400).json({ ok: false, message: 'The icon must be an HTTPS URL.' }); }
       }
-      const [subscriptions] = await pool.query('SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE domain_key = ?', [domainKey]);
+      const where = pushAudienceWhere(domainKey, audience);
+      const [subscriptions] = await pool.query(`SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE ${where.sql}`, where.params);
       const counts = { sent: 0, failed: 0, removed: 0, total: subscriptions.length };
-      const payload = JSON.stringify({ title: title.trim(), body, url: target.href, icon });
+      // Installed workers only open same-origin URLs. A validated path keeps
+      // article links working for subscriptions on either apex or www origins.
+      const payload = JSON.stringify({ title: title.trim(), body, url: target.pathname + target.search + target.hash, icon });
       // Bound concurrency so a publishing request does not open one connection per subscriber.
       for (let offset = 0; offset < subscriptions.length; offset += 10) {
         await Promise.all(subscriptions.slice(offset, offset + 10).map(async (subscription) => {
@@ -153,7 +183,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
           }
         }));
       }
-      const message = counts.total === 0 ? 'No subscribers yet. Enable notifications on your website first.' :
+      const message = counts.total === 0 ? (audience.platform !== 'all' || audience.subscribed !== 'all' ? 'No subscribers match the selected audience.' : 'No subscribers yet. Enable notifications on your website first.') :
         `Accepted by push services: ${counts.sent}. Failed: ${counts.failed}. Expired subscriptions removed: ${counts.removed}.`;
       return res.status(counts.failed && !counts.sent ? 502 : 200).json({ ok: !(counts.failed && !counts.sent), ...counts, message });
     } catch (error) {
