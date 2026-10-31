@@ -87,3 +87,30 @@ test('worker accepts text payloads and does not open off-site notification links
   await pending;
   assert.equal(opened[0], 'https://website.test/');
 });
+
+test('workers display rich content, open the chosen action safely, and fall back when rich options are rejected', async () => {
+  for (const source of [worker, readFileSync(new URL('../../wordpress/push-notifications-plugin/push-sw.js', import.meta.url), 'utf8')]) {
+    const handlers = {}, shown = [], opened = [];
+    let rejectRich = false, pending;
+    const self = {
+      location: { origin: 'https://www.website.test' }, addEventListener(name, handler) { handlers[name] = handler; },
+      registration: { showNotification(title, options) { shown.push({ title, options: JSON.parse(JSON.stringify(options)) }); return rejectRich && options.image ? Promise.reject(new Error('Unsupported')) : Promise.resolve(); } },
+      clients: { async matchAll() { return []; }, async openWindow(url) { opened.push(url); } },
+    };
+    vm.runInNewContext(source, { self, URL, Date });
+    const data = { title: 'News', body: 'Story', url: '/article?q=1#story', image: 'https://cdn.test/banner.png', actions: [{ action: 'button-1', title: 'Read', type: 'link', url: '/more' }, { action: 'button-2', title: 'Share', type: 'facebook', url: '/article' }] };
+    handlers.push({ data: { json: () => data }, waitUntil(value) { pending = value; } }); await pending;
+    assert.equal(shown[0].options.image, data.image); assert.equal(shown[0].options.actions.length, 2);
+    const click = async (action, override = data) => { handlers.notificationclick({ action, notification: { close() {}, data: override }, waitUntil(value) { pending = value; } }); await pending; return opened.at(-1); };
+    assert.equal(await click('button-1'), 'https://www.website.test/more');
+    assert.equal(await click(''), 'https://www.website.test/article?q=1#story');
+    const shared = new URL(await click('button-2'));
+    assert.equal(shared.hostname, 'www.facebook.com'); assert.equal(shared.searchParams.get('u'), 'https://www.website.test/article');
+    assert.equal(await click('button-1', { ...data, actions: [{ ...data.actions[0], url: 'https://evil.test/' }] }), 'https://www.website.test/');
+    assert.equal(await click('button-1', { ...data, actions: [{ ...data.actions[0], type: 'call', url: 'tel:+911234567890' }] }), 'tel:+911234567890');
+    rejectRich = true;
+    handlers.push({ data: { json: () => data }, waitUntil(value) { pending = value; } }); await pending;
+    assert.equal(shown.at(-1).options.image, undefined); assert.equal(shown.at(-1).options.actions, undefined);
+    assert.equal(shown.at(-1).options.body, 'Story');
+  }
+});

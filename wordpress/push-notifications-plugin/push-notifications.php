@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Push Notifications Plugin
  * Description: Sends push notifications when posts are published and allows manual sends from the dashboard.
- * Version: 1.1.1
+ * Version: 1.2.0
  * Author: ABHIJIT BOSE
  * Requires at least: 5.0
  * Requires PHP: 7.4

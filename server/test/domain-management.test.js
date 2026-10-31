@@ -128,6 +128,7 @@ test('domain deletion removes only its own subscriptions and commits both change
   assert.deepEqual(events, ['begin',
     ['SELECT id, domain_key FROM domains WHERE id = ? AND user_id = ? FOR UPDATE', [3, 1]],
     ['DELETE FROM subscriptions WHERE domain_key = ? AND user_id = ?', ['selected-key', 1]],
+    ['DELETE FROM push_images WHERE domain_key = ?', ['selected-key']],
     ['DELETE FROM domains WHERE id = ? AND user_id = ?', [3, 1]], 'commit', 'release']);
 });
 

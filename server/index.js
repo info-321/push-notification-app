@@ -3,6 +3,7 @@ import mysql from 'mysql2/promise';
 import webpush from 'web-push';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
+import { ensurePushContent } from './domain-schema.js';
 import { ensureDomainDisplayName, ensureDomainTimeZone, ensureDomainPwa, ensureSubscriptionCountry, ensureSubscriptionLocations, ensureSubscriptionDevice, ensureSubscriptionBrowser } from './domain-schema.js';
 import { mysqlAccountRepository } from './accounts.js';
 
@@ -27,6 +28,7 @@ const pool = mysql.createPool({
 await ensureDomainDisplayName(pool);
 await ensureDomainTimeZone(pool);
 await ensureDomainPwa(pool);
+await ensurePushContent(pool);
 await ensureSubscriptionCountry(pool);
 await ensureSubscriptionLocations(pool);
 await ensureSubscriptionDevice(pool);

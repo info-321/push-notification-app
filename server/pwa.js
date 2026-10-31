@@ -7,12 +7,12 @@ const normalizeHost = value => value.toLowerCase().replace(/^www\./, '');
 
 // PNG-only uploads keep SVG/HTML out of the public image endpoints. Bound both
 // compressed and inflated sizes, and verify the dimensions declared in the UI.
-export function validPwaIcon(value, size) {
+export function validPwaIcon(value, size, height = size) {
   if (typeof value !== 'string' || value.length > Math.ceil(iconLimit / 3) * 4 + 22 || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
   try {
     const png = Buffer.from(value.slice(22), 'base64');
     if (png.length < 57 || png.length > iconLimit || !png.subarray(0, 8).equals(pngSignature)) return false;
-    if (png.readUInt32BE(8) !== 13 || png.toString('ascii', 12, 16) !== 'IHDR' || png.readUInt32BE(16) !== size || png.readUInt32BE(20) !== size) return false;
+    if (png.readUInt32BE(8) !== 13 || png.toString('ascii', 12, 16) !== 'IHDR' || png.readUInt32BE(16) !== size || png.readUInt32BE(20) !== height) return false;
     const depth = png[24], color = png[25], channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[color];
     const depths = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] }[color];
     if (!channels || !depths.includes(depth) || png[26] !== 0 || png[27] !== 0 || png[28] !== 0) return false;
@@ -27,8 +27,8 @@ export function validPwaIcon(value, size) {
     }
     if (!ended || !chunks.length) return false;
     const row = Math.ceil(size * channels * depth / 8) + 1;
-    const data = inflateSync(Buffer.concat(chunks), { maxOutputLength: row * size });
-    if (data.length !== row * size) return false;
+    const data = inflateSync(Buffer.concat(chunks), { maxOutputLength: row * height });
+    if (data.length !== row * height) return false;
     for (let offset = 0; offset < data.length; offset += row) if (data[offset] > 4) return false;
     return true;
   } catch { return false; }

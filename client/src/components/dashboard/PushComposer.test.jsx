@@ -12,6 +12,7 @@ beforeEach(() => {
   apiFetch.mockImplementation(async (url, options) => {
     if (options?.method === 'POST') return response(null, { message: 'Accepted by push services: 2. Failed: 0. Expired subscriptions removed: 0.' });
     if (url.includes('/send-audience?')) return response({ matching: 2, total: 3, device_unknown: 1 });
+    if (url.endsWith('/push-defaults')) return response({ icon: '', banner: { enabled: false, image: '', actions: [{ title: 'Read More', url: '', type: 'link' }] } });
     return response(domains);
   });
 });
@@ -101,4 +102,76 @@ test('link validation supports multiple own websites using relative paths and re
   expect(validatePushDraft({ ...draft, url: 'https://www.micetraveladvisor.com/article' }, [domains[0]])).toBe('');
   for (const url of ['//unrelated.test/article', 'javascript:alert(1)', 'https://user:password@micetraveladvisor.com/']) expect(validatePushDraft({ ...draft, url }, [domains[0]])).not.toBe('');
   expect(validatePushDraft({ ...draft, icon: 'data:image/png;base64,abc' }, domains)).not.toBe('');
+});
+
+test('icon defaults load per website, survive another notification and reload, and Reset persists', async () => {
+  const defaults = { mice: { icon: 'https://cdn.test/saved-icon.png' }, second: { icon: 'https://cdn.test/second.png' } };
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation((url, options) => {
+    if (url.endsWith('/push-defaults')) {
+      const key = url.includes('/second/') ? 'second' : 'mice';
+      if (options?.method === 'PATCH') Object.assign(defaults[key], JSON.parse(options.body));
+      return Promise.resolve(response(defaults[key]));
+    }
+    return original(url, options);
+  });
+  const view = render(<PushComposer domainKey="mice" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Create New Push' }));
+  expect(screen.getByLabelText('Icon')).toHaveValue('https://cdn.test/saved-icon.png');
+  fireEvent.change(screen.getByLabelText('Icon'), { target: { value: 'https://cdn.test/new.png' } });
+  fireEvent.blur(screen.getByLabelText('Icon'));
+  await waitFor(() => expect(defaults.mice.icon).toBe('https://cdn.test/new.png'));
+  view.unmount();
+  const second = render(<PushComposer domainKey="second" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Create New Push' }));
+  expect(screen.getByLabelText('Icon')).toHaveValue('https://cdn.test/second.png'); second.unmount();
+  render(<PushComposer domainKey="mice" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Create New Push' }));
+  expect(screen.getByLabelText('Icon')).toHaveValue('https://cdn.test/new.png');
+  fireEvent.click(screen.getByRole('button', { name: 'Reset', exact: true }));
+  await waitFor(() => expect(defaults.mice.icon).toBe(''));
+});
+
+test('banner controls preview images and two buttons, save defaults without sending, and submit the selected banner', async () => {
+  await compose();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Banner Settings (Optional)' }));
+  fireEvent.change(screen.getByLabelText('Image', { exact: true }), { target: { value: 'https://cdn.test/banner.png' } });
+  expect(screen.getByAltText('Banner preview')).toHaveAttribute('src', 'https://cdn.test/banner.png');
+  fireEvent.change(screen.getByLabelText('Button 1 URL'), { target: { value: '/article' } });
+  fireEvent.click(screen.getByRole('button', { name: '+ Add Button' }));
+  fireEvent.change(screen.getByLabelText('Button 2', { exact: true }), { target: { value: 'Share' } });
+  const sharing = screen.getAllByRole('checkbox', { name: 'Social media sharing / Click to call' });
+  fireEvent.click(sharing[1]);
+  expect(screen.getByLabelText('Button 2 action')).toHaveValue('facebook');
+  expect(screen.queryByRole('button', { name: '+ Add Button' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Set above values as default' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('Choose Audience');
+  const patches = apiFetch.mock.calls.filter(([, options]) => options?.method === 'PATCH');
+  expect(patches).toHaveLength(1);
+  expect(JSON.parse(patches[0][1].body).banner).toMatchObject({ enabled: true, image: 'https://cdn.test/banner.png', actions: [{ title: 'Read More', url: '/article', type: 'link' }, { title: 'Share', url: '', type: 'facebook' }] });
+  expect(apiFetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Send Push Now' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Send Push Now' }));
+  await screen.findByRole('button', { name: 'Create another notification' });
+  const post = JSON.parse(apiFetch.mock.calls.find(([, options]) => options?.method === 'POST')[1].body);
+  expect(post.banner.image).toBe('https://cdn.test/banner.png'); expect(post.banner.actions).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Create another notification' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create New Push' }));
+  expect(screen.getByLabelText('Image', { exact: true })).toHaveValue('https://cdn.test/banner.png');
+});
+
+test('failed defaults saves block progression, and invalid button URLs cannot reach the audience step', async () => {
+  await compose();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Banner Settings (Optional)' }));
+  fireEvent.change(screen.getByLabelText('Button 1 URL'), { target: { value: 'https://evil.test/' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Button links must use HTTPS');
+  fireEvent.change(screen.getByLabelText('Button 1 URL'), { target: { value: '/' } });
+  fireEvent.change(screen.getByLabelText('Icon'), { target: { value: 'https://cdn.test/new.png' } });
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation((url, options) => options?.method === 'PATCH' ? Promise.reject(new Error('offline')) : original(url, options));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not save the icon');
+  expect(screen.queryByText('Choose Audience')).not.toBeInTheDocument();
 });

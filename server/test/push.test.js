@@ -85,6 +85,20 @@ test('SDK and worker are served by the API, with JavaScript content types', asyn
   }
 });
 
+test('composer sends banners and distinct button targets, rejects unsafe actions and oversized encrypted payloads', async t => {
+  const f = await fixture(t, { subscriptions: [{ id: 1, endpoint, ...browserKeys }] });
+  const data = { domain_key: key, title: 'News', body: 'Story', url: '/article', icon: 'https://cdn.test/icon.png', audience: { platform: 'all', subscribed: 'all' }, banner: { enabled: true, image: 'https://cdn.test/banner.png', actions: [{ title: 'Read', type: 'link', url: '/more' }, { title: 'Share', type: 'facebook', url: '' }] } };
+  assert.equal((await f.request('/api/notifications/compose', data, f.auth)).status, 200);
+  const payload = JSON.parse(f.calls[0][1]);
+  assert.equal(payload.image, data.banner.image);
+  assert.deepEqual(payload.actions.map(item => item.url), ['/more', '/article']);
+  assert.equal(payload.actions[1].type, 'facebook');
+  const bad = { ...data, banner: { ...data.banner, actions: [{ title: 'Unsafe', type: 'link', url: 'https://evil.test/' }] } };
+  assert.equal((await f.request('/api/notifications/compose', bad, f.auth)).status, 400);
+  assert.equal((await f.request('/api/notifications/compose', { ...data, body: '界'.repeat(1000), icon: 'https://cdn.test/' + 'a'.repeat(1800) }, f.auth)).status, 400);
+  assert.equal(f.calls.length, 1);
+});
+
 test('admin login is required for domains and sender configuration', async t => {
   const f = await fixture(t);
   assert.equal((await f.request('/api/domains')).status, 401);

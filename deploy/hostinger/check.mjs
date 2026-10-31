@@ -64,6 +64,13 @@ for (const domain of domainList.data) {
   const filteredAudience = (await filteredResponse.json()).data;
   assert.ok(filteredAudience.matching >= 0 && filteredAudience.matching <= sendAudience.matching);
   console.log('Push composer audience: OK; matching subscriptions:', sendAudience.matching);
+  const defaultsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/push-defaults';
+  assert.equal((await fetch(base + defaultsRoute)).status, 401);
+  const defaultsResponse = await fetch(base + defaultsRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(defaultsResponse.status, 200);
+  const defaults = (await defaultsResponse.json()).data;
+  assert.ok(defaults && typeof defaults === 'object');
+  console.log('Notification icon/banner defaults: OK');
   const audienceRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/audience';
   assert.equal((await fetch(base + audienceRoute)).status, 401, 'Audience locations must require login');
   const audienceResponse = await fetch(base + audienceRoute, { headers: { Authorization: `Bearer ${session.token}` } });

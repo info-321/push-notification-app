@@ -7,6 +7,7 @@ import { createAdminToken } from './accounts.js';
 import { requestLocation, mergeLocation } from './audience.js';
 import { requestDevice, requestBrowser, deviceCountSql, summarizeDevices } from './subscriber-device.js';
 import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
+import { normalizeBanner, validImageUrl } from './push-content.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -155,16 +156,18 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       if (!target || target.protocol !== 'https:' || !hostMatches(target.hostname, domain.domain_name) || target.username || target.password) {
         return res.status(400).json({ ok: false, message: 'The notification link must use HTTPS on the registered website.' });
       }
-      if (icon) {
-        try { if (new URL(icon).protocol !== 'https:') throw new Error(); }
-        catch { return res.status(400).json({ ok: false, message: 'The icon must be an HTTPS URL.' }); }
-      }
+      if (!validImageUrl(icon)) return res.status(400).json({ ok: false, message: 'The icon must be a public HTTPS URL.' });
+      let banner;
+      try { banner = normalizeBanner(req.body?.banner || { enabled: false }, domain.domain_name); }
+      catch (error) { return res.status(400).json({ ok: false, message: error.message }); }
       const where = pushAudienceWhere(domainKey, audience);
       const [subscriptions] = await pool.query(`SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE ${where.sql}`, where.params);
       const counts = { sent: 0, failed: 0, removed: 0, total: subscriptions.length };
       // Installed workers only open same-origin URLs. A validated path keeps
       // article links working for subscriptions on either apex or www origins.
-      const payload = JSON.stringify({ title: title.trim(), body, url: target.pathname + target.search + target.hash, icon });
+      const payload = JSON.stringify({ title: title.trim(), body, url: target.pathname + target.search + target.hash, icon,
+        ...(banner.enabled ? { image: banner.image, actions: banner.actions.map(action => ({ ...action, url: action.url || target.pathname + target.search + target.hash })) } : {}) });
+      if (Buffer.byteLength(payload, 'utf8') > 3500) return res.status(400).json({ ok: false, message: 'This notification is too large. Shorten its message, links, or button labels.' });
       // Bound concurrency so a publishing request does not open one connection per subscriber.
       for (let offset = 0; offset < subscriptions.length; offset += 10) {
         await Promise.all(subscriptions.slice(offset, offset + 10).map(async (subscription) => {

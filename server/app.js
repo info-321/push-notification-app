@@ -10,14 +10,17 @@ import { installAccountRoutes, memoryAccountRepository, verifyPassword } from '.
 import { installPwa, pwaBodyParser } from './pwa.js';
 import { installAudience } from './audience.js';
 import { installAnalytics } from './analytics.js';
+import { installPushContent, pushImageBodyParser } from './push-content.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository }) {
   const app = express();
   const accounts = accountRepository || memoryAccountRepository(adminUsername, adminPassword);
   app.use(cors());
   pwaBodyParser(app);
+  pushImageBodyParser(app);
   app.use(express.json({ limit: '32kb' }));
   const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts });
+  installPushContent(app, { pool, requireAdmin, publicApiBase });
   installAccountRoutes(app, { accounts, requireAdmin, createToken });
 
   // Utility: generate a URL-safe domain key (Base64URL, no padding) so it's safe in URLs/headers.

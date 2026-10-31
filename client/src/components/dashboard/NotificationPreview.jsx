@@ -15,7 +15,8 @@ export default function NotificationPreview({ draft, domainName }) {
       <div className="push-device-screen"><div className="push-notification-sample">
         <span className="push-preview-icon"><Icon name="bell" />{draft.icon && <img key={draft.icon} src={draft.icon} alt="" referrerPolicy="no-referrer" onError={event => { event.currentTarget.style.display = 'none'; }} />}</span>
         <div className="push-preview-copy"><strong>{draft.title || 'Push Title'}</strong><p>{draft.body || 'Push Body'}</p><small>{domainName}</small></div>
-        <span className="push-preview-action">Read More</span>
+        {draft.banner?.enabled && draft.banner.image && <img className="push-preview-banner" key={draft.banner.image} src={draft.banner.image} alt="Banner preview" referrerPolicy="no-referrer" onError={event => { event.currentTarget.style.display = 'none'; }} />}
+        {draft.banner?.enabled ? draft.banner.actions.map((item, index) => <span key={index} className="push-preview-action">{item.title || `Button ${index + 1}`}</span>) : <span className="push-preview-action">Read More</span>}
       </div></div>
     </div>
     <p className="push-help">Preview only. Notification appearance and available controls vary by browser and device. Clicking a notification opens its URL.</p>

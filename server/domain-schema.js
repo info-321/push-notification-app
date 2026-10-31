@@ -1,5 +1,17 @@
 // Additive startup migration: older deployments only stored the hostname.
 // Keeping the new column nullable lets older app images continue to run.
+export async function ensurePushContent(pool) {
+  const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'push_defaults'");
+  if (!columns.length) {
+    try { await pool.query('ALTER TABLE domains ADD COLUMN push_defaults JSON NULL'); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
+  await pool.query(`CREATE TABLE IF NOT EXISTS push_images (
+    domain_key VARCHAR(64) NOT NULL, image_hash CHAR(64) NOT NULL,
+    image_data MEDIUMBLOB NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (domain_key, image_hash)
+  )`);
+}
 export async function ensureDomainDisplayName(pool) {
   const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'display_name'");
   if (columns.length) return;

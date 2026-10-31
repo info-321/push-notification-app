@@ -18,6 +18,7 @@ beforeEach(() => {
     const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
     return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/api/account')
       ? { username: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
+      : url.endsWith('/push-defaults') ? { icon: '' }
       : url.endsWith('/pwa') ? { domain_key: 'mice-key', domain_name: domain.domain_name, saved: false, settings: { name: domain.display_name, short_name: 'MICE', start_url: 'https://micetraveladvisor.com/', theme_color: '#ffffff', background_color: '#ffffff', icon_192: '', icon_512: '' } }
       : url.endsWith('/settings')
       ? { ...domain, time_zone: 'Asia/Kolkata' }

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import WebsiteHeader from './WebsiteHeader';
 import NotificationPreview from './NotificationPreview';
+import BannerSettings, { newBanner } from './BannerSettings';
 import './dashboard.css';
 import './analytics.css';
 import './push-composer.css';
@@ -20,8 +21,25 @@ export function validatePushDraft(draft, websites) {
     }
   } catch { return 'Use an HTTPS link on the selected website. For multiple websites, use a relative path such as /news/article.'; }
   if (draft.icon) {
-    try { const icon = new URL(draft.icon); if (icon.protocol !== 'https:' || icon.username || icon.password) throw new Error(); }
+    try { const icon = new URL(draft.icon); if (icon.protocol !== 'https:' || icon.username || icon.password || icon.port || draft.icon.length > 2048) throw new Error(); }
     catch { return 'Use a public HTTPS URL for the icon, or reset it to the default.'; }
+  }
+  if (draft.banner?.enabled) {
+    if (draft.banner.image) {
+      try { const image = new URL(draft.banner.image); if (image.protocol !== 'https:' || image.username || image.password || image.port) throw new Error(); }
+      catch { return 'Use a public HTTPS URL for the banner image.'; }
+    }
+    if (draft.banner.actions.length > 2) return 'Use at most two notification buttons.';
+    for (const item of draft.banner.actions) {
+      if (!item.title.trim() || item.title.length > 40) return 'Enter a button label of up to 40 characters.';
+      if (item.type === 'call') { if (!/^tel:\+?[0-9]{3,15}$/.test(item.url)) return 'Use a phone link such as tel:+911234567890.'; }
+      else {
+        for (const site of websites) {
+          try { const target = new URL(item.url || draft.url, `https://${site.domain_name}`); if (target.protocol !== 'https:' || target.username || target.password || target.port || hostname(target.hostname) !== hostname(site.domain_name)) throw new Error(); }
+          catch { return 'Button links must use HTTPS on the selected websites. Use a relative path for multiple websites.'; }
+        }
+      }
+    }
   }
   return '';
 }
@@ -32,7 +50,9 @@ function ChoiceIcon({ type }) {
 
 export default function PushComposer({ domainKey, onAllSites, onManageDomains, onSettings, onSelectDomain, onDashboard, onConfiguration, onLogout }) {
   const [domains, setDomains] = useState([]), [loading, setLoading] = useState(true), [loadError, setLoadError] = useState('');
-  const [step, setStep] = useState(1), [draft, setDraft] = useState({ title: '', body: '', url: '/', icon: '' });
+  const [step, setStep] = useState(1), [draft, setDraft] = useState({ title: '', body: '', url: '/', icon: '', banner: newBanner() });
+  const [iconStatus, setIconStatus] = useState(''), [iconDirty, setIconDirty] = useState(false), [saveBanner, setSaveBanner] = useState(false), [busy, setBusy] = useState(false);
+  const savedIcon = useRef(''), savedBanner = useRef(newBanner()), saveQueue = useRef(Promise.resolve());
   const [selected, setSelected] = useState([domainKey]), [platform, setPlatform] = useState('all'), [subscribed, setSubscribed] = useState('all');
   const [webEnabled, setWebEnabled] = useState(true), [emojiField, setEmojiField] = useState('');
   const [error, setError] = useState(''), [audience, setAudience] = useState(null), [audienceError, setAudienceError] = useState('');
@@ -45,14 +65,46 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setLoadError('');
-    apiFetch(`${API_BASE}/api/domains`).then(async response => {
+    Promise.all([apiFetch(`${API_BASE}/api/domains`).then(async response => {
       const result = await response.json();
       if (!response.ok || !result.ok || !Array.isArray(result.data)) throw new Error(result.message || 'Could not load websites.');
       if (!result.data.some(site => site.domain_key === domainKey)) throw new Error('This website was not found. Choose another website.');
-      if (!cancelled) setDomains(result.data);
+      return result.data;
+    }), apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/push-defaults`).then(async response => {
+      const result = await response.json();
+      if (!response.ok || !result.ok || !result.data || Array.isArray(result.data)) throw new Error(result.message || 'Could not load notification defaults.');
+      return result.data;
+    })]).then(([sites, defaults]) => {
+      if (cancelled) return;
+      setDomains(sites); savedIcon.current = defaults.icon || ''; savedBanner.current = defaults.banner || newBanner();
+      setDraft(current => ({ ...current, icon: savedIcon.current, banner: savedBanner.current }));
+      setIconStatus(savedIcon.current ? 'Icon saved for this website.' : 'The icon is saved automatically for this website.');
     }).catch(err => { if (!cancelled) setLoadError(err.message); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [domainKey, reload]);
+
+  const saveIcon = useCallback(value => {
+    const job = saveQueue.current.catch(() => {}).then(async () => {
+      if (savedIcon.current === value) return true;
+      if (value) {
+        try { const icon = new URL(value); if (icon.protocol !== 'https:' || icon.username || icon.password || icon.port || value.length > 2048) throw new Error(); }
+        catch { setIconStatus('Enter a public HTTPS icon URL to save it.'); return false; }
+      }
+      setIconStatus('Saving icon...');
+      try {
+        const response = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/push-defaults`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ icon: value }) });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error();
+        savedIcon.current = value; setIconStatus(value ? 'Icon saved for this website.' : 'Default icon restored and saved.'); return true;
+      } catch { setIconStatus('Icon could not be saved. Click Next to retry.'); return false; }
+    });
+    saveQueue.current = job; return job;
+  }, [domainKey]);
+  useEffect(() => {
+    if (!iconDirty || step !== 2) return;
+    const timer = setTimeout(() => { saveIcon(draft.icon); }, 650);
+    return () => clearTimeout(timer);
+  }, [draft.icon, iconDirty, step, saveIcon]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,9 +125,21 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   const move = next => { if (sendLock.current || finished) return; setError(''); setStep(next); };
   const update = (field, value) => setDraft(current => ({ ...current, [field]: value }));
   const navigate = callback => (...args) => { if (!sendLock.current) callback?.(...args); };
-  const next = event => {
+  const next = async event => {
     event.preventDefault(); const message = validatePushDraft(draft, [domain]);
-    if (message) { setError(message); return; } move(3);
+    if (message) { setError(message); return; }
+    if (busy) return;
+    setBusy(true); setError('');
+    if (!await saveIcon(draft.icon)) { setBusy(false); setError('Could not save the icon. Check its URL and try Next again.'); return; }
+    if (saveBanner) {
+      try {
+        const response = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/push-defaults`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ banner: draft.banner }) });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.message || 'Could not save banner defaults.');
+        savedBanner.current = JSON.parse(JSON.stringify(draft.banner));
+      } catch (err) { setBusy(false); setError(err.message); return; }
+    }
+    setIconDirty(false); setBusy(false); move(3);
   };
   const send = async () => {
     if (sendLock.current || finished || !webEnabled || !audience?.matching) return;
@@ -86,7 +150,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
       let outcome;
       try {
         const response = await apiFetch(`${API_BASE}/api/notifications/compose`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain_key: site.domain_key, title: draft.title.trim(), body: draft.body, url: draft.url, icon: draft.icon, audience: { platform, subscribed } }) });
+          body: JSON.stringify({ domain_key: site.domain_key, title: draft.title.trim(), body: draft.body, url: draft.url, icon: draft.icon, ...(draft.banner.enabled ? { banner: draft.banner } : {}), audience: { platform, subscribed } }) });
         const result = await response.json();
         outcome = { name: site.domain_name, ok: response.ok && result.ok && !(result.failed > 0), message: result.message || 'Could not complete this send.' };
       } catch { outcome = { name: site.domain_name, ok: false, message: 'The send status could not be confirmed. Some notifications may have been accepted; this request will not be retried automatically.' }; }
@@ -94,7 +158,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
     }
     setSending(false); setFinished(true); sendLock.current = false;
   };
-  const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: '' }); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setWebEnabled(true); setStep(1); setError(''); };
+  const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: savedIcon.current, banner: JSON.parse(JSON.stringify(savedBanner.current)) }); setSaveBanner(false); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setWebEnabled(true); setStep(1); setError(''); };
 
   return <div className="overview-page push-composer-page">
     <WebsiteHeader activePage="push" domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={navigate(onAllSites)} onManageDomains={navigate(onManageDomains)} onSettings={navigate(onSettings)} onSelectDomain={navigate(onSelectDomain)} onDashboard={() => navigate(onDashboard)(domainKey, domain?.domain_name)} onConfiguration={navigate(onConfiguration)} onLogout={navigate(onLogout)} />
@@ -104,7 +168,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
       {loading && <p role="status">Loading websites...</p>}
       {loadError && <div className="overview-panel push-message" role="alert">{loadError}<button onClick={() => setReload(value => value + 1)}>Try again</button></div>}
       {!loading && !loadError && domain && <section className="overview-panel push-wizard" aria-label="Create push notification">
-        <ol className="push-steps" aria-label="Push creation steps">{[1, 2, 3].map(value => <li key={value} className={step >= value ? 'is-complete' : ''}><button type="button" disabled={value > step || sending || finished} aria-current={value === step ? 'step' : undefined} onClick={() => move(value)}><span>{value < step ? '✓' : value === step ? '●' : '✓'}</span>Step {value}</button></li>)}</ol>
+        <ol className="push-steps" aria-label="Push creation steps">{[1, 2, 3].map(value => <li key={value} className={step >= value ? 'is-complete' : ''}><button type="button" disabled={value > step || sending || finished || busy} aria-current={value === step ? 'step' : undefined} onClick={() => move(value)}><span>{value < step ? '✓' : value === step ? '●' : '✓'}</span>Step {value}</button></li>)}</ol>
         <div ref={headingRef} tabIndex={-1} className="push-step-content" role="group" aria-label={`Step ${step} content`}>
           {error && <p className="analytics-error" role="alert">{error}</p>}
           {step === 1 ? <div className="push-start-options">
@@ -114,15 +178,18 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
           </div> : <div className="push-compose-grid">
             <div className="push-editor">
               {step === 2 ? <form onSubmit={next}>
+                <fieldset className="push-compose-fields" disabled={busy}><legend className="overview-sr-only">Notification content</legend>
                 <label htmlFor="push-url">URL</label><input id="push-url" required maxLength={2048} value={draft.url} onChange={event => update('url', event.target.value)} placeholder="https://your-website.com/article" />
                 <label htmlFor="push-title">Title</label><div className="push-emoji-input"><input id="push-title" required maxLength={150} value={draft.title} onChange={event => update('title', event.target.value)} placeholder="Push title" /><button type="button" aria-label="Choose an emoji for the title" onClick={() => setEmojiField(emojiField === 'title' ? '' : 'title')}>☺</button></div>
                 <label htmlFor="push-body">Message</label><div className="push-emoji-input"><textarea id="push-body" maxLength={1000} rows={5} value={draft.body} onChange={event => update('body', event.target.value)} placeholder="Push message" /><button type="button" aria-label="Choose an emoji for the message" onClick={() => setEmojiField(emojiField === 'body' ? '' : 'body')}>☺</button></div>
                 {emojiField && <div className="push-emoji-picker" role="group" aria-label={`Emoji for ${emojiField}`}>{['🔔', '✈️', '🌍', '📣', '✨', '🎉'].map(emoji => <button type="button" key={emoji} aria-label={`Insert ${emoji}`} onClick={() => { if (draft[emojiField].length + emoji.length <= (emojiField === 'title' ? 150 : 1000)) update(emojiField, draft[emojiField] + emoji); setEmojiField(''); }}>{emoji}</button>)}</div>}
-                <label htmlFor="push-icon">Icon</label><div className="push-icon-input"><input id="push-icon" type="url" maxLength={2048} value={draft.icon} onChange={event => update('icon', event.target.value)} placeholder="Optional public HTTPS icon URL" /><button type="button" onClick={() => update('icon', '')}>Reset</button></div>
+                <label htmlFor="push-icon">Icon</label><div className="push-icon-input"><input id="push-icon" type="url" maxLength={2048} value={draft.icon} onBlur={() => saveIcon(draft.icon)} onChange={event => { update('icon', event.target.value); setIconDirty(true); setIconStatus('Icon not saved yet.'); }} placeholder="Optional public HTTPS icon URL" /><button type="button" onClick={() => { update('icon', ''); setIconDirty(true); saveIcon(''); }}>Reset</button></div>
+                <p className="push-help" role="status">{iconStatus}</p>
                 <p className="push-help">Use a relative URL such as /news/article when sending to several websites.</p>
-                <div className="push-unavailable">Banner Settings (Optional)<small>Banner images are not supported yet.</small><input type="checkbox" disabled aria-label="Banner settings unavailable" /></div>
+                <BannerSettings banner={draft.banner} domainKey={domainKey} onChange={value => update('banner', value)} saveDefaults={saveBanner} onSaveDefaults={setSaveBanner} onBusy={setBusy} />
                 <div className="push-options" role="group" aria-label="Sending time"><button type="button" aria-pressed="true">Send Now</button><button type="button" disabled title="Scheduling is not available yet">Schedule One Time</button><button type="button" disabled title="Recurring scheduling is not available yet">Schedule Recurring</button></div>
-                <div className="push-form-actions"><button type="button" className="push-back" onClick={() => move(1)}>Back</button><button className="push-primary" type="submit">Next</button></div>
+                <div className="push-form-actions"><button type="button" disabled={busy} className="push-back" onClick={() => move(1)}>Back</button><button disabled={busy} className="push-primary" type="submit">{busy ? 'Please wait...' : 'Next'}</button></div>
+                </fieldset>
               </form> : <>
                 <h2>Choose Audience</h2>
                 <fieldset disabled={sending || finished} className="push-audience-fields"><legend className="overview-sr-only">Audience settings</legend>
