@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { analyticsRange } from './analytics.js';
 import { validImageUrl } from './push-content.js';
+export const promptTemplates = ['button', 'slide-in', 'dialog', 'modal', 'fullscreen', 'sticky'];
 
 export const promptDefaults = name => ({ enabled: true, template: 'slide-in', heading: 'Stay up to date', message: `Get the latest news from ${name}.`, allow_label: 'Enable notifications', dismiss_label: 'Maybe later', logo: '', accent: '#12ad88', background: '#ffffff', text: '#25394b', position: 'right', trigger: 'delay', delay: 15, scroll: 50, cooldown: 7, include_paths: [], exclude_paths: [] });
 export function validatePrompt(value) {
@@ -8,7 +9,7 @@ export function validatePrompt(value) {
   const result = {};
   if (typeof value.enabled !== 'boolean') throw new Error('Choose whether the prompt is enabled.');
   result.enabled = value.enabled;
-  for (const [key, options] of Object.entries({ template: ['button', 'slide-in'], position: ['left', 'right'], trigger: ['delay', 'scroll'] })) {
+  for (const [key, options] of Object.entries({ template: promptTemplates, position: ['left', 'right'], trigger: ['delay', 'scroll'] })) {
     if (!options.includes(value[key])) throw new Error(`Choose a valid ${key}.`);
     result[key] = value[key];
   }
@@ -40,7 +41,7 @@ export function readPromptToken(secret, token, key) {
     const [payload, mac, extra] = token.split('.'), expected = sign(secret, payload);
     if (extra || typeof mac !== 'string' || mac.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) return null;
     const data = JSON.parse(Buffer.from(payload, 'base64url'));
-    if (data.key !== key || data.exp < Date.now() || !Number.isFinite(data.exp) || !/^[a-f0-9]{32}$/.test(data.nonce) || !/^[a-f0-9]{16}$/.test(data.revision) || !['button', 'slide-in'].includes(data.template)) return null;
+    if (data.key !== key || data.exp < Date.now() || !Number.isFinite(data.exp) || !/^[a-f0-9]{32}$/.test(data.nonce) || !/^[a-f0-9]{16}$/.test(data.revision) || !promptTemplates.includes(data.template)) return null;
     return data;
   } catch { return null; }
 }

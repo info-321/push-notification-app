@@ -6,15 +6,37 @@
     if (/iPad|Tablet|Silk\/|Kindle/i.test(ua) || /Android/i.test(ua) && !/Mobile/i.test(ua) || /Macintosh/i.test(ua) && nav.maxTouchPoints > 1) return false;
     return /iPhone|iPod|Windows Phone|Mobile/i.test(ua) || nav.userAgentData?.mobile === true;
   };
+  const templateCss = `
+    [hidden]{display:none!important}.heading{min-width:0;overflow-wrap:anywhere}.brand img{flex-shrink:0}
+    .dialog{width:480px;border-radius:5px;padding:18px 22px}.dialog .brand{margin-bottom:6px}.dialog .heading{font-size:16px}.dialog .message{margin-left:58px;font-size:12px;margin-bottom:10px}.dialog .actions{justify-content:flex-end}.dialog button{padding:9px 16px}
+    dialog.card{font:14px/1.5 system-ui,sans-serif;inset:0;margin:auto;max-width:calc(100vw - 40px);max-height:calc(100dvh - 40px);overflow:auto;color:inherit}
+    dialog::backdrop{background:#142d4d70}.modal{width:420px;padding:34px;border-radius:14px}.modal .brand{flex-direction:column;align-items:flex-start}.modal .heading{font-size:23px}.modal .message{margin:18px 0 28px}
+    dialog.fullscreen{width:100vw;height:100dvh;max-width:none;max-height:none;border:0;border-radius:0;padding:40px;box-shadow:none}
+    dialog.fullscreen[open]{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:16px}
+    .fullscreen .brand{flex-direction:column;margin:0;max-width:760px}.fullscreen .heading{font-size:clamp(22px,3vw,34px);font-weight:500}.fullscreen .message{max-width:700px;font-size:17px;margin:0 0 18px}.fullscreen .actions{justify-content:center;gap:24px}.fullscreen .allow{min-width:150px;border-radius:24px}
+    .sticky-tab{display:block;writing-mode:vertical-rl;border-radius:8px 0 0 8px;box-shadow:0 5px 22px #173d5130;padding:18px 12px;background:#12ad88;color:white;max-height:calc(100dvh - 40px)}
+    :host([data-edge=left]) .sticky-tab{border-radius:0 8px 8px 0}.sticky.card{max-height:calc(100dvh - 40px);overflow:auto}
+  `;
   window.PushPermissionUI = { isPhone, mount({ settings: p, key, track, subscribe }) {
     const storageKey = `push-prompt-dismissed:${key}`;
     const pathMatches = prefix => prefix === '/' || location.pathname === prefix || location.pathname.startsWith(prefix.endsWith('/') ? prefix : prefix + '/');
     let dismissedUntil = 0;
     try { dismissedUntil = Number(localStorage.getItem(storageKey)) || 0; } catch { /* Private browsing may disable storage. */ }
-    let queue = Promise.resolve(), host, active = false, timer, scrollHandler, visibilityHandler;
+    let queue = Promise.resolve(), host, panel, active = false, timer, scrollHandler, visibilityHandler, previousFocus, previousOverflow, previousOverflowPriority, modalOpen = false;
     const event = (name, outcome) => { queue = queue.catch(() => {}).then(() => track(name, outcome)).catch(() => {}); return queue; };
     const clearTriggers = () => { clearTimeout(timer); if (scrollHandler) window.removeEventListener('scroll', scrollHandler); if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler); };
-    const hide = () => { clearTriggers(); if (host) host.remove(); host = null; };
+    const hide = () => {
+      clearTriggers();
+      const restoreFocus = modalOpen || document.activeElement === host;
+      if (panel?.open && typeof panel.close === 'function') panel.close();
+      if (modalOpen && document.documentElement.style.getPropertyValue('overflow') === 'hidden') {
+        if (previousOverflow) document.documentElement.style.setProperty('overflow', previousOverflow, previousOverflowPriority);
+        else document.documentElement.style.removeProperty('overflow');
+      }
+      modalOpen = false;
+      if (host) host.remove(); host = null;
+      if (restoreFocus && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
     const postpone = () => { try { localStorage.setItem(storageKey, String(Date.now() + p.cooldown * 86400000)); } catch { /* Best-effort local cooldown. */ } };
     const controller = { flush: () => queue, outcome(value) { event('permission', value); if (value !== 'granted') { postpone(); hide(); } }, hide };
     if (!p.enabled || isPhone(navigator) || dismissedUntil > Date.now() || (p.include_paths.length && !p.include_paths.some(pathMatches)) || p.exclude_paths.some(pathMatches)) return controller;
@@ -25,10 +47,15 @@
         return;
       }
       clearTriggers(); active = true;
+      previousFocus = document.activeElement;
       host = document.createElement('div'); host.setAttribute('data-push-permission-prompt', ''); host.style[p.position === 'left' ? 'left' : 'right'] = '24px'; if (p.position === 'left') host.style.right = 'auto';
-      const root = host.attachShadow({ mode: 'open' }), style = document.createElement('style'); style.textContent = css + '.heading{min-width:0;overflow-wrap:anywhere}.brand img{flex-shrink:0}'; root.appendChild(style);
+      host.setAttribute('data-template', p.template); host.setAttribute('data-edge', p.position);
+      if (p.template === 'dialog') { host.style.top = '20px'; host.style.bottom = 'auto'; host.style.left = '50%'; host.style.right = 'auto'; host.style.transform = 'translateX(-50%)'; }
+      if (p.template === 'sticky') { host.style.top = '50%'; host.style.bottom = 'auto'; host.style.transform = 'translateY(-50%)'; host.style[p.position] = '0'; }
+      const root = host.attachShadow({ mode: 'open' }), style = document.createElement('style'); style.textContent = css + templateCss; root.appendChild(style);
       const make = (tag, text, className) => { const node = document.createElement(tag); if (text) node.textContent = text; if (className) node.className = className; return node; };
-      const panel = make('section', '', p.template === 'button' ? 'floating' : 'card'); panel.setAttribute('aria-label', 'Notification subscription'); panel.style.background = p.background; panel.style.color = p.text;
+      const isModal = p.template === 'modal' || p.template === 'fullscreen';
+      panel = make(isModal ? 'dialog' : 'section', '', p.template === 'button' ? 'floating' : `card ${p.template}`); panel.setAttribute('aria-label', 'Notification subscription'); panel.style.background = p.background; panel.style.color = p.text;
       const allow = make('button', p.allow_label, 'allow'); allow.type = 'button'; allow.style.background = p.accent;
       const dismiss = make('button', p.template === 'button' ? '×' : p.dismiss_label, p.template === 'button' ? 'close' : 'dismiss'); dismiss.type = 'button'; dismiss.setAttribute('aria-label', p.dismiss_label);
       if (p.template === 'button') { panel.appendChild(allow); panel.appendChild(dismiss); }
@@ -36,20 +63,39 @@
         const brand = make('div', '', 'brand');
         if (p.logo) { const image = make('img'); image.src = p.logo; image.alt = ''; image.referrerPolicy = 'no-referrer'; image.addEventListener('error', () => image.remove()); brand.appendChild(image); }
         else { const bell = make('span', '🔔', 'bell'); bell.setAttribute('aria-hidden', 'true'); brand.appendChild(bell); }
-        brand.appendChild(make('h2', p.heading, 'heading')); panel.appendChild(brand); panel.appendChild(make('p', p.message, 'message'));
+        brand.appendChild(make('h2', p.heading, 'heading')); panel.appendChild(brand);
+        const message = make('p', p.message, 'message'); message.id = 'push-prompt-description'; panel.appendChild(message); panel.setAttribute('aria-describedby', message.id);
         const actions = make('div', '', 'actions'); actions.appendChild(allow); actions.appendChild(dismiss); panel.appendChild(actions);
       }
       const status = make('p', '', 'status'); status.setAttribute('role', 'status');
       dismiss.addEventListener('click', () => { event('dismiss'); postpone(); hide(); });
-      root.addEventListener('keydown', event => { if (event.key === 'Escape' && !dismiss.disabled) { event.preventDefault(); dismiss.click(); } });
+      root.addEventListener('keydown', event => { if (!isModal && event.key === 'Escape') { event.preventDefault(); dismiss.click(); } });
+      if (isModal) {
+        dismiss.autofocus = true;
+        panel.addEventListener('cancel', event => { event.preventDefault(); dismiss.click(); });
+      }
       allow.addEventListener('click', () => {
         if (allow.disabled) return;
-        allow.disabled = true; dismiss.disabled = true; event('click');
+        allow.disabled = true; event('click');
         // Call synchronously within this gesture; telemetry never delays permission.
         subscribe().then(result => { if (result) hide(); }).catch(() => { status.textContent = 'Could not enable notifications. Please try again.'; panel.appendChild(status); }).finally(() => { allow.disabled = false; dismiss.disabled = false; });
       });
-      root.appendChild(panel); document.body.appendChild(host); event('view');
-      // Informational prompt: do not steal focus or trap the visitor on the page.
+      if (p.template === 'sticky') {
+        panel.hidden = true;
+        const tab = make('button', p.allow_label, 'sticky-tab'); tab.type = 'button'; tab.style.background = p.accent;
+        tab.setAttribute('aria-expanded', 'false'); panel.id = 'push-sticky-invitation'; tab.setAttribute('aria-controls', panel.id);
+        tab.addEventListener('click', () => { tab.hidden = true; tab.setAttribute('aria-expanded', 'true'); panel.hidden = false; host.style[p.position] = '24px'; allow.focus({ preventScroll: true }); });
+        root.appendChild(tab);
+      }
+      root.appendChild(panel); document.body.appendChild(host);
+      if (isModal) {
+        if (typeof panel.showModal === 'function') {
+          previousOverflow = document.documentElement.style.getPropertyValue('overflow'); previousOverflowPriority = document.documentElement.style.getPropertyPriority('overflow');
+          panel.showModal(); modalOpen = true; document.documentElement.style.setProperty('overflow', 'hidden');
+        } else { panel.setAttribute('open', ''); panel.style.position = 'fixed'; }
+        dismiss.focus({ preventScroll: true });
+      }
+      event('view');
     };
     if (p.trigger === 'scroll') {
       scrollHandler = () => { const distance = document.documentElement.scrollHeight - innerHeight; if (distance > 0 && scrollY / distance * 100 >= p.scroll) show(); };

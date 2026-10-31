@@ -106,3 +106,19 @@ test('signed event tokens deduplicate views/clicks; only new saved subscriptions
   assert.equal((await f.request('/api/prompt/one/events', { token, event: 'view' }, false, 'https://evil.test')).status, 403);
   assert.equal((await f.request('/api/domains/one/prompt-performance?start=2026-10-31&end=2026-01-01', undefined, true)).status, 400);
 });
+
+test('all four additional templates publish and issue valid attribution tokens and performance rows', async t => {
+  const f = await fixture(t);
+  for (const template of ['dialog', 'modal', 'fullscreen', 'sticky']) {
+    const settings = { ...promptDefaults('website.test'), template };
+    const result = await f.request('/api/domains/one/prompt-settings', { operation: 'publish', version: f.row.subscription_prompt?.version || '0', settings }, true);
+    assert.equal(result.status, 200);
+    const published = await f.request('/api/prompt/one');
+    assert.equal(published.data.prompt.template, template);
+    assert.equal(readPromptToken(secret, published.data.token, 'one').template, template);
+    for (const event of ['view', 'click']) assert.equal((await f.request('/api/prompt/one/events', { token: published.data.token, event })).status, 200);
+  }
+  const report = await f.request('/api/domains/one/prompt-performance', undefined, true);
+  assert.deepEqual(report.data.rows.map(row => row.template), ['dialog', 'modal', 'fullscreen', 'sticky']);
+  assert.ok(report.data.rows.every(row => row.views === 1 && row.clicks === 1));
+});

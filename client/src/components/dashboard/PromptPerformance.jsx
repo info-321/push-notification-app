@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import './prompt-settings.css';
+import { promptTemplateName } from './prompt-templates';
 
 export default function PromptPerformance({ domainKey }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -22,7 +23,7 @@ export default function PromptPerformance({ domainKey }) {
     {error && <p role="alert">{error}</p>}
     {!data && !error && <p role="status">Loading prompt performance...</p>}
     {totals && <><div className="prompt-stat-grid">{[['Prompt views', totals.views], ['Enable clicks', totals.clicks], ['New subscribers', totals.subscriptions], ['Conversion rate', totals.views ? `${(totals.subscriptions / totals.views * 100).toFixed(1)}%` : '—']].map(([label, value]) => <article key={label} className="overview-panel"><strong>{value}</strong><span>{label}</span></article>)}</div>
-      <div className="overview-panel analytics-table-scroll"><table><caption className="overview-sr-only">Prompt results by published version</caption><thead><tr>{['Template', 'Views', 'Enable clicks', 'Dismissed', 'New subscribers', 'Conversion'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{data.rows.map((row, index) => <tr key={row.revision}><td>{row.template === 'button' ? 'Floating button' : 'Slide-in card'} <small>Version in this period: {index + 1}</small></td><td>{row.views}</td><td>{row.clicks}</td><td>{row.dismissals}</td><td>{row.subscriptions}</td><td>{row.views ? `${(row.subscriptions / row.views * 100).toFixed(1)}%` : '—'}</td></tr>)}{!data.rows.length && <tr><td colSpan={6}>No recorded prompt activity in this period. Publish a template to start collecting results.</td></tr>}</tbody></table></div></>}
+      <div className="overview-panel analytics-table-scroll"><table><caption className="overview-sr-only">Prompt results by published version</caption><thead><tr>{['Template', 'Views', 'Enable clicks', 'Dismissed', 'New subscribers', 'Conversion'].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{data.rows.map((row, index) => <tr key={row.revision}><td>{promptTemplateName(row.template)} <small>Version in this period: {index + 1}</small></td><td>{row.views}</td><td>{row.clicks}</td><td>{row.dismissals}</td><td>{row.subscriptions}</td><td>{row.views ? `${(row.subscriptions / row.views * 100).toFixed(1)}%` : '—'}</td></tr>)}{!data.rows.length && <tr><td colSpan={6}>No recorded prompt activity in this period. Publish a template to start collecting results.</td></tr>}</tbody></table></div></>}
     <p className="prompt-muted">Counts reflect custom prompt displays, not unique people or browser permission-dialog displays. Existing subscription refreshes are excluded from conversions. Browser restrictions, blocked requests and failed tracking can leave gaps. Versions are listed newest first; comparisons are observational, not an A/B test.</p>
   </section>;
 }

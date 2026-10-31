@@ -55,3 +55,27 @@ test('template selection, scrolling rules, empty paths and actual performance va
   expect(await within(performance).findByText('15.0%', { selector: 'strong' })).toBeInTheDocument();
   expect(within(performance).getByText(/comparisons are observational/i)).toBeInTheDocument();
 });
+
+test('the additional four templates have editable content, distinct previews and persistent draft selections', async () => {
+  render(<PromptSettings domainKey="one" />);
+  await screen.findByLabelText('Heading', { exact: true });
+  for (const [template, name] of [['dialog', 'Dialog Box'], ['modal', 'Central Modal'], ['fullscreen', 'Full Screen Pop Up'], ['sticky', 'Sticky Bar']]) {
+    const card = screen.getByRole('button', { name: new RegExp('^' + name) });
+    fireEvent.click(card); expect(card).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Heading', { exact: true })).toHaveValue('Stay updated');
+    if (template === 'sticky') {
+      const edgeTab = screen.getByRole('button', { name: 'Enable notifications', exact: true });
+      expect(edgeTab).toHaveAttribute('aria-expanded', 'false'); fireEvent.click(edgeTab);
+    }
+    const preview = screen.getByRole('region', { name: 'Subscription prompt preview' });
+    expect(preview).toHaveClass(template);
+    fireEvent.click(within(preview).getByRole('button', { name: 'Enable notifications', exact: true }));
+    expect(screen.getByText(/This preview does not request permission/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft', exact: true }));
+    await waitFor(() => expect(state.draft.template).toBe(template));
+    await screen.findByText('Draft saved. The live website has not changed.');
+    expect(state.published).toBeNull();
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Mobile phones', exact: true }));
+  expect(screen.queryByRole('button', { name: /^Central Modal/ })).not.toBeInTheDocument();
+});
