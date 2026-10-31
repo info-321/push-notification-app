@@ -8,6 +8,7 @@ import { requestLocation, mergeLocation } from './audience.js';
 import { requestDevice, requestBrowser, deviceCountSql, summarizeDevices } from './subscriber-device.js';
 import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
 import { normalizeBanner, validImageUrl } from './push-content.js';
+import { recordPromptSubscription } from './subscription-prompts.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -95,12 +96,16 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       if (existing.length) {
         await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, existing[0].id, domainKey]);
       } else {
-        await pool.query(
+        const [inserted] = await pool.query(
           'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, browser_family, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
           [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser],
         );
+        if (req.body?.prompt_token) {
+          try { await recordPromptSubscription(pool, secret, req.body.prompt_token, domainKey, inserted.insertId); }
+          catch (error) { console.error('Prompt conversion tracking failed:', error.code || 'storage'); }
+        }
       }
-      return res.json({ ok: true });
+      return res.json({ ok: true, created: !existing.length });
     } catch (error) {
       if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ ok: false, message: 'Subscription conflict. Please try enabling notifications again.' });
       console.error('Subscription storage failed:', error.code);

@@ -1,5 +1,21 @@
 // Additive startup migration: older deployments only stored the hostname.
 // Keeping the new column nullable lets older app images continue to run.
+export async function ensureSubscriptionPrompts(pool) {
+  const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'subscription_prompt'");
+  if (!columns.length) {
+    try { await pool.query('ALTER TABLE domains ADD COLUMN subscription_prompt JSON NULL'); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
+  await pool.query(`CREATE TABLE IF NOT EXISTS prompt_events (
+    domain_key VARCHAR(64) NOT NULL, session_id CHAR(32) NOT NULL,
+    revision CHAR(16) NOT NULL, template VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    clicked_at TIMESTAMP NULL, dismissed_at TIMESTAMP NULL,
+    permission_outcome VARCHAR(16) NULL, subscribed_at TIMESTAMP NULL, subscription_id BIGINT UNSIGNED NULL,
+    PRIMARY KEY (domain_key, session_id), UNIQUE KEY prompt_subscription (subscription_id),
+    KEY prompt_period (domain_key, created_at)
+  )`);
+}
 export async function ensurePushContent(pool) {
   const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'push_defaults'");
   if (!columns.length) {

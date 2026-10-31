@@ -18,6 +18,8 @@ beforeEach(() => {
     const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
     return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/api/account')
       ? { username: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
+      : url.endsWith('/prompt-settings') ? { version: '0', published: null, previous: null, draft: { enabled: true, template: 'slide-in', heading: 'Stay updated', message: 'Get news', allow_label: 'Enable notifications', dismiss_label: 'Maybe later', logo: '', accent: '#12ad88', background: '#ffffff', text: '#25394b', position: 'right', trigger: 'delay', delay: 15, scroll: 50, cooldown: 7, include_paths: [], exclude_paths: [] } }
+      : url.includes('/prompt-performance?') ? { rows: [] }
       : url.endsWith('/push-defaults') ? { icon: '' }
       : url.endsWith('/pwa') ? { domain_key: 'mice-key', domain_name: domain.domain_name, saved: false, settings: { name: domain.display_name, short_name: 'MICE', start_url: 'https://micetraveladvisor.com/', theme_color: '#ffffff', background_color: '#ffffff', icon_192: '', icon_512: '' } }
       : url.endsWith('/settings')
@@ -164,4 +166,18 @@ test('Push Notification opens a dedicated new-tab URL and the composer restores 
   expect(await screen.findByRole('button', { name: 'Create New Push' })).toBeTruthy();
   expect(window.location.pathname + window.location.search).toBe('/push?domain=mice-key');
   expect(apiFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+});
+
+test('Push Setting has a dedicated route with a separate mobile section and supports browser navigation', async () => {
+  window.history.replaceState({}, '', '/push/settings?domain=mice-key');
+  render(<App />);
+  expect(await screen.findByRole('heading', { name: 'Subscription Prompt', exact: true })).toBeTruthy();
+  await screen.findByRole('button', { name: 'Publish to website' });
+  expect(window.location.pathname).toBe('/push/settings');
+  fireEvent.click(screen.getByRole('button', { name: 'Mobile phones', exact: true }));
+  expect(screen.getByRole('heading', { name: 'Mobile phone settings' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Publish to website' })).toBeNull();
+  window.history.replaceState({}, '', '/push?domain=mice-key'); fireEvent(window, new PopStateEvent('popstate'));
+  await screen.findByRole('button', { name: 'Create New Push' });
+  expect(screen.getByRole('link', { name: 'Push Setting', exact: true }).getAttribute('href')).toBe('/push/settings?domain=mice-key');
 });

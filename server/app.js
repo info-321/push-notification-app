@@ -11,6 +11,7 @@ import { installPwa, pwaBodyParser } from './pwa.js';
 import { installAudience } from './audience.js';
 import { installAnalytics } from './analytics.js';
 import { installPushContent, pushImageBodyParser } from './push-content.js';
+import { installSubscriptionPrompts } from './subscription-prompts.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository }) {
   const app = express();
@@ -21,6 +22,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   app.use(express.json({ limit: '32kb' }));
   const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts });
   installPushContent(app, { pool, requireAdmin, publicApiBase });
+  installSubscriptionPrompts(app, { pool, secret, requireAdmin });
   installAccountRoutes(app, { accounts, requireAdmin, createToken });
 
   // Utility: generate a URL-safe domain key (Base64URL, no padding) so it's safe in URLs/headers.

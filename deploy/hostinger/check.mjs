@@ -4,7 +4,7 @@ import mysql from 'mysql2/promise';
 import crypto from 'node:crypto';
 
 const base = 'http://127.0.0.1:5000';
-for (const route of ['/sdk/push.js', '/push-sw.js', '/downloads/push-notifications-plugin.zip']) {
+for (const route of ['/sdk/push.js', '/sdk/prompt-ui.js', '/push-sw.js', '/downloads/push-notifications-plugin.zip']) {
   const response = await fetch(base + route);
   assert.equal(response.status, 200, `${route} must be available`);
   await response.arrayBuffer();
@@ -71,6 +71,16 @@ for (const domain of domainList.data) {
   const defaults = (await defaultsResponse.json()).data;
   assert.ok(defaults && typeof defaults === 'object');
   console.log('Notification icon/banner defaults: OK');
+  const promptRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/prompt-settings';
+  assert.equal((await fetch(base + promptRoute)).status, 401);
+  const promptResponse = await fetch(base + promptRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(promptResponse.status, 200);
+  const promptState = (await promptResponse.json()).data;
+  assert.ok(promptState.draft && typeof promptState.version === 'string');
+  const performanceResponse = await fetch(base + promptRoute.replace('prompt-settings', 'prompt-performance'), { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(performanceResponse.status, 200);
+  assert.ok(Array.isArray((await performanceResponse.json()).data.rows));
+  console.log('Subscription prompt settings/performance: OK; published:', Boolean(promptState.published));
   const audienceRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/audience';
   assert.equal((await fetch(base + audienceRoute)).status, 401, 'Audience locations must require login');
   const audienceResponse = await fetch(base + audienceRoute, { headers: { Authorization: `Bearer ${session.token}` } });

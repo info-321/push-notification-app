@@ -14,6 +14,7 @@ beforeEach(() => {
     if (url.endsWith('/api/domains')) return response([domain, { domain_key: 'second', domain_name: 'second.test' }]);
     if (url.endsWith('/overview')) return response({ domain, subscribers: { total: 7, web: 7, mobile: null, app: null } });
     if (url.endsWith('/audience')) return response(audience);
+    if (url.includes('/prompt-performance?')) return response({ rows: [] });
     const query = new URL(url).searchParams;
     const start = query.get('start'), end = query.get('end');
     return response({ range: { start, end, time_zone: 'UTC' }, daily: [{ date: start, added: 2 }], added: 2, mobile: null, desktop: null, app: null, unsubscribed: null, net: null, browser: { available: false, rows: [] }, basis: 'Currently saved subscription records. Removal history was not recorded.' });
