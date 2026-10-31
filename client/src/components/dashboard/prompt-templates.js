@@ -6,4 +6,13 @@ export const promptTemplates = [
   ['fullscreen', 'Full Screen Pop Up', 'A full-page invitation with a clear way to decline.'],
   ['sticky', 'Sticky Bar', 'A vertical edge tab that opens your invitation.'],
 ];
-export const promptTemplateName = value => promptTemplates.find(([key]) => key === value)?.[1] || 'Unknown template';
+export const mobilePromptTemplates = [
+  ['native', 'Native Opt-in', 'A tap opens the browser permission prompt.'],
+  ['dialog', 'Dialog Box', 'A compact invitation near the bottom.'],
+  ['modal', 'Central Modal', 'A centered invitation with a backdrop.'],
+  ['fullscreen', 'Fullscreen', 'A full-page invitation with a way to decline.'],
+  ['header', 'Sticky Header', 'A compact invitation fixed to the top.'],
+  ['slide-up', 'Slide-up Box', 'A panel that slides in from the bottom.'],
+  ['sticky', 'Sticky Bar', 'A vertical tab that expands your invitation.'],
+];
+export const promptTemplateName = (value, device = 'large') => (device === 'mobile' ? mobilePromptTemplates : promptTemplates).find(([key]) => key === value)?.[1] || 'Unknown template';

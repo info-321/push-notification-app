@@ -17,8 +17,25 @@
     .sticky-tab{display:block;writing-mode:vertical-rl;border-radius:8px 0 0 8px;box-shadow:0 5px 22px #173d5130;padding:18px 12px;background:#12ad88;color:white;max-height:calc(100dvh - 40px)}
     :host([data-edge=left]) .sticky-tab{border-radius:0 8px 8px 0}.sticky.card{max-height:calc(100dvh - 40px);overflow:auto}
   `;
-  window.PushPermissionUI = { isPhone, mount({ settings: p, key, track, subscribe }) {
-    const storageKey = `push-prompt-dismissed:${key}`;
+  const mobileCss = `
+    :host([data-device=mobile]){max-width:calc(100vw - 24px)}
+    :host([data-device=mobile]) .card{width:360px;max-width:100%;padding:18px;font-size:13px}
+    :host([data-device=mobile]) .heading{font-size:18px}:host([data-device=mobile]) .message{font-size:13px}
+    :host([data-device=mobile]) .dialog{border-radius:6px;max-height:calc(100dvh - 32px);overflow:auto}
+    :host([data-device=mobile]) .dialog .heading{font-size:14px}:host([data-device=mobile]) .dialog .brand{gap:10px}:host([data-device=mobile]) .dialog .message{margin-left:56px;font-size:12px}
+    :host([data-device=mobile]) .modal{max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);padding:24px}
+    :host([data-device=mobile]) .fullscreen{width:100vw;max-width:none;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
+    :host([data-device=mobile]) .fullscreen .heading{font-size:24px}:host([data-device=mobile]) .fullscreen .message{font-size:15px}
+    :host([data-device=mobile]) .header,:host([data-device=mobile]) .slide-up{width:100vw;max-width:none;border-radius:0;padding:18px max(18px,env(safe-area-inset-right)) 18px max(18px,env(safe-area-inset-left));max-height:70dvh;overflow:auto}
+    :host([data-device=mobile]) .header{padding-top:max(18px,env(safe-area-inset-top))}
+    :host([data-device=mobile]) .slide-up{border-radius:14px 14px 0 0;padding-bottom:max(18px,env(safe-area-inset-bottom))}
+    :host([data-device=mobile]) .header .brand,:host([data-device=mobile]) .slide-up .brand{margin-bottom:8px}
+    :host([data-device=mobile]) .header .actions,:host([data-device=mobile]) .slide-up .actions{justify-content:center}
+    @media(prefers-reduced-motion:no-preference){:host([data-device=mobile]) .slide-up{animation:mobile-slide .25s ease-out}@keyframes mobile-slide{from{transform:translateY(100%)}to{transform:translateY(0)}}}
+  `;
+  window.PushPermissionUI = { isPhone, mount({ settings: p, key, device = 'large', track, subscribe }) {
+    const mobile = device === 'mobile';
+    const storageKey = `push-prompt-dismissed:${key}${mobile ? ':mobile' : ''}`;
     const pathMatches = prefix => prefix === '/' || location.pathname === prefix || location.pathname.startsWith(prefix.endsWith('/') ? prefix : prefix + '/');
     let dismissedUntil = 0;
     try { dismissedUntil = Number(localStorage.getItem(storageKey)) || 0; } catch { /* Private browsing may disable storage. */ }
@@ -39,7 +56,7 @@
     };
     const postpone = () => { try { localStorage.setItem(storageKey, String(Date.now() + p.cooldown * 86400000)); } catch { /* Best-effort local cooldown. */ } };
     const controller = { flush: () => queue, outcome(value) { event('permission', value); if (value !== 'granted') { postpone(); hide(); } }, hide };
-    if (!p.enabled || isPhone(navigator) || dismissedUntil > Date.now() || (p.include_paths.length && !p.include_paths.some(pathMatches)) || p.exclude_paths.some(pathMatches)) return controller;
+    if (!p.enabled || isPhone(navigator) !== mobile || dismissedUntil > Date.now() || (p.include_paths.length && !p.include_paths.some(pathMatches)) || p.exclude_paths.some(pathMatches)) return controller;
     const show = () => {
       if (active || Notification.permission === 'denied') { clearTriggers(); return; }
       if (document.hidden) {
@@ -50,15 +67,18 @@
       previousFocus = document.activeElement;
       host = document.createElement('div'); host.setAttribute('data-push-permission-prompt', ''); host.style[p.position === 'left' ? 'left' : 'right'] = '24px'; if (p.position === 'left') host.style.right = 'auto';
       host.setAttribute('data-template', p.template); host.setAttribute('data-edge', p.position);
-      if (p.template === 'dialog') { host.style.top = '20px'; host.style.bottom = 'auto'; host.style.left = '50%'; host.style.right = 'auto'; host.style.transform = 'translateX(-50%)'; }
+      host.setAttribute('data-device', device);
+      if (p.template === 'dialog') { host.style.top = mobile ? 'auto' : '20px'; host.style.bottom = mobile ? 'max(14px, env(safe-area-inset-bottom))' : 'auto'; host.style.left = '50%'; host.style.right = 'auto'; host.style.transform = 'translateX(-50%)'; }
+      if (mobile && (p.template === 'header' || p.template === 'slide-up')) { host.style.left = '0'; host.style.right = '0'; host.style.maxWidth = 'none'; host.style.top = p.template === 'header' ? '0' : 'auto'; host.style.bottom = p.template === 'header' ? 'auto' : '0'; }
       if (p.template === 'sticky') { host.style.top = '50%'; host.style.bottom = 'auto'; host.style.transform = 'translateY(-50%)'; host.style[p.position] = '0'; }
-      const root = host.attachShadow({ mode: 'open' }), style = document.createElement('style'); style.textContent = css + templateCss; root.appendChild(style);
+      const root = host.attachShadow({ mode: 'open' }), style = document.createElement('style'); style.textContent = css + templateCss + mobileCss; root.appendChild(style);
       const make = (tag, text, className) => { const node = document.createElement(tag); if (text) node.textContent = text; if (className) node.className = className; return node; };
       const isModal = p.template === 'modal' || p.template === 'fullscreen';
-      panel = make(isModal ? 'dialog' : 'section', '', p.template === 'button' ? 'floating' : `card ${p.template}`); panel.setAttribute('aria-label', 'Notification subscription'); panel.style.background = p.background; panel.style.color = p.text;
+      const launcher = p.template === 'button' || p.template === 'native';
+      panel = make(isModal ? 'dialog' : 'section', '', launcher ? `floating ${p.template}` : `card ${p.template}`); panel.setAttribute('aria-label', 'Notification subscription'); panel.style.background = p.background; panel.style.color = p.text;
       const allow = make('button', p.allow_label, 'allow'); allow.type = 'button'; allow.style.background = p.accent;
-      const dismiss = make('button', p.template === 'button' ? '×' : p.dismiss_label, p.template === 'button' ? 'close' : 'dismiss'); dismiss.type = 'button'; dismiss.setAttribute('aria-label', p.dismiss_label);
-      if (p.template === 'button') { panel.appendChild(allow); panel.appendChild(dismiss); }
+      const dismiss = make('button', launcher ? '×' : p.dismiss_label, launcher ? 'close' : 'dismiss'); dismiss.type = 'button'; dismiss.setAttribute('aria-label', p.dismiss_label);
+      if (launcher) { panel.appendChild(allow); panel.appendChild(dismiss); }
       else {
         const brand = make('div', '', 'brand');
         if (p.logo) { const image = make('img'); image.src = p.logo; image.alt = ''; image.referrerPolicy = 'no-referrer'; image.addEventListener('error', () => image.remove()); brand.appendChild(image); }
@@ -84,7 +104,7 @@
         panel.hidden = true;
         const tab = make('button', p.allow_label, 'sticky-tab'); tab.type = 'button'; tab.style.background = p.accent;
         tab.setAttribute('aria-expanded', 'false'); panel.id = 'push-sticky-invitation'; tab.setAttribute('aria-controls', panel.id);
-        tab.addEventListener('click', () => { tab.hidden = true; tab.setAttribute('aria-expanded', 'true'); panel.hidden = false; host.style[p.position] = '24px'; allow.focus({ preventScroll: true }); });
+        tab.addEventListener('click', () => { tab.hidden = true; tab.setAttribute('aria-expanded', 'true'); panel.hidden = false; host.style[p.position] = '24px'; if (mobile) host.style.maxWidth = 'calc(100vw - 48px)'; allow.focus({ preventScroll: true }); });
         root.appendChild(tab);
       }
       root.appendChild(panel); document.body.appendChild(host);

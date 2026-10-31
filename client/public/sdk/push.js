@@ -70,23 +70,24 @@
     if (existing && Notification.permission === 'granted') { await save(existing); return; }
     if (Notification.permission === 'denied') return;
     if (cfg.showButton !== false) {
-      // Phones retain the current button. Tablets (including desktop-mode iPads)
-      // belong to the configurable larger-device group, independently of width.
+      // Phones and larger devices have independently published prompts. Tablets
+      // (including desktop-mode iPads) use the larger-device group.
       const ua = navigator.userAgent || '';
       const tablet = /iPad|Tablet|Silk\/|Kindle/i.test(ua) || /Android/i.test(ua) && !/Mobile/i.test(ua) || /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
       const phone = !tablet && (/iPhone|iPod|Windows Phone|Mobile/i.test(ua) || navigator.userAgentData?.mobile === true);
-      if (!phone) {
+      const device = phone ? 'mobile' : 'large';
+      {
         try {
           const request = async (path, options = {}) => {
             const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 3000);
             try { return await fetch(`${cfg.apiBase.replace(/\/$/, '')}${path}`, { ...options, signal: controller.signal, credentials: 'omit' }); }
             finally { clearTimeout(timeout); }
           };
-          const response = await request(`/api/prompt/${encodeURIComponent(cfg.domainKey)}`), result = await response.json();
-          if (response.ok && result.ok && result.data?.prompt) {
+          const response = await request(`/api/prompt/${encodeURIComponent(cfg.domainKey)}${phone ? '?device=mobile' : ''}`), result = await response.json();
+          if (response.ok && result.ok && result.data?.prompt && (!phone || result.data.device === 'mobile')) {
             const p = result.data.prompt, matches = prefix => prefix === '/' || location.pathname === prefix || location.pathname.startsWith(prefix.endsWith('/') ? prefix : prefix + '/');
             let dismissedUntil = 0;
-            try { dismissedUntil = Number(localStorage.getItem(`push-prompt-dismissed:${cfg.domainKey}`)) || 0; } catch { /* Storage is optional. */ }
+            try { dismissedUntil = Number(localStorage.getItem(`push-prompt-dismissed:${cfg.domainKey}${phone ? ':mobile' : ''}`)) || 0; } catch { /* Storage is optional. */ }
             // Honor explicit suppression even if the optional UI script cannot load.
             if (!p.enabled || dismissedUntil > Date.now() || (p.include_paths.length && !p.include_paths.some(matches)) || p.exclude_paths.some(matches)) { report('ready', {}); return; }
             if (!window.PushPermissionUI) await new Promise((resolve, reject) => {
@@ -97,7 +98,7 @@
             });
             if (!document.body) await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
             promptToken = result.data.token;
-            promptController = window.PushPermissionUI.mount({ key: cfg.domainKey, settings: result.data.prompt, subscribe,
+            promptController = window.PushPermissionUI.mount({ key: cfg.domainKey, device, settings: result.data.prompt, subscribe,
               track: async (event, outcome) => request(`/api/prompt/${encodeURIComponent(cfg.domainKey)}/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: promptToken, event, ...(outcome ? { outcome } : {}) }) }) });
             report('ready', {}); return;
           }

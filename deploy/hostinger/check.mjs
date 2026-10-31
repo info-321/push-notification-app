@@ -81,6 +81,15 @@ for (const domain of domainList.data) {
   assert.equal(performanceResponse.status, 200);
   assert.ok(Array.isArray((await performanceResponse.json()).data.rows));
   console.log('Subscription prompt settings/performance: OK; published:', Boolean(promptState.published));
+  const mobilePromptResponse = await fetch(base + promptRoute + '?device=mobile', { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(mobilePromptResponse.status, 200);
+  const mobilePromptState = (await mobilePromptResponse.json()).data;
+  assert.ok(mobilePromptState.draft && typeof mobilePromptState.version === 'string');
+  const mobilePerformanceResponse = await fetch(base + promptRoute.replace('prompt-settings', 'prompt-performance') + '?device=mobile', { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(mobilePerformanceResponse.status, 200);
+  const mobilePerformance = (await mobilePerformanceResponse.json()).data;
+  assert.equal(mobilePerformance.device, 'mobile'); assert.ok(Array.isArray(mobilePerformance.rows));
+  console.log('Mobile subscription prompt settings/performance: OK; published:', Boolean(mobilePromptState.published));
   const audienceRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/audience';
   assert.equal((await fetch(base + audienceRoute)).status, 401, 'Audience locations must require login');
   const audienceResponse = await fetch(base + audienceRoute, { headers: { Authorization: `Bearer ${session.token}` } });

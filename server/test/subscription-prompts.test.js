@@ -34,10 +34,12 @@ async function fixture(t) {
     queries.push(sql);
     if (sql.startsWith('SELECT domain_name, subscription_prompt')) return [params[0] === 'one' && params[1] === 1 ? [row] : []];
     if (sql.startsWith('UPDATE domains SET subscription_prompt')) {
-      const version = row.subscription_prompt?.version || '0'; if (params[3] !== version) return [{ affectedRows: 0 }];
-      row.subscription_prompt = JSON.parse(params[0]); return [{ affectedRows: 1 }];
+      const mobile = sql.includes("'$.mobile.version'");
+      const version = (mobile ? row.subscription_prompt?.mobile : row.subscription_prompt)?.version || '0'; if (params.at(-1) !== version) return [{ affectedRows: 0 }];
+      const next = mobile ? JSON.parse(params[0]) : { version: params[0], draft: JSON.parse(params[1]), published: JSON.parse(params[2]), previous: JSON.parse(params[3]) };
+      row.subscription_prompt = mobile ? { ...(row.subscription_prompt || {}), mobile: next } : { ...(row.subscription_prompt || {}), ...next }; return [{ affectedRows: 1 }];
     }
-    if (sql.startsWith('INSERT IGNORE INTO prompt_events')) { if (!events.has(params[1])) events.set(params[1], { key: params[0], nonce: params[1], revision: params[2], template: params[3], views: 1, clicks: 0, dismissals: 0, subscriptions: 0 }); return [{}]; }
+    if (sql.startsWith('INSERT IGNORE INTO prompt_events')) { if (!events.has(params[1])) events.set(params[1], { key: params[0], nonce: params[1], revision: params[2], template: params[3], device: params[4], views: 1, clicks: 0, dismissals: 0, subscriptions: 0 }); return [{}]; }
     if (sql.startsWith('UPDATE prompt_events')) {
       const converted = sql.includes('subscribed_at = NOW()'), permission = sql.includes('permission_outcome = ?');
       const entry = events.get(params[converted || permission ? 2 : 1]);
@@ -49,7 +51,7 @@ async function fixture(t) {
       }
       return [{}];
     }
-    if (sql.startsWith('SELECT revision, template')) { assert.match(sql, /WHERE domain_key = \? AND created_at >= FROM_UNIXTIME\(\?\)/); return [[...events.values()].filter(e => e.key === params[0])]; }
+    if (sql.startsWith('SELECT revision, template')) { assert.match(sql, /WHERE domain_key = \? AND created_at >= FROM_UNIXTIME\(\?\)/); assert.match(sql, /AND device_group = \?/); return [[...events.values()].filter(e => e.key === params[0] && e.device === params[3])]; }
     if (sql.startsWith('SELECT user_id, domain_name')) return [params[0] === 'one' ? [row] : []];
     if (sql.startsWith('SELECT id, domain_key') && sql.includes('FROM subscriptions')) return [subscriptions.filter(sub => sub.endpoint === params[0])];
     if (sql.startsWith('INSERT INTO subscriptions')) { const id = subscriptions.length + 1; subscriptions.push({ id, domain_key: params[1], endpoint: params[2] }); return [{ insertId: id }]; }
@@ -121,4 +123,46 @@ test('all four additional templates publish and issue valid attribution tokens a
   const report = await f.request('/api/domains/one/prompt-performance', undefined, true);
   assert.deepEqual(report.data.rows.map(row => row.template), ['dialog', 'modal', 'fullscreen', 'sticky']);
   assert.ok(report.data.rows.every(row => row.views === 1 && row.clicks === 1));
+});
+
+test('seven mobile templates publish independently, reject Bell, and keep signed tracking and performance separate', async t => {
+  const f = await fixture(t);
+  const largeBefore = (await f.request('/api/domains/one/prompt-settings', undefined, true)).data;
+  for (const template of ['native', 'dialog', 'modal', 'fullscreen', 'header', 'slide-up', 'sticky']) {
+    const mobile = (await f.request('/api/domains/one/prompt-settings?device=mobile', undefined, true)).data;
+    const settings = { ...promptDefaults('website.test'), template };
+    const result = await f.request('/api/domains/one/prompt-settings', { device: 'mobile', operation: 'publish', version: mobile.version, settings }, true);
+    assert.equal(result.status, 200);
+    const published = await f.request('/api/prompt/one?device=mobile');
+    assert.equal(published.data.device, 'mobile'); assert.equal(published.data.prompt.template, template);
+    assert.equal(readPromptToken(secret, published.data.token, 'one').device, 'mobile');
+    for (const event of ['view', 'click']) assert.equal((await f.request('/api/prompt/one/events', { token: published.data.token, event, device: 'large' })).status, 200);
+  }
+  assert.deepEqual((await f.request('/api/domains/one/prompt-settings', undefined, true)).data, largeBefore);
+  const mobileBefore = JSON.stringify(f.row.subscription_prompt.mobile);
+  assert.equal((await f.request('/api/domains/one/prompt-settings', { operation: 'publish', version: largeBefore.version, settings: largeBefore.draft }, true)).status, 200, 'Publishing mobile does not invalidate the desktop version');
+  assert.equal(JSON.stringify(f.row.subscription_prompt.mobile), mobileBefore, 'Desktop JSON updates preserve independently published mobile data');
+  const mobileReport = await f.request('/api/domains/one/prompt-performance?device=mobile', undefined, true);
+  assert.equal(mobileReport.data.rows.length, 7); assert.ok(mobileReport.data.rows.every(row => row.views === 1 && row.clicks === 1));
+  assert.deepEqual((await f.request('/api/domains/one/prompt-performance', undefined, true)).data.rows, []);
+  const version = f.row.subscription_prompt.mobile.version;
+  assert.equal((await f.request('/api/domains/one/prompt-settings', { device: 'mobile', operation: 'save', version, settings: { ...promptDefaults('website.test'), template: 'bell' } }, true)).status, 400);
+  assert.equal((await f.request('/api/domains/one/prompt-settings', { device: 'large', operation: 'save', version: f.row.subscription_prompt.version, settings: { ...promptDefaults('website.test'), template: 'native' } }, true)).status, 400);
+  const desktopBefore = (await f.request('/api/domains/one/prompt-settings', undefined, true)).data;
+  assert.equal((await f.request('/api/domains/one/prompt-settings', { device: 'mobile', operation: 'restore', version }, true)).status, 200);
+  assert.equal(f.row.subscription_prompt.mobile.published.settings.template, 'slide-up');
+  assert.deepEqual((await f.request('/api/domains/one/prompt-settings', undefined, true)).data, desktopBefore);
+  assert.equal((await f.request('/api/prompt/one?device=phone')).status, 400);
+});
+
+test('migration backfills legacy prompt history to the larger-device group without changing counts', async () => {
+  const queries = [];
+  await ensureSubscriptionPrompts({ query: async sql => {
+    queries.push(sql);
+    if (sql.startsWith('SHOW COLUMNS FROM domains')) return [[{ Field: 'subscription_prompt' }]];
+    if (sql.startsWith('SHOW COLUMNS FROM prompt_events')) return [[]];
+    return [{}];
+  } });
+  assert.match(queries.at(-1), /ADD COLUMN device_group VARCHAR\(16\) NOT NULL DEFAULT 'large'/);
+  assert.ok(queries.every(sql => !sql.startsWith('UPDATE') && !sql.startsWith('DELETE')));
 });
