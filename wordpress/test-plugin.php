@@ -41,6 +41,7 @@ $result = $method->invoke($plugin, $settings, ['title' => 'Hello']);
 check_contract(!is_wp_error($result) && $result['sent'] === 0, 'Zero subscribers must not be represented as a delivery.');
 check_contract($remote_request['url'] === 'https://push.example.org/api/notifications', 'Use the implemented send route.');
 check_contract($remote_request['args']['headers']['X-Api-Key'] === 'private-sender-key', 'Authenticate server-to-server requests.');
+check_contract($remote_request['args']['headers']['X-Push-Source'] === 'wordpress', 'Attribute WordPress campaigns without exposing the sender key.');
 check_contract(json_decode($remote_request['args']['body'], true)['domain_key'] === 'domain-key', 'Send the selected domain key.');
 $response_status = 401;
 $response_data = ['ok' => false, 'message' => 'Invalid sender key.'];

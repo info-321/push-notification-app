@@ -2,7 +2,7 @@
 Contributors: abhijitbose
 Requires at least: 5.0
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 
 Connect a WordPress website to your Push Notification project.
 
@@ -19,6 +19,10 @@ The backend API must be deployed at a public HTTPS address before installing on 
 Send on publish is optional and disabled for new installations. Delivery results mean the push service accepted the message; they do not confirm that a device displayed it. Larger subscriber lists need a background delivery queue on the backend.
 
 == Changelog ==
+= 1.3.0 =
+* Report notification creation acknowledgements and unique clicks, including notification buttons.
+* Mark WordPress sends in campaign reporting. Existing plugin settings are preserved.
+
 = 1.2.0 =
 Support banner images and up to two notification actions, including sharing and phone links. Replace the existing plugin and let subscribed browsers revisit to update their worker. Existing settings and subscriptions are preserved.
 

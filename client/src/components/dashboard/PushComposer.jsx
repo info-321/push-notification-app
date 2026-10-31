@@ -50,6 +50,7 @@ function ChoiceIcon({ type }) {
 }
 
 export default function PushComposer({ domainKey, onAllSites, onManageDomains, onSettings, onSelectDomain, onDashboard, onConfiguration, onLogout }) {
+  const [copyId] = useState(() => { const params = new URLSearchParams(window.location.search); return params.get('domain') === domainKey ? params.get('copy') || '' : ''; });
   const [domains, setDomains] = useState([]), [loading, setLoading] = useState(true), [loadError, setLoadError] = useState('');
   const [step, setStep] = useState(1), [draft, setDraft] = useState({ title: '', body: '', url: '/', icon: '', banner: newBanner() });
   const [iconStatus, setIconStatus] = useState(''), [iconDirty, setIconDirty] = useState(false), [saveBanner, setSaveBanner] = useState(false), [busy, setBusy] = useState(false);
@@ -77,15 +78,26 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
       const result = await response.json();
       if (!response.ok || !result.ok || !result.data || Array.isArray(result.data)) throw new Error(result.message || 'Could not load notification defaults.');
       return result.data;
-    })]).then(([sites, defaults]) => {
+    })]).then(async ([sites, defaults]) => {
       if (cancelled) return;
+      let copied;
+      if (copyId) {
+        const response = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/reports/${encodeURIComponent(copyId)}`), result = await response.json();
+        if (!response.ok || !result.ok || !result.data?.content?.title) throw new Error(result.message || 'Could not copy this campaign.');
+        copied = result.data.content;
+        if (cancelled) return;
+      }
       setDomains(sites); savedIcon.current = defaults.icon || ''; savedBanner.current = defaults.banner || newBanner();
       setSchedule(newSchedule(sites.find(site => site.domain_key === domainKey)?.time_zone || 'Asia/Kolkata'));
       setDraft(current => ({ ...current, icon: savedIcon.current, banner: savedBanner.current }));
+      if (copied) {
+        setDraft({ title: copied.title, body: copied.body || '', url: copied.url || '/', icon: copied.icon || '', banner: copied.banner || newBanner() });
+        setPlatform(copied.audience?.platform || 'all'); setSubscribed(copied.audience?.subscribed || 'all'); setStep(2);
+      }
       setIconStatus(savedIcon.current ? 'Icon saved for this website.' : 'The icon is saved automatically for this website.');
     }).catch(err => { if (!cancelled) setLoadError(err.message); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [domainKey, reload]);
+  }, [domainKey, reload, copyId]);
 
   const saveIcon = useCallback(value => {
     const job = saveQueue.current.catch(() => {}).then(async () => {
@@ -174,7 +186,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   return <div className="overview-page push-composer-page">
     <WebsiteHeader activePage="push" domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={navigate(onAllSites)} onManageDomains={navigate(onManageDomains)} onSettings={navigate(onSettings)} onSelectDomain={navigate(onSelectDomain)} onDashboard={() => navigate(onDashboard)(domainKey, domain?.domain_name)} onConfiguration={navigate(onConfiguration)} onLogout={navigate(onLogout)} />
     <main className="overview-main push-main">
-      <nav className="analytics-navigation" aria-label="Push navigation"><span aria-current="page">Send Push</span><button disabled>Segments</button><a href={`/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports`}>Reports</a><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>Schedule List</a><button disabled>Template Gallery</button><a href={`/push/settings?domain=${encodeURIComponent(domainKey)}`}>Push Setting</a><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></nav>
+      <nav className="analytics-navigation" aria-label="Push navigation"><span aria-current="page">Send Push</span><button disabled>Segments</button><a href={`/push/reports?domain=${encodeURIComponent(domainKey)}`}>Reports</a><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>Schedule List</a><button disabled>Template Gallery</button><a href={`/push/settings?domain=${encodeURIComponent(domainKey)}`}>Push Setting</a><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></nav>
       <h1 className="overview-sr-only">Send Push for {domain?.domain_name || 'your website'}</h1>
       {loading && <p role="status">Loading websites...</p>}
       {loadError && <div className="overview-panel push-message" role="alert">{loadError}<button onClick={() => setReload(value => value + 1)}>Try again</button></div>}

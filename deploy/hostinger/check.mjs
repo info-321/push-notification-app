@@ -44,6 +44,14 @@ assert.equal(schedulerResponse.status, 200);
 assert.equal((await schedulerResponse.json()).data.running, true, 'Backend scheduler must have a fresh heartbeat');
 console.log('Schedule worker heartbeat: OK');
 for (const domain of domainList.data) {
+  const reportsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/reports';
+  assert.equal((await fetch(base + reportsRoute)).status, 401, 'Campaign reports require an administrator');
+  const reportsResponse = await fetch(base + reportsRoute + '?limit=5&tests=include', { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(reportsResponse.status, 200);
+  const reports = (await reportsResponse.json()).data;
+  assert.ok(Array.isArray(reports.rows) && Number.isSafeInteger(reports.total));
+  for (const row of reports.rows) { assert.equal(row.content.vapid_private_key, undefined); assert.equal(row.tracking || row.clicks === null, true); }
+  console.log('Campaign reports API: OK; saved campaigns:', reports.total);
   const schedulesRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/schedules';
   assert.equal((await fetch(base + schedulesRoute)).status, 401);
   const schedulesResponse = await fetch(base + schedulesRoute, { headers: { Authorization: `Bearer ${session.token}` } });

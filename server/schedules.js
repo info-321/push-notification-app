@@ -114,7 +114,7 @@ export function installSchedules(app, { pool, requireAdmin }) {
   });
 }
 
-export function createScheduleWorker({ pool, webpush, vapidSubject, now = Date.now, logger = console }) {
+export function createScheduleWorker({ pool, webpush, vapidSubject, reporting, now = Date.now, logger = console }) {
   let busy = false, stopped = false, timer;
   const tick = async () => {
     if (busy || stopped) return; busy = true;
@@ -126,6 +126,7 @@ export function createScheduleWorker({ pool, webpush, vapidSubject, now = Date.n
       locked = true;
       const heartbeat = () => connection.query('INSERT INTO notification_scheduler_state (id, heartbeat_ms) VALUES (1, ?) ON DUPLICATE KEY UPDATE heartbeat_ms = VALUES(heartbeat_ms)', [now()]);
       await heartbeat();
+      await reporting?.recover();
       // A prior process held the lock while sending. Its disappearance leaves an
       // uncertain occurrence: retain it for review, never automatically resend.
       await connection.query("UPDATE notification_schedule_runs r JOIN notification_schedules j ON j.id = r.schedule_id SET r.status = 'interrupted', r.finished_ms = ?, r.message = 'Send interrupted; some notifications may have been accepted. No automatic retry.' WHERE j.user_id = 1 AND j.status = 'running' AND r.status = 'sending'", [now()]);
@@ -156,7 +157,7 @@ export function createScheduleWorker({ pool, webpush, vapidSubject, now = Date.n
           };
           const domain = await assertClaim();
           const prepared = prepareNotification(decode(job.content), domain, new Date(now()));
-          const result = await deliverNotification({ pool, webpush, vapidSubject }, domain, job.domain_key, prepared, { beforeBatch: assertClaim,
+          const result = await deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, job.domain_key, prepared, { source: 'scheduled', scheduleRunId: runId, beforeBatch: assertClaim,
             onProgress: counts => connection.query('UPDATE notification_schedule_runs SET result = ? WHERE id = ?', [JSON.stringify(counts), runId]) });
           await assertClaim();
           const next = nextScheduleSlot(spec, index + 1, now());

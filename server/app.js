@@ -13,15 +13,17 @@ import { installAnalytics } from './analytics.js';
 import { installPushContent, pushImageBodyParser } from './push-content.js';
 import { installSubscriptionPrompts } from './subscription-prompts.js';
 import { installSchedules } from './schedules.js';
+import { installReports } from './reports.js';
 
-export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository }) {
+export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository, reporting }) {
   const app = express();
   const accounts = accountRepository || memoryAccountRepository(adminUsername, adminPassword);
   app.use(cors());
   pwaBodyParser(app);
   pushImageBodyParser(app);
   app.use(express.json({ limit: '32kb' }));
-  const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts });
+  const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting });
+  installReports(app, { pool, secret, requireAdmin });
   installPushContent(app, { pool, requireAdmin, publicApiBase });
   installSubscriptionPrompts(app, { pool, secret, requireAdmin });
   installSchedules(app, { pool, requireAdmin });

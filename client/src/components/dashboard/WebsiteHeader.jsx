@@ -15,7 +15,7 @@ export default function WebsiteHeader({ domains = [], domainKey, domainName, ana
     <nav className="overview-navigation" aria-label="Website navigation">
       <button className={activePage === 'dashboard' ? 'overview-nav-active' : ''} aria-current={activePage === 'dashboard' ? 'page' : undefined} onClick={onDashboard}><Icon name="home" />Dashboard</button>
       <a className={activePage === 'push' ? 'overview-nav-active' : ''} aria-current={activePage === 'push' ? 'page' : undefined} href={`/push?domain=${encodeURIComponent(domainKey)}`} target="_blank" rel="noopener noreferrer" title="Open Push Notification in a new tab"><Icon name="send" />Push Notification</a>
-      <a href={activePage !== 'dashboard' ? `/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports` : '#overview-reports'}><Icon name="report" />Reports</a>
+      <a className={activePage === 'reports' ? 'overview-nav-active' : ''} aria-current={activePage === 'reports' ? 'page' : undefined} href={`/push/reports?domain=${encodeURIComponent(domainKey)}`}><Icon name="report" />Reports</a>
       <button onClick={() => onConfiguration(domainKey, domainName || '')}><Icon name="settings" />Configuration</button>
     </nav>
   </div></header>;

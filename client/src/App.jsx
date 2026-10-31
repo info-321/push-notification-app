@@ -10,6 +10,7 @@ import Analytics from './components/dashboard/Analytics';
 import PushComposer from './components/dashboard/PushComposer';
 import PromptSettings from './components/dashboard/PromptSettings';
 import ScheduleList from './components/dashboard/ScheduleList';
+import Reports from './components/dashboard/Reports';
 import DomainList from './components/domain-settings/DomainList';
 import Account from './components/domain-settings/Account';
 import PwaSettings from './components/domain-settings/PwaSettings';
@@ -20,7 +21,7 @@ const App = () => {
   const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
   const params = new URLSearchParams(window.location.search);
   const routeKey = params.get('domain') || '';
-  const routeView = window.location.pathname === '/push/schedules' ? 'schedules' : window.location.pathname === '/push/settings' ? 'prompt-settings' : window.location.pathname === '/push' ? 'push' : window.location.pathname === '/analytics' ? 'analytics'
+  const routeView = window.location.pathname === '/push/reports' ? 'reports' : window.location.pathname === '/push/schedules' ? 'schedules' : window.location.pathname === '/push/settings' ? 'prompt-settings' : window.location.pathname === '/push' ? 'push' : window.location.pathname === '/analytics' ? 'analytics'
     : window.location.pathname === '/settings/pwa' ? 'pwa'
     : window.location.pathname === '/settings/account' ? 'account'
     : ['/settings', '/settings/general'].includes(window.location.pathname) ? 'settings'
@@ -56,10 +57,10 @@ const App = () => {
   const syncViewFromUrl = useCallback(() => {
     if (!isAuthenticated) return;
     const path = window.location.pathname;
-    if (path === '/push/schedules' || path === '/push' || path === '/analytics' || path === '/push/settings') {
+    if (path === '/push/reports' || path === '/push/schedules' || path === '/push' || path === '/analytics' || path === '/push/settings') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
-      setView(path === '/push/schedules' ? 'schedules' : path === '/push/settings' ? 'prompt-settings' : path === '/push' ? 'push' : 'analytics');
+      setView(path === '/push/reports' ? 'reports' : path === '/push/schedules' ? 'schedules' : path === '/push/settings' ? 'prompt-settings' : path === '/push' ? 'push' : 'analytics');
     } else if (path === '/dashboard') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
@@ -115,11 +116,14 @@ const App = () => {
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
-    } else if (view === 'schedules' || view === 'prompt-settings' || view === 'push' || view === 'analytics' || view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
+    } else if (view === 'reports' || view === 'schedules' || view === 'prompt-settings' || view === 'push' || view === 'analytics' || view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
       document.body.classList.add('domain-bg');
-      if (view === 'push' || view === 'analytics' || view === 'prompt-settings' || view === 'schedules') {
-        const url = `/${view === 'schedules' ? 'push/schedules' : view === 'prompt-settings' ? 'push/settings' : view === 'push' ? 'push' : 'analytics'}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
-        if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
+      if (view === 'push' || view === 'analytics' || view === 'prompt-settings' || view === 'schedules' || view === 'reports') {
+        const url = `/${view === 'reports' ? 'push/reports' : view === 'schedules' ? 'push/schedules' : view === 'prompt-settings' ? 'push/settings' : view === 'push' ? 'push' : 'analytics'}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
+        const currentParams = new URLSearchParams(window.location.search);
+        const copyId = view === 'push' && currentParams.get('domain') === selectedDomainKey ? currentParams.get('copy') : '';
+        const target = copyId ? url + '&copy=' + encodeURIComponent(copyId) : url;
+        if (window.location.pathname + window.location.search !== target) window.history.pushState({}, '', target);
       }
       if (view === 'sites' || view === 'overview') {
         const url = view === 'overview' && selectedDomainKey ? `/dashboard?domain=${encodeURIComponent(selectedDomainKey)}` : '/dashboard';
@@ -281,6 +285,13 @@ const App = () => {
       onSelectDomain={openComposer} onDashboard={openOverview} onConfiguration={openConfiguration} onLogout={handleLogout} />;
   }
 
+  if (view === 'reports' && selectedDomainKey) {
+    return <Reports key={selectedDomainKey} domainKey={selectedDomainKey}
+      onAllSites={() => setView('sites')} onManageDomains={() => setView('domains')} onSettings={() => setView('settings')}
+      onSelectDomain={(key, name) => { setSelectedDomainKey(key); setSelectedDomainName(name || ''); }}
+      onDashboard={openOverview} onConfiguration={openConfiguration} onLogout={handleLogout} />;
+  }
+
   if (view === 'schedules' && selectedDomainKey) {
     return <ScheduleList key={selectedDomainKey} domainKey={selectedDomainKey}
       onAllSites={() => setView('sites')} onManageDomains={() => setView('domains')} onSettings={() => setView('settings')}
@@ -309,7 +320,7 @@ const App = () => {
       onLogout={handleLogout}
     />;
   }
-  if ((view === 'analytics' || view === 'push' || view === 'prompt-settings' || view === 'schedules') && !selectedDomainKey) {
+  if ((view === 'analytics' || view === 'push' || view === 'prompt-settings' || view === 'schedules' || view === 'reports') && !selectedDomainKey) {
     return <SiteSelect onAccount={() => setView('account')} onAddDomain={() => { setDomainTab('domain'); setView('domain'); }} onSettings={() => setView('settings')} onManageDomains={() => setView('domains')} onLogout={handleLogout} onSelectDomain={openOverview} />;
   }
 

@@ -1,6 +1,25 @@
 self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
+// Telemetry is best effort and never controls notification navigation.
+function recordReport(tracking, event, action = 'body') {
+  if (!tracking || typeof tracking.token !== 'string' || tracking.token.length > 240 || typeof fetch !== 'function') return Promise.resolve();
+  let target;
+  try { target = new URL(tracking.url); if (target.protocol !== 'https:' || target.username || target.password || target.pathname !== '/api/report-events') return Promise.resolve(); }
+  catch { return Promise.resolve(); }
+  return (async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 2000);
+      try {
+        const response = await fetch(target.href, { method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: tracking.token, event, action }) });
+        if (response.ok || response.status < 500) return;
+      } catch { /* Offline, blocked, or timed out. One bounded retry. */ }
+      finally { clearTimeout(timeout); }
+    }
+  })();
+}
+
 self.addEventListener('push', event => {
   let data = {};
   if (event.data) {
@@ -12,7 +31,7 @@ self.addEventListener('push', event => {
   const actions = Array.isArray(data.actions) ? data.actions.slice(0, 2) : [];
   const options = {
     body: data.body || '', icon: data.icon || '',
-    data: { url: data.url || '/', actions },
+    data: { url: data.url || '/', actions, tracking: data.tracking },
     ...(data.image ? { image: data.image } : {}),
     ...(actions.length ? { actions: actions.map(item => ({ action: item.action, title: item.title })) } : {}),
   };
@@ -20,7 +39,7 @@ self.addEventListener('push', event => {
     // Keep ordinary notifications usable when a platform rejects rich options.
     delete options.image; delete options.actions;
     return self.registration.showNotification(data.title || 'New notification', options);
-  }));
+  }).then(() => recordReport(data.tracking, 'ack')));
 });
 
 self.addEventListener('notificationclick', event => {
@@ -43,8 +62,9 @@ self.addEventListener('notificationclick', event => {
     else if (action.type === 'whatsapp') target = new URL('https://wa.me/?text=' + encodeURIComponent(page.href));
     else if (action.type === 'link') target = page;
   }
-  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windows => {
+  const navigation = self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windows => {
     const existing = windows.find(client => client.url === target.href);
     return existing ? existing.focus() : self.clients.openWindow(target.href).catch(() => self.clients.openWindow(sameSite(data.url).href));
-  }));
+  });
+  event.waitUntil(Promise.all([navigation, recordReport(data.tracking, 'click', action ? action.action : 'body')]));
 });

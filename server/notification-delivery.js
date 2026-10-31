@@ -29,29 +29,44 @@ export function prepareNotification(input, domain, now = new Date()) {
   return { payload, audience, content: { title: title.trim(), body, url: page, icon, banner, audience: { platform: audience.platform, subscribed: audience.subscribed } } };
 }
 
-export async function deliverNotification({ pool, webpush, vapidSubject }, domain, domainKey, prepared, { beforeBatch = async () => {}, onProgress = async () => {} } = {}) {
+export async function deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, domainKey, prepared, { beforeBatch = async () => {}, onProgress = async () => {}, source = 'api', isTest = false, scheduleRunId = null } = {}) {
   const where = pushAudienceWhere(domainKey, prepared.audience);
   const [subscriptions] = await pool.query(`SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE ${where.sql}`, where.params);
   const counts = { sent: 0, failed: 0, removed: 0, total: subscriptions.length };
+  const campaign = await reporting?.begin({ domainKey, content: prepared.content, total: subscriptions.length, source, isTest, scheduleRunId });
+  try {
   for (let offset = 0; offset < subscriptions.length; offset += 10) {
     await beforeBatch();
-    await Promise.all(subscriptions.slice(offset, offset + 10).map(async subscription => {
+    const batch = await Promise.allSettled(subscriptions.slice(offset, offset + 10).map(async subscription => {
       if (!validPushEndpoint(subscription.endpoint)) { counts.failed++; return; }
+      const recipient = await campaign?.recipient();
+      const payload = recipient ? JSON.stringify({ ...JSON.parse(prepared.payload), tracking: recipient.tracking }) : prepared.payload;
+      if (Buffer.byteLength(payload, 'utf8') > 3900) throw new Error('Tracked notification payload is too large.');
+      let outcome = 'accepted';
       try {
-        await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, prepared.payload, {
+        await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, payload, {
           TTL: 3600, timeout: 5000,
           vapidDetails: { subject: vapidSubject, publicKey: domain.vapid_public_key, privateKey: domain.vapid_private_key },
         });
         counts.sent++;
       } catch (error) {
         if ([404, 410].includes(error.statusCode)) {
-          await pool.query('DELETE FROM subscriptions WHERE id = ? AND domain_key = ?', [subscription.id, domainKey]); counts.removed++;
-        } else counts.failed++;
+          await pool.query('DELETE FROM subscriptions WHERE id = ? AND domain_key = ?', [subscription.id, domainKey]); counts.removed++; outcome = 'expired';
+        } else { counts.failed++; outcome = 'failed'; }
       }
+      if (campaign) await campaign.result(recipient.id, outcome);
     }));
     await onProgress({ ...counts });
+    await campaign?.progress(counts);
+    const interrupted = batch.find(result => result.status === 'rejected');
+    if (interrupted) throw interrupted.reason;
+  }
+  await campaign?.finish(counts);
+  } catch (error) {
+    try { await campaign?.interrupt(counts); } catch { /* A stale campaign is recovered by the worker. */ }
+    throw error;
   }
   const message = !counts.total ? (prepared.audience.platform !== 'all' || prepared.audience.subscribed !== 'all' ? 'No subscribers match the selected audience.' : 'No subscribers yet. Enable notifications on your website first.') :
     `Accepted by push services: ${counts.sent}. Failed: ${counts.failed}. Expired subscriptions removed: ${counts.removed}.`;
-  return { ok: !(counts.failed && !counts.sent), ...counts, message };
+  return { ok: !(counts.failed && !counts.sent), ...counts, message, ...(campaign ? { campaign_id: campaign.id } : {}) };
 }

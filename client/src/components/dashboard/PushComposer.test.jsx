@@ -9,6 +9,7 @@ const domains = [{ domain_key: 'mice', domain_name: 'micetraveladvisor.com' }, {
 const response = (data, extra = {}) => ({ ok: true, json: async () => ({ ok: true, data, ...extra }) });
 Object.defineProperty(window, 'crypto', { configurable: true, value: require('crypto').webcrypto });
 beforeEach(() => {
+  window.history.replaceState({}, '', '/push');
   jest.resetAllMocks();
   apiFetch.mockImplementation(async (url, options) => {
     if (options?.method === 'POST') return response(null, { message: 'Accepted by push services: 2. Failed: 0. Expired subscriptions removed: 0.' });
@@ -16,6 +17,17 @@ beforeEach(() => {
     if (url.endsWith('/push-defaults')) return response({ icon: '', banner: { enabled: false, image: '', actions: [{ title: 'Read More', url: '', type: 'link' }] } });
     return response(domains);
   });
+});
+
+test('copying a saved campaign restores content and audience as an unsent draft', async () => {
+  window.history.replaceState({}, '', '/push?domain=mice&copy=saved-campaign');
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation((url, options) => url.endsWith('/reports/saved-campaign') ? Promise.resolve(response({ content: { title: 'Copied news', body: 'Original message', url: '/original', icon: '', audience: { platform: 'desktop', subscribed: '7d' } } })) : original(url, options));
+  render(<PushComposer domainKey="mice" />); await waitFor(() => expect(screen.getByLabelText('Title')).toHaveValue('Copied news'));
+  expect(screen.getByLabelText('Message')).toHaveValue('Original message'); expect(screen.getByLabelText('URL')).toHaveValue('/original');
+  expect(apiFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Next' })); await screen.findByText('Choose Audience');
+  expect(within(screen.getByRole('group', { name: 'Audience platform' })).getByRole('button', { name: 'Desktop' })).toHaveAttribute('aria-pressed', 'true');
 });
 async function compose() {
   render(<PushComposer domainKey="mice" />);

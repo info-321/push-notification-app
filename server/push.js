@@ -19,7 +19,7 @@ const equal = (a, b) => {
 };
 const hostMatches = (a, b) => a.replace(/^www\./, '') === b.replace(/^www\./, '');
 
-export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts }) {
+export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting }) {
   const sign = (value) => crypto.createHmac('sha256', secret).update(value).digest('base64url');
   const senderKey = (key) => sign(`send:${key}`);
   const createToken = version => createAdminToken(secret, version);
@@ -126,7 +126,8 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
 
   app.post(['/api/notifications', '/api/notifications/compose'], async (req, res) => {
     const { domain_key: domainKey, title, body = '', url, icon = '' } = req.body || {};
-    let authorized = typeof domainKey === 'string' && equal(req.get('X-Api-Key'), senderKey(domainKey));
+    const senderAuthorized = typeof domainKey === 'string' && equal(req.get('X-Api-Key'), senderKey(domainKey));
+    let authorized = senderAuthorized;
     if (!authorized) {
       try { authorized = await isAdmin(req); }
       catch { return res.status(503).json({ ok: false, message: 'Sign in is temporarily unavailable.' }); }
@@ -149,7 +150,8 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
       const domain = domains[0];
       const prepared = prepareNotification(req.body, domain);
-      const result = await deliverNotification({ pool, webpush, vapidSubject }, domain, domainKey, prepared);
+      const source = req.path.endsWith('/compose') ? 'composer' : senderAuthorized ? req.get('X-Push-Source') === 'wordpress' ? 'wordpress' : 'api' : 'test';
+      const result = await deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, domainKey, prepared, { source, isTest: source === 'test' || req.body?.is_test === true });
       return res.status(result.ok ? 200 : 502).json(result);
     } catch (error) {
       if (error.status === 400) return res.status(400).json({ ok: false, message: error.message });

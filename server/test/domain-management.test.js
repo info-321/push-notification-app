@@ -119,7 +119,7 @@ test('domain deletion removes only its own subscriptions and commits both change
     beginTransaction: async () => events.push('begin'),
     query: async (sql, params) => {
       events.push([sql, params]);
-      if (sql.startsWith('SELECT id FROM notification_schedules')) return [[]];
+      if (sql.startsWith('SELECT id FROM notification_schedules') || sql.startsWith('SELECT id FROM push_campaigns')) return [[]];
       if (sql.startsWith('SELECT')) return [[{ id: 3, domain_key: 'selected-key' }]];
       return [{ affectedRows: 1 }];
     },
@@ -129,6 +129,9 @@ test('domain deletion removes only its own subscriptions and commits both change
   assert.deepEqual(events, ['begin',
     ['SELECT id, domain_key FROM domains WHERE id = ? AND user_id = ? FOR UPDATE', [3, 1]],
     ["SELECT id FROM notification_schedules WHERE domain_key = ? AND user_id = ? AND status = 'running' LIMIT 1", ['selected-key', 1]],
+    ["SELECT id FROM push_campaigns WHERE domain_key = ? AND user_id = ? AND status = 'sending' LIMIT 1", ['selected-key', 1]],
+    ['DELETE r FROM push_campaign_recipients r INNER JOIN push_campaigns c ON c.id = r.campaign_id WHERE c.domain_key = ? AND c.user_id = ?', ['selected-key', 1]],
+    ['DELETE FROM push_campaigns WHERE domain_key = ? AND user_id = ?', ['selected-key', 1]],
     ['DELETE r FROM notification_schedule_runs r INNER JOIN notification_schedules j ON j.id = r.schedule_id WHERE j.domain_key = ? AND j.user_id = ?', ['selected-key', 1]],
     ['DELETE FROM notification_schedules WHERE domain_key = ? AND user_id = ?', ['selected-key', 1]],
     ['DELETE FROM subscriptions WHERE domain_key = ? AND user_id = ?', ['selected-key', 1]],
@@ -143,7 +146,7 @@ test('unknown domains and database failures roll back deletion and release the c
     const connection = {
       beginTransaction: async () => events.push('begin'),
       query: async sql => {
-        if (sql.startsWith('SELECT id FROM notification_schedules')) return [[]];
+        if (sql.startsWith('SELECT id FROM notification_schedules') || sql.startsWith('SELECT id FROM push_campaigns')) return [[]];
         if (sql.startsWith('SELECT')) return [failure ? [{ id: 3, domain_key: 'selected-key' }] : []];
         throw new Error('Delete failed');
       },

@@ -1,3 +1,4 @@
+import { ReportsSummary } from './Reports';
 import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import './dashboard.css';
@@ -85,20 +86,13 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
                 <button className="overview-panel overview-quick" onClick={sendPush}><Icon name="send" /><span>Send Push<small>Create a notification</small></span><span className="overview-quick-arrow" aria-hidden="true">↗</span></button>
                 <button className="overview-panel overview-quick" onClick={openConfig}><Icon name="settings" /><span>Configuration<small>Manage WordPress setup</small></span><span className="overview-quick-arrow" aria-hidden="true">↗</span></button>
                 <button className="overview-panel overview-quick" disabled><Icon name="template" /><span>Add Push Templates<small>Coming soon</small></span></button>
-                <a className="overview-panel overview-quick" href="#overview-reports"><Icon name="report" /><span>Push Reports<small>Reporting status</small></span><span className="overview-quick-arrow" aria-hidden="true">↗</span></a>
+                <a className="overview-panel overview-quick" href={`/push/reports?domain=${encodeURIComponent(domainKey)}`}><Icon name="report" /><span>Push Reports<small>View campaign history</small></span><span className="overview-quick-arrow" aria-hidden="true">↗</span></a>
               </div>
             </section>
             <AudienceMap key={domainKey} domainKey={domainKey} refresh={refresh} />
           </div>
 
-          <section id="overview-reports" aria-labelledby="overview-reports-heading">
-            <h2 className="overview-section-title" id="overview-reports-heading">Reports</h2>
-            <div className="overview-panel overview-reports">
-              <div className="overview-report-tab">Push</div>
-              <div className="overview-table-scroll"><table><thead><tr>{['Sent', 'Title', 'Subscribers', 'Accepted by push services', 'Clicks', 'Click rate'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead></table></div>
-              <div className="overview-report-empty"><Icon name="report" /><h3>Campaign reporting is not enabled yet</h3><p>Past test notifications were not saved as campaigns. Send results appear in the notification form; delivery and clicks are not tracked.</p><button onClick={sendPush}>Send a notification</button></div>
-            </div>
-          </section>
+          <ReportsSummary domainKey={domainKey} timeZone={domain?.time_zone} refresh={refresh} />
 
           <section aria-labelledby="overview-events"><h2 className="overview-section-title" id="overview-events">Events</h2>
             <div className="overview-events">

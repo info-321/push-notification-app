@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Push Notifications Plugin
  * Description: Sends push notifications when posts are published and allows manual sends from the dashboard.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: ABHIJIT BOSE
  * Requires at least: 5.0
  * Requires PHP: 7.4
@@ -368,6 +368,7 @@ class Push_Notifications_Plugin {
             'body'  => $body ?: $settings['default_body'],
             'url'   => $url,
             'site'  => get_bloginfo('name'),
+            'is_test' => true,
             'icon'  => $settings['icon_url'],
             'cta'   => $settings['cta_label'],
         ];
@@ -417,7 +418,7 @@ class Push_Notifications_Plugin {
         $payload['domain_key'] = $settings['domain_key'];
         $endpoint = $settings['service_url'] ?: untrailingslashit($settings['api_base']) . '/api/notifications';
         $response = wp_remote_post($endpoint, [
-            'headers' => ['Content-Type' => 'application/json', 'X-Api-Key' => $settings['api_key']],
+            'headers' => ['Content-Type' => 'application/json', 'X-Api-Key' => $settings['api_key'], 'X-Push-Source' => 'wordpress'],
             'body' => wp_json_encode($payload),
             'timeout' => 30,
         ]);

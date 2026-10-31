@@ -7,6 +7,7 @@ import { ensurePushContent, ensureSubscriptionPrompts } from './domain-schema.js
 import { ensureDomainDisplayName, ensureDomainTimeZone, ensureDomainPwa, ensureSubscriptionCountry, ensureSubscriptionLocations, ensureSubscriptionDevice, ensureSubscriptionBrowser } from './domain-schema.js';
 import { mysqlAccountRepository } from './accounts.js';
 import { ensureSchedules, createScheduleWorker } from './schedules.js';
+import { ensureReports, createCampaignReporter } from './reports.js';
 
 dotenv.config({ path: fileURLToPath(new URL('.env', import.meta.url)) });
 const port = Number(process.env.PORT || 5000);
@@ -32,21 +33,23 @@ await ensureDomainPwa(pool);
 await ensurePushContent(pool);
 await ensureSubscriptionPrompts(pool);
 await ensureSchedules(pool);
+await ensureReports(pool);
 await ensureSubscriptionCountry(pool);
 await ensureSubscriptionLocations(pool);
 await ensureSubscriptionDevice(pool);
 await ensureSubscriptionBrowser(pool);
 const accountRepository = mysqlAccountRepository(pool);
+const reporting = createCampaignReporter({ pool, secret: process.env.PUSH_API_SECRET, publicApiBase: process.env.PUBLIC_API_BASE || `http://localhost:${port}` });
 await accountRepository.initialize(process.env.ADMIN_USERNAME || 'admin', process.env.ADMIN_PASSWORD || 'admin');
 const app = createApp({
-  pool, webpush, accountRepository,
+  pool, webpush, accountRepository, reporting,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin',
   secret: process.env.PUSH_API_SECRET,
   publicApiBase: process.env.PUBLIC_API_BASE || `http://localhost:${port}`,
   vapidSubject: process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
 });
-const worker = createScheduleWorker({ pool, webpush, vapidSubject: process.env.VAPID_SUBJECT || 'mailto:admin@example.com' });
+const worker = createScheduleWorker({ pool, webpush, reporting, vapidSubject: process.env.VAPID_SUBJECT || 'mailto:admin@example.com' });
 const server = app.listen(port, () => { console.log(`Server listening on port ${port}`); worker.start(); });
 const shutdown = async () => {
   worker.stop(); server.close();

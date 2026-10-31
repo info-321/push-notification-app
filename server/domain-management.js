@@ -7,6 +7,10 @@ export async function deleteOwnedDomain(pool, field, value, userId) {
     if (!rows.length) { await connection.rollback(); return false; }
     const [running] = await connection.query("SELECT id FROM notification_schedules WHERE domain_key = ? AND user_id = ? AND status = 'running' LIMIT 1", [rows[0].domain_key, userId]);
     if (running.length) throw Object.assign(new Error('A scheduled send is in progress. Try deleting this domain after it finishes.'), { code: 'SCHEDULE_RUNNING' });
+    const [campaigns] = await connection.query("SELECT id FROM push_campaigns WHERE domain_key = ? AND user_id = ? AND status = 'sending' LIMIT 1", [rows[0].domain_key, userId]);
+    if (campaigns.length) throw Object.assign(new Error('A notification is being sent. Try deleting this domain after it finishes.'), { code: 'SCHEDULE_RUNNING' });
+    await connection.query('DELETE r FROM push_campaign_recipients r INNER JOIN push_campaigns c ON c.id = r.campaign_id WHERE c.domain_key = ? AND c.user_id = ?', [rows[0].domain_key, userId]);
+    await connection.query('DELETE FROM push_campaigns WHERE domain_key = ? AND user_id = ?', [rows[0].domain_key, userId]);
     await connection.query('DELETE r FROM notification_schedule_runs r INNER JOIN notification_schedules j ON j.id = r.schedule_id WHERE j.domain_key = ? AND j.user_id = ?', [rows[0].domain_key, userId]);
     await connection.query('DELETE FROM notification_schedules WHERE domain_key = ? AND user_id = ?', [rows[0].domain_key, userId]);
     await connection.query('DELETE FROM subscriptions WHERE domain_key = ? AND user_id = ?', [rows[0].domain_key, userId]);

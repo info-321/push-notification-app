@@ -39,6 +39,7 @@ $files = [ordered]@{
     'server/notification-delivery.js' = 'server/notification-delivery.js'
     'server/schedule-time.js' = 'server/schedule-time.js'
     'server/schedules.js' = 'server/schedules.js'
+    'server/reports.js' = 'server/reports.js'
     'client/public/sdk/prompt-ui.js' = 'client/public/sdk/prompt-ui.js'
     'server/package.json' = 'server/package.json'
     'server/.env.example' = 'server/.env.example'
