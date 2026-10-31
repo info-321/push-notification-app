@@ -119,6 +119,7 @@ test('domain deletion removes only its own subscriptions and commits both change
     beginTransaction: async () => events.push('begin'),
     query: async (sql, params) => {
       events.push([sql, params]);
+      if (sql.startsWith('SELECT id FROM notification_schedules')) return [[]];
       if (sql.startsWith('SELECT')) return [[{ id: 3, domain_key: 'selected-key' }]];
       return [{ affectedRows: 1 }];
     },
@@ -127,6 +128,9 @@ test('domain deletion removes only its own subscriptions and commits both change
   assert.equal(await deleteOwnedDomain({ getConnection: async () => connection }, 'id', 3, 1), true);
   assert.deepEqual(events, ['begin',
     ['SELECT id, domain_key FROM domains WHERE id = ? AND user_id = ? FOR UPDATE', [3, 1]],
+    ["SELECT id FROM notification_schedules WHERE domain_key = ? AND user_id = ? AND status = 'running' LIMIT 1", ['selected-key', 1]],
+    ['DELETE r FROM notification_schedule_runs r INNER JOIN notification_schedules j ON j.id = r.schedule_id WHERE j.domain_key = ? AND j.user_id = ?', ['selected-key', 1]],
+    ['DELETE FROM notification_schedules WHERE domain_key = ? AND user_id = ?', ['selected-key', 1]],
     ['DELETE FROM subscriptions WHERE domain_key = ? AND user_id = ?', ['selected-key', 1]],
     ['DELETE FROM push_images WHERE domain_key = ?', ['selected-key']],
     ['DELETE FROM prompt_events WHERE domain_key = ?', ['selected-key']],
@@ -139,6 +143,7 @@ test('unknown domains and database failures roll back deletion and release the c
     const connection = {
       beginTransaction: async () => events.push('begin'),
       query: async sql => {
+        if (sql.startsWith('SELECT id FROM notification_schedules')) return [[]];
         if (sql.startsWith('SELECT')) return [failure ? [{ id: 3, domain_key: 'selected-key' }] : []];
         throw new Error('Delete failed');
       },
@@ -149,4 +154,16 @@ test('unknown domains and database failures roll back deletion and release the c
     else assert.equal(await promise, false);
     assert.deepEqual(events, ['begin', 'rollback', 'release']);
   }
+});
+
+test('a domain with a scheduled send in progress cannot be deleted midway through delivery', async () => {
+  const events = [];
+  const connection = {
+    beginTransaction: async () => {},
+    query: async sql => { events.push(sql); return [[sql.includes('notification_schedules') ? { id: 'running-job' } : { id: 1, domain_key: 'site' }]]; },
+    rollback: async () => events.push('rollback'), release: () => events.push('release'),
+  };
+  await assert.rejects(deleteOwnedDomain({ getConnection: async () => connection }, 'id', 1, 1), error => error.code === 'SCHEDULE_RUNNING');
+  assert.equal(events.some(sql => sql.startsWith('DELETE')), false);
+  assert.deepEqual(events.slice(-2), ['rollback', 'release']);
 });

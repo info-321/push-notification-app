@@ -7,6 +7,7 @@ import { apiFetch } from '../../api';
 jest.mock('../../api', () => ({ API_BASE: 'https://api.example.test', apiFetch: jest.fn() }));
 const domains = [{ domain_key: 'mice', domain_name: 'micetraveladvisor.com' }, { domain_key: 'second', domain_name: 'second.test' }];
 const response = (data, extra = {}) => ({ ok: true, json: async () => ({ ok: true, data, ...extra }) });
+Object.defineProperty(window, 'crypto', { configurable: true, value: require('crypto').webcrypto });
 beforeEach(() => {
   jest.resetAllMocks();
   apiFetch.mockImplementation(async (url, options) => {
@@ -59,14 +60,62 @@ test('platform and date filters update matching counts and the exact submitted a
   expect(posts.every(post => post.audience.platform === 'desktop' && post.audience.subscribed === '7d')).toBe(true);
 });
 
-test('invalid links stop progression and unavailable choices cannot pretend to schedule, import or use native apps', async () => {
+test('invalid links stop progression while both scheduling modes are available', async () => {
   await compose();
   fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://unrelated.test/article' } });
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   expect(screen.getByRole('alert')).toHaveTextContent('Use an HTTPS link on the selected website');
-  expect(screen.getByRole('button', { name: 'Schedule One Time' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Schedule Recurring' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Schedule One Time' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Schedule Recurring' })).toBeEnabled();
   expect(apiFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+});
+
+test.each(['Schedule One Time', 'Schedule Recurring'])('%s previews timing and saves only on the final action, including an empty future audience', async mode => {
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation((url, options) => {
+    if (url.endsWith('/api/schedules/preview')) return Promise.resolve(response({ upcoming: ['2027-01-05T10:00:00Z'], schedule: JSON.parse(options.body).schedule }));
+    if (url.endsWith('/api/schedules')) return Promise.resolve(response({ id: 'saved' }, { message: 'Notification scheduled.' }));
+    if (url.includes('/send-audience?')) return Promise.resolve(response({ matching: 0, total: 0, device_unknown: 0 }));
+    return original(url, options);
+  });
+  await compose(); fireEvent.click(screen.getByRole('button', { name: mode }));
+  fireEvent.change(screen.getByLabelText(mode === 'Schedule One Time' ? 'Send date and time' : 'Start date and time'), { target: { value: '2027-01-05T15:30' } });
+  if (mode === 'Schedule Recurring') {
+    fireEvent.change(screen.getByLabelText('Repeat', { exact: true }), { target: { value: 'weekly' } });
+    fireEvent.change(screen.getByLabelText('Every', { exact: true }), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Number of occurrences'), { target: { value: '5' } });
+  }
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+  expect(apiFetch.mock.calls.filter(([url]) => url.endsWith('/api/schedules'))).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('Choose Audience');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Schedule Push' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Back', exact: true }));
+  expect(screen.getByLabelText(mode === 'Schedule One Time' ? 'Send date and time' : 'Start date and time')).toHaveValue('2027-01-05T15:30');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Schedule Push' })).toBeEnabled());
+  const button = screen.getByRole('button', { name: 'Schedule Push' }); fireEvent.click(button); fireEvent.click(button);
+  await screen.findByRole('link', { name: 'View Schedule List' });
+  const posts = apiFetch.mock.calls.filter(([url]) => url.endsWith('/api/schedules'));
+  expect(posts).toHaveLength(1);
+  const body = JSON.parse(posts[0][1].body);
+  expect(body.request_key).toMatch(/^[a-f0-9-]{36}$/);
+  expect(body.audience).toEqual({ platform: 'all', subscribed: 'all' });
+  expect(body.schedule).toMatchObject({ kind: mode === 'Schedule One Time' ? 'once' : 'recurring', start: '2027-01-05T15:30', time_zone: 'Asia/Kolkata' });
+  if (mode === 'Schedule Recurring') expect(body.schedule).toMatchObject({ frequency: 'weekly', interval: 2, count: 5 });
+  expect(apiFetch.mock.calls.some(([url]) => url.includes('/api/notifications'))).toBe(false);
+});
+
+test('invalid schedule previews block Next and show the server validation message', async () => {
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation((url, options) => url.endsWith('/api/schedules/preview') ? Promise.resolve({ ok: false, json: async () => ({ ok: false, message: 'Choose a time at least one minute ahead.' }) }) : original(url, options));
+  await compose(); fireEvent.click(screen.getByRole('button', { name: 'Schedule One Time' }));
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Choose a time at least one minute ahead.');
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Send Now', exact: true }));
+  expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
 });
 
 test('zero matching audiences and disabled web subscriptions never fall back to sending to everyone', async () => {

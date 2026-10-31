@@ -7,7 +7,8 @@ import { createAdminToken } from './accounts.js';
 import { requestLocation, mergeLocation } from './audience.js';
 import { requestDevice, requestBrowser, deviceCountSql, summarizeDevices } from './subscriber-device.js';
 import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
-import { normalizeBanner, validImageUrl } from './push-content.js';
+import { validPushEndpoint, prepareNotification, deliverNotification } from './notification-delivery.js';
+export { validPushEndpoint } from './notification-delivery.js';
 import { recordPromptSubscription } from './subscription-prompts.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
@@ -17,15 +18,6 @@ const equal = (a, b) => {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 };
 const hostMatches = (a, b) => a.replace(/^www\./, '') === b.replace(/^www\./, '');
-
-export function validPushEndpoint(value) {
-  try {
-    const url = new URL(value);
-    const hosts = ['fcm.googleapis.com', 'android.googleapis.com', 'updates.push.services.mozilla.com', 'push.services.mozilla.com', 'web.push.apple.com'];
-    return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443') &&
-      (hosts.includes(url.hostname) || url.hostname.endsWith('.notify.windows.com') || url.hostname.endsWith('.push.apple.com'));
-  } catch { return false; }
-}
 
 export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts }) {
   const sign = (value) => crypto.createHmac('sha256', secret).update(value).digest('base64url');
@@ -156,45 +148,11 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       const [domains] = await pool.query('SELECT domain_name, vapid_public_key, vapid_private_key FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [domainKey]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
       const domain = domains[0];
-      let target;
-      try { target = new URL(url || '/', `https://${domain.domain_name}`); } catch { /* Reject below. */ }
-      if (!target || target.protocol !== 'https:' || !hostMatches(target.hostname, domain.domain_name) || target.username || target.password) {
-        return res.status(400).json({ ok: false, message: 'The notification link must use HTTPS on the registered website.' });
-      }
-      if (!validImageUrl(icon)) return res.status(400).json({ ok: false, message: 'The icon must be a public HTTPS URL.' });
-      let banner;
-      try { banner = normalizeBanner(req.body?.banner || { enabled: false }, domain.domain_name); }
-      catch (error) { return res.status(400).json({ ok: false, message: error.message }); }
-      const where = pushAudienceWhere(domainKey, audience);
-      const [subscriptions] = await pool.query(`SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE ${where.sql}`, where.params);
-      const counts = { sent: 0, failed: 0, removed: 0, total: subscriptions.length };
-      // Installed workers only open same-origin URLs. A validated path keeps
-      // article links working for subscriptions on either apex or www origins.
-      const payload = JSON.stringify({ title: title.trim(), body, url: target.pathname + target.search + target.hash, icon,
-        ...(banner.enabled ? { image: banner.image, actions: banner.actions.map(action => ({ ...action, url: action.url || target.pathname + target.search + target.hash })) } : {}) });
-      if (Buffer.byteLength(payload, 'utf8') > 3500) return res.status(400).json({ ok: false, message: 'This notification is too large. Shorten its message, links, or button labels.' });
-      // Bound concurrency so a publishing request does not open one connection per subscriber.
-      for (let offset = 0; offset < subscriptions.length; offset += 10) {
-        await Promise.all(subscriptions.slice(offset, offset + 10).map(async (subscription) => {
-          if (!validPushEndpoint(subscription.endpoint)) { counts.failed++; return; }
-          try {
-            await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, payload, {
-              TTL: 3600, timeout: 5000,
-              vapidDetails: { subject: vapidSubject, publicKey: domain.vapid_public_key, privateKey: domain.vapid_private_key },
-            });
-            counts.sent++;
-          } catch (error) {
-            if ([404, 410].includes(error.statusCode)) {
-              await pool.query('DELETE FROM subscriptions WHERE id = ? AND domain_key = ?', [subscription.id, domainKey]);
-              counts.removed++;
-            } else { counts.failed++; }
-          }
-        }));
-      }
-      const message = counts.total === 0 ? (audience.platform !== 'all' || audience.subscribed !== 'all' ? 'No subscribers match the selected audience.' : 'No subscribers yet. Enable notifications on your website first.') :
-        `Accepted by push services: ${counts.sent}. Failed: ${counts.failed}. Expired subscriptions removed: ${counts.removed}.`;
-      return res.status(counts.failed && !counts.sent ? 502 : 200).json({ ok: !(counts.failed && !counts.sent), ...counts, message });
+      const prepared = prepareNotification(req.body, domain);
+      const result = await deliverNotification({ pool, webpush, vapidSubject }, domain, domainKey, prepared);
+      return res.status(result.ok ? 200 : 502).json(result);
     } catch (error) {
+      if (error.status === 400) return res.status(400).json({ ok: false, message: error.message });
       console.error('Notification send failed:', error.code || error.message);
       return res.status(500).json({ ok: false, message: 'Could not send the notification. Check the database and VAPID configuration.' });
     }

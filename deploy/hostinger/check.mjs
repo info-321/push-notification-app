@@ -38,7 +38,20 @@ const domains = await fetch(base + '/api/domains', { headers: { Authorization: `
 assert.equal(domains.status, 200, 'Authenticated database access must succeed');
 const domainList = await domains.json();
 assert.ok(Array.isArray(domainList.data), 'Domain API must return a list');
+assert.equal((await fetch(base + '/api/schedules/status')).status, 401, 'Scheduler status must require login');
+const schedulerResponse = await fetch(base + '/api/schedules/status', { headers: { Authorization: `Bearer ${session.token}` } });
+assert.equal(schedulerResponse.status, 200);
+assert.equal((await schedulerResponse.json()).data.running, true, 'Backend scheduler must have a fresh heartbeat');
+console.log('Schedule worker heartbeat: OK');
 for (const domain of domainList.data) {
+  const schedulesRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/schedules';
+  assert.equal((await fetch(base + schedulesRoute)).status, 401);
+  const schedulesResponse = await fetch(base + schedulesRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(schedulesResponse.status, 200);
+  const schedules = (await schedulesResponse.json()).data;
+  assert.ok(Array.isArray(schedules.rows) && Number.isSafeInteger(schedules.total));
+  assert.equal(schedules.rows.some(row => row.request_hash || row.claim_token || row.vapid_private_key), false);
+  console.log('Scheduled notifications API: OK; saved schedules:', schedules.total);
   assert.equal(typeof domain.is_configured, 'boolean', 'Domain push configuration must be an explicit boolean');
   assert.ok(typeof domain.display_name === 'string' && domain.display_name.length > 0, 'Domains must have a friendly name or hostname fallback');
   const route = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/overview';

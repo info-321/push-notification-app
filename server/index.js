@@ -6,6 +6,7 @@ import { createApp } from './app.js';
 import { ensurePushContent, ensureSubscriptionPrompts } from './domain-schema.js';
 import { ensureDomainDisplayName, ensureDomainTimeZone, ensureDomainPwa, ensureSubscriptionCountry, ensureSubscriptionLocations, ensureSubscriptionDevice, ensureSubscriptionBrowser } from './domain-schema.js';
 import { mysqlAccountRepository } from './accounts.js';
+import { ensureSchedules, createScheduleWorker } from './schedules.js';
 
 dotenv.config({ path: fileURLToPath(new URL('.env', import.meta.url)) });
 const port = Number(process.env.PORT || 5000);
@@ -30,6 +31,7 @@ await ensureDomainTimeZone(pool);
 await ensureDomainPwa(pool);
 await ensurePushContent(pool);
 await ensureSubscriptionPrompts(pool);
+await ensureSchedules(pool);
 await ensureSubscriptionCountry(pool);
 await ensureSubscriptionLocations(pool);
 await ensureSubscriptionDevice(pool);
@@ -44,4 +46,13 @@ const app = createApp({
   publicApiBase: process.env.PUBLIC_API_BASE || `http://localhost:${port}`,
   vapidSubject: process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
 });
-app.listen(port, () => console.log(`Server listening on port ${port}`));
+const worker = createScheduleWorker({ pool, webpush, vapidSubject: process.env.VAPID_SUBJECT || 'mailto:admin@example.com' });
+const server = app.listen(port, () => { console.log(`Server listening on port ${port}`); worker.start(); });
+const shutdown = async () => {
+  worker.stop(); server.close();
+  const deadline = Date.now() + 8000;
+  while (worker.busy && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+  await pool.end();
+};
+process.once('SIGTERM', () => { shutdown().catch(() => {}); });
+process.once('SIGINT', () => { shutdown().catch(() => {}); });

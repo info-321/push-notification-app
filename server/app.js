@@ -12,6 +12,7 @@ import { installAudience } from './audience.js';
 import { installAnalytics } from './analytics.js';
 import { installPushContent, pushImageBodyParser } from './push-content.js';
 import { installSubscriptionPrompts } from './subscription-prompts.js';
+import { installSchedules } from './schedules.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository }) {
   const app = express();
@@ -23,6 +24,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts });
   installPushContent(app, { pool, requireAdmin, publicApiBase });
   installSubscriptionPrompts(app, { pool, secret, requireAdmin });
+  installSchedules(app, { pool, requireAdmin });
   installAccountRoutes(app, { accounts, requireAdmin, createToken });
 
   // Utility: generate a URL-safe domain key (Base64URL, no padding) so it's safe in URLs/headers.
@@ -203,6 +205,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
       }
       return res.json({ ok: true });
     } catch (err) {
+      if (err.code === 'SCHEDULE_RUNNING') return res.status(409).json({ ok: false, message: err.message });
       console.error('Error deleting domain by id', err);
       return res.status(500).json({ ok: false, message: 'Failed to delete domain.' });
     }
@@ -222,6 +225,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
       }
       return res.json({ ok: true });
     } catch (err) {
+      if (err.code === 'SCHEDULE_RUNNING') return res.status(409).json({ ok: false, message: err.message });
       console.error('Error deleting domain by key', err);
       return res.status(500).json({ ok: false, message: 'Failed to delete domain.' });
     }

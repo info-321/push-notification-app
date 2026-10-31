@@ -3,6 +3,7 @@ import { API_BASE, apiFetch } from '../../api';
 import WebsiteHeader from './WebsiteHeader';
 import NotificationPreview from './NotificationPreview';
 import BannerSettings, { newBanner } from './BannerSettings';
+import ScheduleControls, { newSchedule, ScheduleSummary } from './ScheduleControls';
 import './dashboard.css';
 import './analytics.css';
 import './push-composer.css';
@@ -52,6 +53,8 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   const [domains, setDomains] = useState([]), [loading, setLoading] = useState(true), [loadError, setLoadError] = useState('');
   const [step, setStep] = useState(1), [draft, setDraft] = useState({ title: '', body: '', url: '/', icon: '', banner: newBanner() });
   const [iconStatus, setIconStatus] = useState(''), [iconDirty, setIconDirty] = useState(false), [saveBanner, setSaveBanner] = useState(false), [busy, setBusy] = useState(false);
+  const [sendMode, setSendMode] = useState('now'), [schedule, setSchedule] = useState(() => newSchedule()), [schedulePreview, setSchedulePreview] = useState(null);
+  const schedulingKey = useRef(null);
   const savedIcon = useRef(''), savedBanner = useRef(newBanner()), saveQueue = useRef(Promise.resolve());
   const [selected, setSelected] = useState([domainKey]), [platform, setPlatform] = useState('all'), [subscribed, setSubscribed] = useState('all');
   const [webEnabled, setWebEnabled] = useState(true), [emojiField, setEmojiField] = useState('');
@@ -77,6 +80,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
     })]).then(([sites, defaults]) => {
       if (cancelled) return;
       setDomains(sites); savedIcon.current = defaults.icon || ''; savedBanner.current = defaults.banner || newBanner();
+      setSchedule(newSchedule(sites.find(site => site.domain_key === domainKey)?.time_zone || 'Asia/Kolkata'));
       setDraft(current => ({ ...current, icon: savedIcon.current, banner: savedBanner.current }));
       setIconStatus(savedIcon.current ? 'Icon saved for this website.' : 'The icon is saved automatically for this website.');
     }).catch(err => { if (!cancelled) setLoadError(err.message); }).finally(() => { if (!cancelled) setLoading(false); });
@@ -128,6 +132,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   const next = async event => {
     event.preventDefault(); const message = validatePushDraft(draft, [domain]);
     if (message) { setError(message); return; }
+    if (sendMode !== 'now' && !schedulePreview) { setError('Choose a valid schedule and wait for the upcoming times to load.'); return; }
     if (busy) return;
     setBusy(true); setError('');
     if (!await saveIcon(draft.icon)) { setBusy(false); setError('Could not save the icon. Check its URL and try Next again.'); return; }
@@ -142,28 +147,34 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
     setIconDirty(false); setBusy(false); move(3);
   };
   const send = async () => {
-    if (sendLock.current || finished || !webEnabled || !audience?.matching) return;
+    if (sendLock.current || finished || !webEnabled || !audience || (sendMode === 'now' && !audience.matching)) return;
     const message = validatePushDraft(draft, websites);
     if (message) { setError(message); return; }
+    if (sendMode !== 'now' && !schedulingKey.current) {
+      if (!window.crypto?.getRandomValues) { setError('Open the dashboard over HTTPS to create a schedule.'); return; }
+      const bytes = window.crypto.getRandomValues(new Uint8Array(16)); bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+      const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+      schedulingKey.current = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
     sendLock.current = true; setSending(true); setError(''); setResults([]);
     for (const site of websites) {
       let outcome;
       try {
-        const response = await apiFetch(`${API_BASE}/api/notifications/compose`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain_key: site.domain_key, title: draft.title.trim(), body: draft.body, url: draft.url, icon: draft.icon, ...(draft.banner.enabled ? { banner: draft.banner } : {}), audience: { platform, subscribed } }) });
+        const response = await apiFetch(`${API_BASE}${sendMode === 'now' ? '/api/notifications/compose' : '/api/schedules'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain_key: site.domain_key, title: draft.title.trim(), body: draft.body, url: draft.url, icon: draft.icon, ...(draft.banner.enabled ? { banner: draft.banner } : {}), audience: { platform, subscribed }, ...(sendMode === 'now' ? {} : { schedule, request_key: schedulingKey.current }) }) });
         const result = await response.json();
         outcome = { name: site.domain_name, ok: response.ok && result.ok && !(result.failed > 0), message: result.message || 'Could not complete this send.' };
-      } catch { outcome = { name: site.domain_name, ok: false, message: 'The send status could not be confirmed. Some notifications may have been accepted; this request will not be retried automatically.' }; }
+      } catch { outcome = { name: site.domain_name, ok: false, message: sendMode === 'now' ? 'The send status could not be confirmed. Some notifications may have been accepted; this request will not be retried automatically.' : 'Schedule creation could not be confirmed. Check Schedule List before creating it again; this request will not be retried automatically.' }; }
       setResults(current => [...current, outcome]);
     }
     setSending(false); setFinished(true); sendLock.current = false;
   };
-  const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: savedIcon.current, banner: JSON.parse(JSON.stringify(savedBanner.current)) }); setSaveBanner(false); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setWebEnabled(true); setStep(1); setError(''); };
+  const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: savedIcon.current, banner: JSON.parse(JSON.stringify(savedBanner.current)) }); setSaveBanner(false); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setWebEnabled(true); setSendMode('now'); setSchedule(newSchedule(domain?.time_zone || 'Asia/Kolkata')); setSchedulePreview(null); schedulingKey.current = null; setStep(1); setError(''); };
 
   return <div className="overview-page push-composer-page">
     <WebsiteHeader activePage="push" domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={navigate(onAllSites)} onManageDomains={navigate(onManageDomains)} onSettings={navigate(onSettings)} onSelectDomain={navigate(onSelectDomain)} onDashboard={() => navigate(onDashboard)(domainKey, domain?.domain_name)} onConfiguration={navigate(onConfiguration)} onLogout={navigate(onLogout)} />
     <main className="overview-main push-main">
-      <nav className="analytics-navigation" aria-label="Push navigation"><span aria-current="page">Send Push</span><button disabled>Segments</button><a href={`/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports`}>Reports</a><button disabled>Schedule List</button><button disabled>Template Gallery</button><a href={`/push/settings?domain=${encodeURIComponent(domainKey)}`}>Push Setting</a><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></nav>
+      <nav className="analytics-navigation" aria-label="Push navigation"><span aria-current="page">Send Push</span><button disabled>Segments</button><a href={`/dashboard?domain=${encodeURIComponent(domainKey)}#overview-reports`}>Reports</a><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>Schedule List</a><button disabled>Template Gallery</button><a href={`/push/settings?domain=${encodeURIComponent(domainKey)}`}>Push Setting</a><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></nav>
       <h1 className="overview-sr-only">Send Push for {domain?.domain_name || 'your website'}</h1>
       {loading && <p role="status">Loading websites...</p>}
       {loadError && <div className="overview-panel push-message" role="alert">{loadError}<button onClick={() => setReload(value => value + 1)}>Try again</button></div>}
@@ -187,11 +198,13 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
                 <p className="push-help" role="status">{iconStatus}</p>
                 <p className="push-help">Use a relative URL such as /news/article when sending to several websites.</p>
                 <BannerSettings banner={draft.banner} domainKey={domainKey} onChange={value => update('banner', value)} saveDefaults={saveBanner} onSaveDefaults={setSaveBanner} onBusy={setBusy} />
-                <div className="push-options" role="group" aria-label="Sending time"><button type="button" aria-pressed="true">Send Now</button><button type="button" disabled title="Scheduling is not available yet">Schedule One Time</button><button type="button" disabled title="Recurring scheduling is not available yet">Schedule Recurring</button></div>
-                <div className="push-form-actions"><button type="button" disabled={busy} className="push-back" onClick={() => move(1)}>Back</button><button disabled={busy} className="push-primary" type="submit">{busy ? 'Please wait...' : 'Next'}</button></div>
+                <div className="push-options" role="group" aria-label="Sending time">{[['now', 'Send Now'], ['once', 'Schedule One Time'], ['recurring', 'Schedule Recurring']].map(([mode, label]) => <button type="button" key={mode} aria-pressed={sendMode === mode} onClick={() => { setSendMode(mode); setSchedulePreview(null); if (mode !== 'now') setSchedule(current => ({ ...current, kind: mode })); }}>{label}</button>)}</div>
+                {sendMode !== 'now' && <ScheduleControls value={schedule} onChange={setSchedule} onPreview={setSchedulePreview} />}
+                <div className="push-form-actions"><button type="button" disabled={busy} className="push-back" onClick={() => move(1)}>Back</button><button disabled={busy || (sendMode !== 'now' && !schedulePreview)} className="push-primary" type="submit">{busy ? 'Please wait...' : 'Next'}</button></div>
                 </fieldset>
               </form> : <>
                 <h2>Choose Audience</h2>
+                {sendMode !== 'now' && <ScheduleSummary value={schedule} upcoming={schedulePreview?.upcoming || []} />}
                 <fieldset disabled={sending || finished} className="push-audience-fields"><legend className="overview-sr-only">Audience settings</legend>
                   <div className="push-domain-label"><span>Domains</span><button type="button" onClick={() => setSelected(domains.map(site => site.domain_key))}>Select All</button></div>
                   <div className="push-domain-options">{domains.map(site => <label key={site.domain_key}><input type="checkbox" checked={selected.includes(site.domain_key)} onChange={event => setSelected(current => event.target.checked ? [...current, site.domain_key] : current.filter(key => key !== site.domain_key))} />{site.domain_name}</label>)}</div>
@@ -205,10 +218,10 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
                   <div className="push-unavailable">Send to App Subscribers<input type="checkbox" disabled aria-label="App subscribers unavailable" /></div>
                 </fieldset>
                 {!finished && <div className="push-audience-count" aria-live="polite">{!selected.length ? 'Select at least one website.' : !webEnabled ? 'Enable web subscribers to send.' : audienceError ? <p role="alert">{audienceError} <button onClick={() => setCountReload(value => value + 1)}>Refresh audience</button></p> : audience ? <><strong>{number(audience.matching)}</strong> matching subscriptions across {websites.length} {websites.length === 1 ? 'website' : 'websites'}.{platform !== 'all' && audience.unknown > 0 && <p>{number(audience.unknown)} subscriptions have unknown device types and are excluded from this platform filter.</p>}</> : 'Counting matching subscriptions...'}</div>}
-                {sending && <p role="status">Sending notifications. Keep this tab open until the result appears.</p>}
+                {sending && <p role="status">{sendMode === 'now' ? 'Sending notifications. Keep this tab open until the result appears.' : 'Saving schedules. Keep this tab open until confirmation appears.'}</p>}
                 {results.length > 0 && <div className="push-results" aria-live="polite">{results.map(result => <p key={result.name} className={result.ok ? 'is-success' : 'is-error'}><strong>{result.name}</strong>{result.message}</p>)}</div>}
-                {finished ? <button className="push-primary" onClick={reset}>Create another notification</button> : <div className="push-form-actions"><button className="push-back" disabled={sending} onClick={() => move(2)}>Back</button><button className="push-primary" type="button" disabled={sending || !webEnabled || !selected.length || !audience?.matching || Boolean(audienceError)} onClick={send}>{sending ? 'Sending...' : 'Send Push Now'}</button></div>}
-                <p className="push-help">Sends immediately to the matching subscriptions on the selected websites. Push-service acceptance does not confirm device delivery.</p>
+                {finished ? <><button className="push-primary" onClick={reset}>Create another notification</button>{sendMode !== 'now' && <p><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>View Schedule List</a></p>}</> : <div className="push-form-actions"><button className="push-back" disabled={sending} onClick={() => move(2)}>Back</button><button className="push-primary" type="button" disabled={sending || !webEnabled || !selected.length || !audience || (sendMode === 'now' && !audience.matching) || Boolean(audienceError)} onClick={send}>{sending ? sendMode === 'now' ? 'Sending...' : 'Scheduling...' : sendMode === 'now' ? 'Send Push Now' : 'Schedule Push'}</button></div>}
+                <p className="push-help">{sendMode === 'now' ? 'Sends immediately to the matching subscriptions on the selected websites. Push-service acceptance does not confirm device delivery.' : 'The backend recalculates this audience at each send time. Current counts can change, including when there are no subscribers yet. The dashboard can be closed after the schedule is saved.'}</p>
               </>}
             </div>
             <NotificationPreview draft={draft} domainName={step === 3 ? websites[0]?.domain_name || domain.domain_name : domain.domain_name} />

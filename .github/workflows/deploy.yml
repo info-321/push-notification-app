@@ -15,6 +15,19 @@ jobs:
     name: Test and build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      scheduler-mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: disposable-scheduler-ci
+          MYSQL_DATABASE: scheduler_test
+        ports:
+          - 33309:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -32,6 +45,11 @@ jobs:
       - name: Run automated tests
         run: npm test
         working-directory: server
+      - name: Test scheduler against disposable MySQL
+        run: node --test test/scheduler-mysql.test.js
+        working-directory: server
+        env:
+          SCHEDULE_TEST_MYSQL: '1'
       - name: Check deployment script syntax
         run: |
           for script in deploy/hostinger/*.sh; do

@@ -20,6 +20,8 @@ beforeEach(() => {
       ? { username: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
       : url.includes('/prompt-settings') ? { version: '0', published: null, previous: null, draft: { enabled: true, template: 'slide-in', heading: 'Stay updated', message: 'Get news', allow_label: 'Enable notifications', dismiss_label: 'Maybe later', logo: '', accent: '#12ad88', background: '#ffffff', text: '#25394b', position: 'right', trigger: 'delay', delay: 15, scroll: 50, cooldown: 7, include_paths: [], exclude_paths: [] } }
       : url.includes('/prompt-performance?') ? { rows: [] }
+      : url.endsWith('/api/schedules/status') ? { running: true }
+      : url.includes('/schedules?page=') ? { rows: [], page: 1, pages: 1, total: 0 }
       : url.endsWith('/push-defaults') ? { icon: '' }
       : url.endsWith('/pwa') ? { domain_key: 'mice-key', domain_name: domain.domain_name, saved: false, settings: { name: domain.display_name, short_name: 'MICE', start_url: 'https://micetraveladvisor.com/', theme_color: '#ffffff', background_color: '#ffffff', icon_192: '', icon_512: '' } }
       : url.endsWith('/settings')
@@ -180,4 +182,15 @@ test('Push Setting has a dedicated route with a separate mobile section and supp
   window.history.replaceState({}, '', '/push?domain=mice-key'); fireEvent(window, new PopStateEvent('popstate'));
   await screen.findByRole('button', { name: 'Create New Push' });
   expect(screen.getByRole('link', { name: 'Push Setting', exact: true }).getAttribute('href')).toBe('/push/settings?domain=mice-key');
+});
+
+test('Schedule List survives a direct URL and browser navigation with the selected website', async () => {
+  window.history.replaceState({}, '', '/push/schedules?domain=mice-key'); render(<App />);
+  await screen.findByRole('heading', { name: 'Scheduled notifications' });
+  expect(await screen.findByText(/No schedules yet/)).toBeTruthy();
+  expect(window.location.pathname + window.location.search).toBe('/push/schedules?domain=mice-key');
+  window.history.replaceState({}, '', '/push?domain=mice-key'); fireEvent(window, new PopStateEvent('popstate'));
+  await screen.findByRole('button', { name: 'Create New Push' });
+  expect(screen.getByRole('link', { name: 'Schedule List' }).getAttribute('href')).toBe('/push/schedules?domain=mice-key');
+  expect(apiFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
 });
