@@ -17,7 +17,7 @@ async function run({ ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X
     location: { origin: 'https://website.test', pathname: '/' }, URL, AbortController, setTimeout, clearTimeout, CustomEvent: class {}, atob: value => Buffer.from(value, 'base64').toString('binary'),
     localStorage: { getItem: () => null }, console: { warn: (...args) => warnings.push(args), error() {} },
     document: { body: { appendChild: node => buttons.push(node) }, createElement: () => ({ style: {}, addEventListener(name, handler) { this[name] = handler; } }) },
-    fetch: async (url, options) => { calls.push({ url, options }); if (fail) throw new Error('unavailable'); if (options?.method === 'POST') return { ok: true, json: async () => ({ ok: true }) }; return { ok: true, json: async () => ({ ok: true, data: { device: group, prompt: published } }) }; },
+    fetch: async (url, options) => { calls.push({ url, options }); if (fail) throw new Error('unavailable'); if (url.includes('/api/targeting/')) return { ok: true, json: async () => ({ ok: true, data: { allowed: true } }) }; if (options?.method === 'POST') return { ok: true, json: async () => ({ ok: true }) }; return { ok: true, json: async () => ({ ok: true, data: { device: group, prompt: published } }) }; },
   };
   await vm.runInNewContext(sdk, context);
   return { window, calls, mounts, buttons, registered, warnings, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
@@ -25,14 +25,14 @@ async function run({ ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X
 
 test('ordinary iPhone tabs get installation help even without notification APIs, without registration or permission requests', async () => {
   const b = await run(); assert.equal(b.mounts.length, 1); assert.equal(b.mounts[0].ipad, false);
-  assert.equal(b.calls[0].url, 'https://api.test/api/prompt/website?device=mobile');
+  assert.equal(b.calls.find(call => call.url.includes('/api/prompt/')).url, 'https://api.test/api/prompt/website?device=mobile');
   assert.equal(b.registered.length, 0); assert.equal(b.permissionCalls(), 0); assert.equal(b.subscriptions(), 0);
   await assert.rejects(b.window.PushNotifications.subscribe(), /Home Screen/);
   assert.equal(b.calls.some(call => call.options?.method === 'POST'), false);
 });
 test('iPads including desktop-mode iPads use tablet publication; actual Macs keep the normal flow', async () => {
   for (const ua of ['Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) Mobile Safari', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Safari']) {
-    const b = await run({ ua, touch: 5, group: 'large' }); assert.equal(b.mounts.length, 1); assert.equal(b.mounts[0].ipad, true); assert.equal(b.calls[0].url, 'https://api.test/api/prompt/website');
+    const b = await run({ ua, touch: 5, group: 'large' }); assert.equal(b.mounts.length, 1); assert.equal(b.mounts[0].ipad, true); assert.equal(b.calls.find(call => call.url.includes('/api/prompt/')).url, 'https://api.test/api/prompt/website');
   }
   const mac = await run({ ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Safari', touch: 0, supported: true, published: null });
   assert.equal(mac.mounts.length, 0); assert.equal(mac.registered.length, 1); assert.equal(mac.buttons.length, 1); assert.equal(mac.permissionCalls(), 0);

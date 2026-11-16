@@ -136,12 +136,12 @@ export function installReports(app, { pool, secret, requireAdmin }) {
         if (res.destroyed || res.write(chunk)) return;
         await new Promise(resolve => { const done = () => { res.off('drain', done); res.off('close', done); resolve(); }; res.once('drain', done); res.once('close', done); });
       };
-      await write('\uFEFF' + ['Sent (UTC)', 'Title', 'Message', 'URL', 'Source', 'Test', 'Status', 'Platform', 'Subscription period', 'Targeted', 'Accepted', 'Failed', 'Expired', 'Browser acknowledgements', 'Unique clicks', 'Click rate (%)'].map(csvCell).join(',') + '\r\n');
+      await write('\uFEFF' + ['Sent (UTC)', 'Title', 'Message', 'URL', 'Source', 'Test', 'Status', 'Platform', 'Subscription period', 'Campaign devices', 'Campaign browsers', 'Website rules', 'Targeted', 'Accepted', 'Failed', 'Expired', 'Browser acknowledgements', 'Unique clicks', 'Click rate (%)'].map(csvCell).join(',') + '\r\n');
       let cursor = null;
       while (!res.destroyed) {
         const [rows] = await pool.query(`${selectCampaigns} WHERE ${filter.sql}${cursor ? ' AND (c.created_ms < ? OR (c.created_ms = ? AND c.id < ?))' : ''} ORDER BY c.created_ms DESC, c.id DESC LIMIT 500`, [...filter.params, ...(cursor ? [cursor.created_ms, cursor.created_ms, cursor.id] : [])]);
         if (!rows.length) break;
-        for (const raw of rows) { if (res.destroyed) break; const c = projection(raw); await write([c.sent_at, c.content.title, c.content.body, c.content.url, c.source, c.is_test, c.status, c.content.audience?.platform || 'all', c.content.audience?.subscribed || 'all', c.targeted, c.accepted, c.failed, c.expired, c.acknowledged, c.clicks, c.click_rate?.toFixed(2)].map(csvCell).join(',') + '\r\n'); }
+        for (const raw of rows) { if (res.destroyed) break; const c = projection(raw); await write([c.sent_at, c.content.title, c.content.body, c.content.url, c.source, c.is_test, c.status, c.content.audience?.platform || 'all', c.content.audience?.subscribed || 'all', Array.isArray(c.content.audience?.devices) ? c.content.audience.devices.join('; ') : 'all permitted', Array.isArray(c.content.audience?.browsers) ? c.content.audience.browsers.join('; ') : 'all permitted', c.content.website_targeting ? JSON.stringify(c.content.website_targeting) : 'not recorded', c.targeted, c.accepted, c.failed, c.expired, c.acknowledged, c.clicks, c.click_rate?.toFixed(2)].map(csvCell).join(',') + '\r\n'); }
         cursor = rows.at(-1); if (rows.length < 500) break;
       }
       res.end();

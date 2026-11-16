@@ -12,6 +12,7 @@ beforeEach(() => {
   apiFetch.mockImplementation(async (url, options) => {
     let data;
     if (url.endsWith('/api/domains')) data = [{ domain_key: 'one', domain_name: 'website.test' }];
+    else if (url.endsWith('/targeting')) data = { mode: 'all', devices: [], browsers: [], version: 0 };
     else if (url.includes('/prompt-performance?')) data = { rows: [{ revision: '1', template: 'slide-in', views: 20, clicks: 5, dismissals: 2, subscriptions: 3 }] };
     else {
       const mobile = options?.method === 'POST' ? JSON.parse(options.body).device === 'mobile' : url.includes('device=mobile');

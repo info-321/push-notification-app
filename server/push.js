@@ -10,6 +10,7 @@ import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
 import { validPushEndpoint, prepareNotification, deliverNotification } from './notification-delivery.js';
 export { validPushEndpoint } from './notification-delivery.js';
 import { recordPromptSubscription } from './subscription-prompts.js';
+import { readTargeting, requestTarget, targetAllowed } from './targeting.js';
 
 const publicDir = fileURLToPath(new URL('../client/public/', import.meta.url));
 const equal = (a, b) => {
@@ -70,7 +71,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       return res.status(400).json({ ok: false, message: 'A valid browser push subscription and domain key are required.' });
     }
     try {
-      const [domains] = await pool.query('SELECT user_id, domain_name FROM domains WHERE domain_key = ? LIMIT 1', [domainKey]);
+      const [domains] = await pool.query('SELECT user_id, domain_name, targeting_policy FROM domains WHERE domain_key = ? LIMIT 1', [domainKey]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
       let origin;
       try { origin = new URL(req.get('Origin')); } catch { /* Missing/invalid origins are rejected below. */ }
@@ -78,6 +79,8 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
         (origin.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(origin.hostname))) {
         return res.status(403).json({ ok: false, message: 'This website does not match the registered domain.' });
       }
+      const profile = requestTarget(req, req.body?.client_context);
+      if (!targetAllowed(readTargeting(domains[0].targeting_policy), profile)) return res.status(403).json({ ok: false, message: 'Notifications are not enabled for this device and browser.' });
       const [existing] = await pool.query('SELECT id, domain_key, country_code, region_name, region_code, city_name FROM subscriptions WHERE endpoint = ? LIMIT 1', [subscription.endpoint]);
       if (existing.length && existing[0].domain_key !== domainKey) {
         return res.status(409).json({ ok: false, message: 'This browser subscription belongs to a different domain.' });
@@ -86,11 +89,11 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       const device = requestDevice(req);
       const browser = requestBrowser(req);
       if (existing.length) {
-        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, existing[0].id, domainKey]);
+        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family), target_device = ?, target_browser = ? WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser, existing[0].id, domainKey]);
       } else {
         const [inserted] = await pool.query(
-          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, browser_family, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
-          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser],
+          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, browser_family, target_device, target_browser, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser],
         );
         if (req.body?.prompt_token) {
           try { await recordPromptSubscription(pool, secret, req.body.prompt_token, domainKey, inserted.insertId); }
@@ -107,17 +110,21 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
 
   app.get('/api/domains/:key/send-audience', requireAdmin, async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const audience = parsePushAudience(req.query);
+    const query = { ...req.query };
+    for (const field of ['devices', 'browsers']) if (typeof query[field] === 'string' && query[field] !== 'all') {
+      try { query[field] = JSON.parse(query[field]); } catch { return res.status(400).json({ ok: false, message: 'Choose valid device and browser filters.' }); }
+    }
+    const audience = parsePushAudience(query);
     if (!audience) return res.status(400).json({ ok: false, message: 'Choose a supported platform and subscription period.' });
     try {
-      const [domains] = await pool.query('SELECT domain_key FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [req.params.key]);
+      const [domains] = await pool.query('SELECT domain_key, targeting_policy FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [req.params.key]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
-      const where = pushAudienceWhere(req.params.key, audience, false);
+      const where = pushAudienceWhere(req.params.key, audience, false, readTargeting(domains[0].targeting_policy));
       const [[counts]] = await pool.query(`SELECT COUNT(*) AS subscribers, ${deviceCountSql} FROM subscriptions WHERE ${where.sql}`, where.params);
       const devices = summarizeDevices(counts);
       return res.json({ ok: true, data: { domain_key: req.params.key, platform: audience.platform, subscribed: audience.subscribed,
         matching: audience.platform === 'all' ? Number(counts.subscribers) : Number(counts[audience.platform] || 0),
-        total: Number(counts.subscribers), device_unknown: devices.device_unknown, time_zone: 'UTC' } });
+        total: Number(counts.subscribers), device_unknown: devices.device_unknown, targeting: readTargeting(domains[0].targeting_policy), time_zone: 'UTC' } });
     } catch (error) {
       console.error('Send audience lookup failed:', error.code);
       return res.status(500).json({ ok: false, message: 'Could not load the selected audience.' });
@@ -146,7 +153,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
     const audience = parsePushAudience(req.body?.audience);
     if (!audience) return res.status(400).json({ ok: false, message: 'Choose a supported platform and subscription period.' });
     try {
-      const [domains] = await pool.query('SELECT domain_name, vapid_public_key, vapid_private_key FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [domainKey]);
+      const [domains] = await pool.query('SELECT domain_name, vapid_public_key, vapid_private_key, targeting_policy FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [domainKey]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
       const domain = domains[0];
       const prepared = prepareNotification(req.body, domain);
@@ -154,7 +161,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       const result = await deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, domainKey, prepared, { source, isTest: source === 'test' || req.body?.is_test === true });
       return res.status(result.ok ? 200 : 502).json(result);
     } catch (error) {
-      if (error.status === 400) return res.status(400).json({ ok: false, message: error.message });
+      if ([400, 409].includes(error.status)) return res.status(error.status).json({ ok: false, message: error.message });
       console.error('Notification send failed:', error.code || error.message);
       return res.status(500).json({ ok: false, message: 'Could not send the notification. Check the database and VAPID configuration.' });
     }

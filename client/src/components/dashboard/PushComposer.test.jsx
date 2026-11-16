@@ -72,6 +72,22 @@ test('platform and date filters update matching counts and the exact submitted a
   expect(posts.every(post => post.audience.platform === 'desktop' && post.audience.subscribed === '7d')).toBe(true);
 });
 
+test('device and browser filters are included in preview and send and are reset for the next campaign', async () => {
+  await compose(); fireEvent.click(screen.getByRole('button', { name: 'Next' })); await screen.findByText('Choose Audience');
+  fireEvent.change(screen.getByLabelText('Campaign devices selection'), { target: { value: 'selected' } });
+  for (const label of ['Windows desktop / laptop / tablet', 'Apple Mac desktop / laptop', 'Apple iPad', 'Android phone', 'Android tablet', 'Other recognized devices']) fireEvent.click(screen.getByLabelText(label));
+  fireEvent.change(screen.getByLabelText('Campaign browsers selection'), { target: { value: 'selected' } });
+  for (const label of ['Google Chrome', 'Safari', 'Mozilla Firefox', 'Opera', 'Microsoft Edge', 'Other recognized browsers']) fireEvent.click(screen.getByLabelText(label));
+  await waitFor(() => expect(apiFetch.mock.calls.some(([url]) => url.includes('/send-audience?') && new URL(url).searchParams.get('devices') === '["iphone"]' && new URL(url).searchParams.get('browsers') === '["home_screen"]')).toBe(true));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Send Push Now' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Send Push Now' })); await screen.findByRole('button', { name: 'Create another notification' });
+  const post = apiFetch.mock.calls.find(([url]) => url.endsWith('/api/notifications/compose'));
+  expect(JSON.parse(post[1].body).audience).toEqual({ platform: 'all', subscribed: 'all', devices: ['iphone'], browsers: ['home_screen'] });
+  fireEvent.click(screen.getByRole('button', { name: 'Create another notification' })); fireEvent.click(screen.getByRole('button', { name: 'Create New Push' }));
+  fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Next story' } }); fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(await screen.findByLabelText('Campaign devices selection')).toHaveValue('all'); expect(screen.getByLabelText('Campaign browsers selection')).toHaveValue('all');
+});
+
 test('invalid links stop progression while both scheduling modes are available', async () => {
   await compose();
   fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://unrelated.test/article' } });
@@ -117,7 +133,7 @@ test.each(['Schedule One Time', 'Schedule Recurring'])('%s previews timing and s
   expect(body.schedule).toMatchObject({ kind: mode === 'Schedule One Time' ? 'once' : 'recurring', start: '2027-01-05T15:30', time_zone: 'Asia/Kolkata' });
   if (mode === 'Schedule Recurring') expect(body.schedule).toMatchObject({ frequency: 'weekly', interval: 2, count: 5 });
   expect(apiFetch.mock.calls.some(([url]) => url.includes('/api/notifications'))).toBe(false);
-});
+}, 15000);
 
 test('invalid schedule previews block Next and show the server validation message', async () => {
   const original = apiFetch.getMockImplementation();

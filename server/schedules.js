@@ -45,7 +45,7 @@ export function installSchedules(app, { pool, requireAdmin }) {
     let connection;
     try {
       connection = await pool.getConnection(); await connection.beginTransaction();
-      const [domains] = await connection.query('SELECT domain_name, vapid_public_key, vapid_private_key FROM domains WHERE domain_key = ? AND user_id = 1 FOR UPDATE', [key]);
+      const [domains] = await connection.query('SELECT domain_name, vapid_public_key, vapid_private_key, targeting_policy FROM domains WHERE domain_key = ? AND user_id = 1 FOR UPDATE', [key]);
       if (!domains.length) { await connection.rollback(); return res.status(404).json({ ok: false, message: 'Website not found.' }); }
       const [existing] = await connection.query('SELECT * FROM notification_schedules WHERE user_id = 1 AND domain_key = ? AND request_key = ?', [key, requestKey]);
       if (existing.length) {
@@ -151,7 +151,7 @@ export function createScheduleWorker({ pool, webpush, vapidSubject, reporting, n
           const assertClaim = async () => {
             const [[held]] = await connection.query('SELECT IS_USED_LOCK(?) = CONNECTION_ID() AS held', [lockName]);
             if (!Number(held.held)) throw new Error('Scheduler lock lost.');
-            const [current] = await connection.query("SELECT d.domain_name, d.vapid_public_key, d.vapid_private_key FROM notification_schedules j INNER JOIN domains d ON d.domain_key = j.domain_key AND d.user_id = j.user_id WHERE j.id = ? AND j.status = 'running' AND j.claim_token = ?", [job.id, claim]);
+            const [current] = await connection.query("SELECT d.domain_name, d.vapid_public_key, d.vapid_private_key, d.targeting_policy FROM notification_schedules j INNER JOIN domains d ON d.domain_key = j.domain_key AND d.user_id = j.user_id WHERE j.id = ? AND j.status = 'running' AND j.claim_token = ?", [job.id, claim]);
             if (!current.length) throw new Error('Schedule no longer owns this send.');
             await heartbeat(); return current[0];
           };

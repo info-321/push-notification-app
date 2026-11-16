@@ -4,6 +4,7 @@ import WebsiteHeader from './WebsiteHeader';
 import NotificationPreview from './NotificationPreview';
 import BannerSettings, { newBanner } from './BannerSettings';
 import ScheduleControls, { newSchedule, ScheduleSummary } from './ScheduleControls';
+import { TargetChoices, TargetSummary, deviceChoices, browserChoices } from './TargetingSettings';
 import './dashboard.css';
 import './analytics.css';
 import './push-composer.css';
@@ -58,6 +59,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   const schedulingKey = useRef(null);
   const savedIcon = useRef(''), savedBanner = useRef(newBanner()), saveQueue = useRef(Promise.resolve());
   const [selected, setSelected] = useState([domainKey]), [platform, setPlatform] = useState('all'), [subscribed, setSubscribed] = useState('all');
+  const [targetDevices, setTargetDevices] = useState('all'), [targetBrowsers, setTargetBrowsers] = useState('all');
   const [webEnabled, setWebEnabled] = useState(true), [emojiField, setEmojiField] = useState('');
   const [error, setError] = useState(''), [audience, setAudience] = useState(null), [audienceError, setAudienceError] = useState('');
   const [countReload, setCountReload] = useState(0);
@@ -93,6 +95,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
       if (copied) {
         setDraft({ title: copied.title, body: copied.body || '', url: copied.url || '/', icon: copied.icon || '', banner: copied.banner || newBanner() });
         setPlatform(copied.audience?.platform || 'all'); setSubscribed(copied.audience?.subscribed || 'all'); setStep(2);
+        setTargetDevices(copied.audience?.devices || 'all'); setTargetBrowsers(copied.audience?.browsers || 'all');
       }
       setIconStatus(savedIcon.current ? 'Icon saved for this website.' : 'The icon is saved automatically for this website.');
     }).catch(err => { if (!cancelled) setLoadError(err.message); }).finally(() => { if (!cancelled) setLoading(false); });
@@ -127,15 +130,17 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
     setAudience(null); setAudienceError('');
     if (step !== 3 || !selected.length || !webEnabled || !domain) return;
     const query = new URLSearchParams({ platform, subscribed });
+    if (targetDevices !== 'all') query.set('devices', JSON.stringify(targetDevices));
+    if (targetBrowsers !== 'all') query.set('browsers', JSON.stringify(targetBrowsers));
     Promise.all(selected.map(async key => {
       const response = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(key)}/send-audience?${query}`);
       const result = await response.json();
       if (!response.ok || !result.ok || !Number.isSafeInteger(result.data?.matching)) throw new Error(result.message || 'Could not count this audience.');
       return result.data;
-    })).then(rows => { if (!cancelled) setAudience({ matching: rows.reduce((sum, row) => sum + row.matching, 0), unknown: rows.reduce((sum, row) => sum + row.device_unknown, 0) }); })
+    })).then(rows => { if (!cancelled) setAudience({ matching: rows.reduce((sum, row) => sum + row.matching, 0), unknown: rows.reduce((sum, row) => sum + row.device_unknown, 0), rules: rows.map((row, index) => ({ key: selected[index], ...row.targeting })) }); })
       .catch(err => { if (!cancelled) setAudienceError(err.message); });
     return () => { cancelled = true; };
-  }, [step, selected, platform, subscribed, webEnabled, domain, countReload]);
+  }, [step, selected, platform, subscribed, targetDevices, targetBrowsers, webEnabled, domain, countReload]);
 
   useEffect(() => { headingRef.current?.focus({ preventScroll: true }); }, [step]);
   const move = next => { if (sendLock.current || finished) return; setError(''); setStep(next); };
@@ -173,7 +178,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
       let outcome;
       try {
         const response = await apiFetch(`${API_BASE}${sendMode === 'now' ? '/api/notifications/compose' : '/api/schedules'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain_key: site.domain_key, title: draft.title.trim(), body: draft.body, url: draft.url, icon: draft.icon, ...(draft.banner.enabled ? { banner: draft.banner } : {}), audience: { platform, subscribed }, ...(sendMode === 'now' ? {} : { schedule, request_key: schedulingKey.current }) }) });
+          body: JSON.stringify({ domain_key: site.domain_key, title: draft.title.trim(), body: draft.body, url: draft.url, icon: draft.icon, ...(draft.banner.enabled ? { banner: draft.banner } : {}), audience: { platform, subscribed, ...(targetDevices !== 'all' ? { devices: targetDevices } : {}), ...(targetBrowsers !== 'all' ? { browsers: targetBrowsers } : {}) }, ...(sendMode === 'now' ? {} : { schedule, request_key: schedulingKey.current }) }) });
         const result = await response.json();
         outcome = { name: site.domain_name, ok: response.ok && result.ok && !(result.failed > 0), message: result.message || 'Could not complete this send.' };
       } catch { outcome = { name: site.domain_name, ok: false, message: sendMode === 'now' ? 'The send status could not be confirmed. Some notifications may have been accepted; this request will not be retried automatically.' : 'Schedule creation could not be confirmed. Check Schedule List before creating it again; this request will not be retried automatically.' }; }
@@ -181,7 +186,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
     }
     setSending(false); setFinished(true); sendLock.current = false;
   };
-  const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: savedIcon.current, banner: JSON.parse(JSON.stringify(savedBanner.current)) }); setSaveBanner(false); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setWebEnabled(true); setSendMode('now'); setSchedule(newSchedule(domain?.time_zone || 'Asia/Kolkata')); setSchedulePreview(null); schedulingKey.current = null; setStep(1); setError(''); };
+  const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: savedIcon.current, banner: JSON.parse(JSON.stringify(savedBanner.current)) }); setSaveBanner(false); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setTargetDevices('all'); setTargetBrowsers('all'); setWebEnabled(true); setSendMode('now'); setSchedule(newSchedule(domain?.time_zone || 'Asia/Kolkata')); setSchedulePreview(null); schedulingKey.current = null; setStep(1); setError(''); };
 
   return <div className="overview-page push-composer-page">
     <WebsiteHeader activePage="push" domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={navigate(onAllSites)} onManageDomains={navigate(onManageDomains)} onSettings={navigate(onSettings)} onSelectDomain={navigate(onSelectDomain)} onDashboard={() => navigate(onDashboard)(domainKey, domain?.domain_name)} onConfiguration={navigate(onConfiguration)} onLogout={navigate(onLogout)} />
@@ -223,6 +228,9 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
                   <div className="push-audience-web"><label className="push-audience-toggle">Send to Web Subscribers<input type="checkbox" checked={webEnabled} onChange={event => setWebEnabled(event.target.checked)} /></label>
                     {webEnabled && <div className="push-audience-inner"><p>Select Audience</p><div className="push-options"><button type="button" aria-pressed="true">Default</button><button type="button" disabled title="Custom segments are not available yet">Custom</button></div>
                       <p>Platform</p><div className="push-options" role="group" aria-label="Audience platform">{[['all', 'All'], ['mobile', 'Mobile'], ['desktop', 'Desktop']].map(([value, label]) => <button type="button" key={value} aria-pressed={platform === value} onClick={() => setPlatform(value)}>{label}</button>)}</div>
+                      <TargetChoices label="Campaign devices" choices={deviceChoices} value={targetDevices} onChange={setTargetDevices} /><TargetChoices label="Campaign browsers" choices={browserChoices} value={targetBrowsers} onChange={setTargetBrowsers} />
+                      <p className="push-help">Website-wide device and browser rules always take priority. These filters only narrow the audience further. Older subscriptions without matching metadata are excluded from selected device/browser filters.</p>
+                      {audience?.rules?.filter(rule => rule.mode === 'selected').map(rule => <div className="target-rules-summary" key={rule.key}><strong>{domains.find(site => site.domain_key === rule.key)?.domain_name}: website restrictions</strong><TargetSummary audience={rule} /></div>)}
                       <p>Users who subscribed in</p><div className="push-options push-period-options" role="group" aria-label="Subscription period">{[['all', 'All'], ['yesterday', 'Yesterday'], ['7d', '7 days'], ['15d', '15 days'], ['30d', '1 month']].map(([value, label]) => <button type="button" key={value} aria-pressed={subscribed === value} onClick={() => setSubscribed(value)}>{label}</button>)}</div>
                       <p className="push-help">Yesterday uses UTC. The other periods cover the last 7, 15, or 30 days.</p>
                     </div>}

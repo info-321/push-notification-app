@@ -172,4 +172,35 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
     const one = (await request(route + '?limit=5')).data; assert.equal(one.rows.length, 5);
   });
 
+  await t.test('device/browser rules persist atomically and scheduled sends use current rules and campaign intersections', async () => {
+    await clearJobs();
+    await pool.query("DELETE FROM subscriptions WHERE domain_key = 'site' AND user_id = 1");
+    const audienceRows = [['mac', 'Safari', 'desktop'], ['windows', 'Chrome', 'desktop'], ['iphone', 'home_screen', 'mobile'], [null, null, 'desktop']];
+    for (let i = 0; i < audienceRows.length; i++) await pool.query('INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, target_device, target_browser, device_type) VALUES (1, ?, ?, ?, ?, ?, ?, ?)', ['site', `https://fcm.googleapis.com/fcm/send/target-${i}`, 'fixture-public', 'fixture-auth', ...audienceRows[i]]);
+    const rulePath = '/api/domains/site/targeting';
+    const all = { mode: 'all', devices: [], browsers: [] };
+    let version = (await request(rulePath)).data.version;
+    const saved = await request(rulePath, 'PUT', { version, policy: all }); assert.equal(saved.status, 200); version = saved.data.version;
+    const audience = { platform: 'all', subscribed: 'all', devices: ['mac', 'windows'], browsers: ['Safari', 'Chrome'] };
+    const scheduled = await request('/api/schedules', 'POST', input(recurring, audience)); assert.equal(scheduled.status, 201);
+    const jobContent = (await getJob(scheduled.data.id)).content;
+    assert.deepEqual((typeof jobContent === 'string' ? JSON.parse(jobContent) : jobContent).audience, audience);
+    const apple = { mode: 'selected', devices: ['mac', 'iphone', 'ipad'], browsers: ['Safari', 'home_screen'] };
+    const simultaneous = await Promise.all([request(rulePath, 'PUT', { version, policy: apple }), request(rulePath, 'PUT', { version, policy: all })]);
+    assert.deepEqual(simultaneous.map(value => value.status).sort(), [200, 409]);
+    version = (await request(rulePath)).data.version;
+    const restricted = await request(rulePath, 'PUT', { version, policy: apple }); assert.equal(restricted.status, 200); version = restricted.data.version;
+    assert.equal((await request('/api/domains/site/send-audience?platform=all&subscribed=all')).data.matching, 2);
+    const narrower = new URLSearchParams({ devices: JSON.stringify(['mac', 'windows']), browsers: JSON.stringify(['Safari', 'Chrome']) });
+    assert.equal((await request('/api/domains/site/send-audience?' + narrower)).data.matching, 1);
+    await worker(startMs).tick(); assert.equal(sent.length, 1); assert.ok(sent[0].sub.endpoint.endsWith('target-0'));
+    const [[campaign]] = await pool.query("SELECT content, targeted FROM push_campaigns WHERE source = 'scheduled' ORDER BY created_ms DESC LIMIT 1");
+    const content = typeof campaign.content === 'string' ? JSON.parse(campaign.content) : campaign.content;
+    assert.equal(campaign.targeted, 1); assert.equal(content.website_targeting.version, version); assert.deepEqual(content.audience, audience);
+    await request(rulePath, 'PUT', { version, policy: { mode: 'selected', devices: [], browsers: [] } });
+    await worker(startMs + 86400000).tick(); assert.equal(sent.length, 1);
+    const [[credentials]] = await pool.query("SELECT vapid_public_key, vapid_private_key FROM domains WHERE domain_key = 'site'");
+    assert.equal(credentials.vapid_public_key, 'test-public'); assert.equal(credentials.vapid_private_key, 'test-private');
+    assert.equal((await request('/api/domains/other/targeting')).status, 404);
+  });
 });

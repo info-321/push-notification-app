@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import WebsiteHeader from './WebsiteHeader';
 import PromptPerformance from './PromptPerformance';
+import TargetingSettings from './TargetingSettings';
 import { promptTemplates, mobilePromptTemplates } from './prompt-templates';
 import './dashboard.css';
 import './analytics.css';
@@ -61,6 +62,7 @@ export default function PromptSettings({ domainKey, onAllSites, onManageDomains,
       <nav className="analytics-navigation" aria-label="Push navigation"><a href={`/push?domain=${encodeURIComponent(domainKey)}`}>Send Push</a><button disabled>Segments</button><a href={`/push/reports?domain=${encodeURIComponent(domainKey)}`}>Reports</a><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>Schedule List</a><button disabled>Template Gallery</button><span aria-current="page">Push Setting</span><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></nav>
       <div className="prompt-section-heading"><div><p className="prompt-eyebrow">PUSH SETTING</p><h1>Subscription Prompt</h1><p>Choose how visitors discover and enable your website notifications.</p></div>{state && <span className={`prompt-live-badge ${state.published ? 'is-live' : ''}`}>{state.published ? state.published.settings.enabled ? 'Published' : 'Published · prompt off' : 'Current button is live'}</span>}</div>
       <div className="prompt-device-tabs" role="group" aria-label="Prompt device group"><button aria-pressed={group === 'large'} disabled={busy} onClick={() => changeGroup('large')}>Desktop, laptop & tablet</button><button aria-pressed={group === 'mobile'} disabled={busy} onClick={() => changeGroup('mobile')}>Mobile phones</button></div>
+      <TargetingSettings key={domainKey} domainKey={domainKey} />
       {error && <p className="analytics-error" role="alert">{error} <button type="button" disabled={busy} onClick={() => { if (dirty && !window.confirm('Reload settings and discard unsaved edits?')) return; delete editCache.current[group]; setReload(value => value + 1); }}>Reload settings</button></p>}
       {notice && <p className="prompt-notice" role="status">{notice}</p>}
       {!draft && !error && <p role="status">Loading subscription prompt settings...</p>}

@@ -1,5 +1,6 @@
 import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
 import { normalizeBanner, validImageUrl } from './push-content.js';
+import { readTargeting } from './targeting.js';
 
 export class InvalidNotification extends Error { status = 400; }
 export function validPushEndpoint(value) {
@@ -26,17 +27,22 @@ export function prepareNotification(input, domain, now = new Date()) {
   const payload = JSON.stringify({ title: title.trim(), body, url: page, icon,
     ...(banner.enabled ? { image: banner.image, actions: banner.actions.map(action => ({ ...action, url: action.url || page })) } : {}) });
   if (Buffer.byteLength(payload, 'utf8') > 3500) invalid('This notification is too large. Shorten its message, links, or button labels.');
-  return { payload, audience, content: { title: title.trim(), body, url: page, icon, banner, audience: { platform: audience.platform, subscribed: audience.subscribed } } };
+  return { payload, audience, content: { title: title.trim(), body, url: page, icon, banner, audience: { platform: audience.platform, subscribed: audience.subscribed, ...(audience.devices !== undefined ? { devices: audience.devices } : {}), ...(audience.browsers !== undefined ? { browsers: audience.browsers } : {}) } } };
 }
 
 export async function deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, domainKey, prepared, { beforeBatch = async () => {}, onProgress = async () => {}, source = 'api', isTest = false, scheduleRunId = null } = {}) {
-  const where = pushAudienceWhere(domainKey, prepared.audience);
+  const policy = readTargeting(domain.targeting_policy);
+  const where = pushAudienceWhere(domainKey, prepared.audience, true, policy);
   const [subscriptions] = await pool.query(`SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE ${where.sql}`, where.params);
   const counts = { sent: 0, failed: 0, removed: 0, total: subscriptions.length };
-  const campaign = await reporting?.begin({ domainKey, content: prepared.content, total: subscriptions.length, source, isTest, scheduleRunId });
+  const campaign = await reporting?.begin({ domainKey, content: { ...prepared.content, website_targeting: readTargeting(domain.targeting_policy) }, total: subscriptions.length, source, isTest, scheduleRunId });
   try {
   for (let offset = 0; offset < subscriptions.length; offset += 10) {
     await beforeBatch();
+    if (offset > 0) {
+      const [latest] = await pool.query('SELECT targeting_policy FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [domainKey]);
+      if (!latest.length || readTargeting(latest[0].targeting_policy).version !== policy.version) throw Object.assign(new Error('Website targeting rules changed. Sending stopped; review Reports before sending again.'), { status: 409 });
+    }
     const batch = await Promise.allSettled(subscriptions.slice(offset, offset + 10).map(async subscription => {
       if (!validPushEndpoint(subscription.endpoint)) { counts.failed++; return; }
       const recipient = await campaign?.recipient();

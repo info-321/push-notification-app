@@ -44,6 +44,17 @@ assert.equal(schedulerResponse.status, 200);
 assert.equal((await schedulerResponse.json()).data.running, true, 'Backend scheduler must have a fresh heartbeat');
 console.log('Schedule worker heartbeat: OK');
 for (const domain of domainList.data) {
+  const targetingRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/targeting';
+  assert.equal((await fetch(base + targetingRoute)).status, 401);
+  const targetingResponse = await fetch(base + targetingRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(targetingResponse.status, 200);
+  const targeting = (await targetingResponse.json()).data;
+  assert.ok(['all', 'selected'].includes(targeting.mode));
+  assert.ok(Number.isSafeInteger(targeting.version));
+  const publicTarget = await fetch(base + '/api/targeting/' + encodeURIComponent(domain.domain_key), { headers: { Origin: 'https://' + domain.domain_name, 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36' } });
+  assert.equal(publicTarget.status, 200);
+  assert.equal(typeof (await publicTarget.json()).data.allowed, 'boolean');
+  console.log('Device/browser targeting: OK');
   const reportsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/reports';
   assert.equal((await fetch(base + reportsRoute)).status, 401, 'Campaign reports require an administrator');
   const reportsResponse = await fetch(base + reportsRoute + '?limit=5&tests=include', { headers: { Authorization: `Bearer ${session.token}` } });

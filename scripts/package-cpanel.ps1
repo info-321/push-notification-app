@@ -34,6 +34,7 @@ $files = [ordered]@{
     'server/analytics.js' = 'server/analytics.js'
     'server/subscriber-device.js' = 'server/subscriber-device.js'
     'server/push-audience.js' = 'server/push-audience.js'
+    'server/targeting.js' = 'server/targeting.js'
     'server/push-content.js' = 'server/push-content.js'
     'server/subscription-prompts.js' = 'server/subscription-prompts.js'
     'server/notification-delivery.js' = 'server/notification-delivery.js'

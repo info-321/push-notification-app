@@ -1,5 +1,13 @@
 // Additive startup migration: older deployments only stored the hostname.
 // Keeping the new column nullable lets older app images continue to run.
+export async function ensureTargeting(pool) {
+  for (const [table, column, type] of [['domains', 'targeting_policy', 'JSON'], ['subscriptions', 'target_device', 'VARCHAR(24)'], ['subscriptions', 'target_browser', 'VARCHAR(24)']]) {
+    const [columns] = await pool.query(`SHOW COLUMNS FROM ${table} LIKE '${column}'`);
+    if (columns.length) continue;
+    try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type} NULL`); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
+}
 export async function ensureSubscriptionPrompts(pool) {
   const [columns] = await pool.query("SHOW COLUMNS FROM domains LIKE 'subscription_prompt'");
   if (!columns.length) {

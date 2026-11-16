@@ -21,6 +21,12 @@
     try { return await fetch(`${cfg.apiBase.replace(/\/$/, '')}${path}`, { ...options, signal: controller.signal, credentials: 'omit' }); }
     finally { clearTimeout(timeout); }
   };
+  const clientContext = { ipad, standalone };
+  // Fail closed before any invitation or worker can interfere with another service.
+  try {
+    const response = await request(`/api/targeting/${encodeURIComponent(cfg.domainKey)}?ipad=${ipad ? '1' : '0'}&standalone=${standalone ? '1' : '0'}`), result = await response.json();
+    if (!response.ok || !result.ok || result.data?.allowed !== true) return;
+  } catch { console.warn('[Push SDK] Device/browser rules unavailable; setup skipped.'); return; }
   // Installation guidance is ordinary HTML; it must not depend on Notification
   // or PushManager, which are absent in ordinary iPhone/iPad browser tabs.
   if (appleMobile && !standalone) {
@@ -56,7 +62,7 @@
   const save = async subscription => {
     const response = await fetch(`${cfg.apiBase.replace(/\/$/, '')}/api/subscriptions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain_key: cfg.domainKey, subscription: subscription.toJSON(), ...(promptToken ? { prompt_token: promptToken } : {}) }),
+      body: JSON.stringify({ domain_key: cfg.domainKey, subscription: subscription.toJSON(), client_context: clientContext, ...(promptToken ? { prompt_token: promptToken } : {}) }),
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.message || 'Could not save the subscription.');
@@ -77,6 +83,7 @@
       promptController?.outcome(permission);
       if (permission !== 'granted') return;
       const existing = await registration.pushManager.getSubscription();
+      checkIdentity(existing);
       const subscription = existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(cfg.vapidPublicKey) });
       await promptController?.flush();
       return await save(subscription);
@@ -86,9 +93,19 @@
     }
   };
   window.PushNotifications = { subscribe };
+  const checkIdentity = subscription => {
+    const existingKey = subscription?.options?.applicationServerKey;
+    if (existingKey && Array.from(new Uint8Array(existingKey)).join(',') !== Array.from(toBytes(cfg.vapidPublicKey)).join(',')) throw new Error('An existing subscription uses another provider. It has not been changed.');
+  };
   try {
     const workerUrl = new URL(cfg.swPath || '/push-sw.js', location.origin);
     if (workerUrl.origin !== location.origin) throw new Error('The service worker must be hosted on this website.');
+    if (typeof navigator.serviceWorker.getRegistrations === 'function') {
+      const scope = new URL(cfg.swScope || '/', location.origin).href;
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const registration = registrations.find(item => item.scope === scope);
+      if (registration && [registration.active, registration.waiting, registration.installing].some(worker => worker && worker.scriptURL !== workerUrl.href)) throw new Error('Another service worker owns this scope. Notification setup was skipped to preserve it.');
+    }
     registration = await navigator.serviceWorker.register(workerUrl.href, { scope: cfg.swScope || '/' });
     if (!registration.active) {
       await new Promise((resolve, reject) => {
@@ -104,6 +121,7 @@
       });
     }
     const existing = await registration.pushManager.getSubscription();
+    checkIdentity(existing);
     if (existing && Notification.permission === 'granted') { await save(existing); return; }
     if (Notification.permission === 'denied') return;
     if (cfg.showButton !== false) {

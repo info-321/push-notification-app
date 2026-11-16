@@ -21,12 +21,12 @@ function browser({ existing, permission = 'default', rejectSave = false } = {}) 
   const window = { isSecureContext: true, PushManager: {}, Notification: notification, pushConfig: { domainKey: 'domain-key', apiBase: 'https://api.test/', vapidPublicKey: Buffer.alloc(65, 1).toString('base64url') }, dispatchEvent(event) { events.push(event); } };
   const context = {
     window, Notification: notification, navigator: { serviceWorker: { async register() { return registration; } } },
-    location: { origin: 'https://website.test' }, URL, setTimeout, clearTimeout,
+    location: { origin: 'https://website.test' }, URL, AbortController, setTimeout, clearTimeout,
     atob: value => Buffer.from(value, 'base64').toString('binary'),
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     document: { body: { appendChild(button) { buttons.push(button); } }, createElement() { return { style: {}, addEventListener(name, handler) { this[name] = handler; } }; } },
     console: { warn() {}, error() {} },
-    async fetch(url, options) { requests.push({ url, options }); return { ok: !rejectSave, async json() { return { ok: !rejectSave, message: rejectSave ? 'Storage failed' : undefined }; } }; },
+    async fetch(url, options) { if (url.includes('/api/targeting/')) return { ok: true, json: async () => ({ ok: true, data: { allowed: true } }) }; requests.push({ url, options }); return { ok: !rejectSave, async json() { return { ok: !rejectSave, message: rejectSave ? 'Storage failed' : undefined }; } }; },
   };
   return { context, requests, buttons, events, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
 }
@@ -40,8 +40,9 @@ test('SDK waits for a visitor action, then saves the subscription and hides the 
   await b.context.window.PushNotifications.subscribe();
   assert.equal(b.permissionCalls(), 1);
   assert.equal(b.subscriptions(), 1);
-  assert.equal(b.requests[0].url, 'https://api.test/api/subscriptions');
-  assert.equal(JSON.parse(b.requests[0].options.body).domain_key, 'domain-key');
+  const save = b.requests.find(request => request.url.endsWith('/api/subscriptions'));
+  assert.equal(save.url, 'https://api.test/api/subscriptions');
+  assert.equal(JSON.parse(save.options.body).domain_key, 'domain-key');
   assert.equal(b.buttons[0].hidden, true);
 });
 
