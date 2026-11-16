@@ -5,6 +5,7 @@ import NotificationPreview from './NotificationPreview';
 import BannerSettings, { newBanner } from './BannerSettings';
 import ScheduleControls, { newSchedule, ScheduleSummary } from './ScheduleControls';
 import { TargetChoices, TargetSummary, deviceChoices, browserChoices } from './TargetingSettings';
+import AudienceDiagnostics from './AudienceDiagnostics';
 import './dashboard.css';
 import './analytics.css';
 import './push-composer.css';
@@ -238,6 +239,8 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
                   <div className="push-unavailable">Send to App Subscribers<input type="checkbox" disabled aria-label="App subscribers unavailable" /></div>
                 </fieldset>
                 {!finished && <div className="push-audience-count" aria-live="polite">{!selected.length ? 'Select at least one website.' : !webEnabled ? 'Enable web subscribers to send.' : audienceError ? <p role="alert">{audienceError} <button onClick={() => setCountReload(value => value + 1)}>Refresh audience</button></p> : audience ? <><strong>{number(audience.matching)}</strong> matching subscriptions across {websites.length} {websites.length === 1 ? 'website' : 'websites'}.{platform !== 'all' && audience.unknown > 0 && <p>{number(audience.unknown)} subscriptions have unknown device types and are excluded from this platform filter.</p>}</> : 'Counting matching subscriptions...'}</div>}
+                {!finished && !audienceError && <button className="push-back" type="button" disabled={sending || !selected.length || !webEnabled || !audience} onClick={() => setCountReload(value => value + 1)}>Refresh audience</button>}
+                {!finished && audience?.matching === 0 && webEnabled && websites.map(site => <AudienceDiagnostics key={site.domain_key} domainKey={site.domain_key} domainName={site.domain_name} refresh={countReload} iphoneTest={Array.isArray(targetDevices) && targetDevices.includes('iphone')} />)}
                 {sending && <p role="status">{sendMode === 'now' ? 'Sending notifications. Keep this tab open until the result appears.' : 'Saving schedules. Keep this tab open until confirmation appears.'}</p>}
                 {results.length > 0 && <div className="push-results" aria-live="polite">{results.map(result => <p key={result.name} className={result.ok ? 'is-success' : 'is-error'}><strong>{result.name}</strong>{result.message}</p>)}</div>}
                 {finished ? <><button className="push-primary" onClick={reset}>Create another notification</button>{sendMode !== 'now' && <p><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>View Schedule List</a></p>}</> : <div className="push-form-actions"><button className="push-back" disabled={sending} onClick={() => move(2)}>Back</button><button className="push-primary" type="button" disabled={sending || !webEnabled || !selected.length || !audience || (sendMode === 'now' && !audience.matching) || Boolean(audienceError)} onClick={send}>{sending ? sendMode === 'now' ? 'Sending...' : 'Scheduling...' : sendMode === 'now' ? 'Send Push Now' : 'Schedule Push'}</button></div>}

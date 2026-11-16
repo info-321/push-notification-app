@@ -41,6 +41,27 @@ export function addTargetWhere(where, policy, audience = {}) {
 }
 
 export function installTargeting(app, { pool, requireAdmin }) {
+  app.get('/api/domains/:key/subscription-diagnostics', requireAdmin, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const [domains] = await pool.query('SELECT targeting_policy FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [req.params.key]);
+      if (!domains.length) return res.status(404).json({ ok: false, message: 'Website not found.' });
+      const policy = readTargeting(domains[0].targeting_policy);
+      const [rows] = await pool.query("SELECT target_device, target_browser, COUNT(*) AS subscribers FROM subscriptions WHERE domain_key = ? AND user_id = ? AND COALESCE(p256dh, '') <> '' AND COALESCE(auth, '') <> '' GROUP BY target_device, target_browser", [req.params.key, 1]);
+      const grouped = new Map();
+      for (const row of rows) {
+        const device = targetDevices.includes(row.target_device) ? row.target_device : null;
+        const browser = targetBrowsers.includes(row.target_browser) ? row.target_browser : null;
+        const count = Number(row.subscribers);
+        if (!Number.isSafeInteger(count) || count < 0) throw new Error('Invalid aggregate');
+        const key = JSON.stringify([device, browser]);
+        if (!grouped.has(key)) grouped.set(key, { device, browser, subscribers: 0, allowed: targetAllowed(policy, { device, browser }) });
+        grouped.get(key).subscribers += count;
+      }
+      const groups = [...grouped.values()].sort((a, b) => b.subscribers - a.subscribers);
+      return res.json({ ok: true, data: { total: groups.reduce((sum, row) => sum + row.subscribers, 0), unclassified: groups.filter(row => !row.device || !row.browser).reduce((sum, row) => sum + row.subscribers, 0), groups } });
+    } catch { return res.status(503).json({ ok: false, message: 'Could not load saved subscription details.' }); }
+  });
   app.get('/api/targeting/:key', async (req, res) => {
     res.set('Cache-Control', 'no-store'); res.vary('Origin'); res.vary('User-Agent');
     try {

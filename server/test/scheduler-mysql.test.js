@@ -199,6 +199,10 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
     assert.equal(campaign.targeted, 1); assert.equal(content.website_targeting.version, version); assert.deepEqual(content.audience, audience);
     await request(rulePath, 'PUT', { version, policy: { mode: 'selected', devices: [], browsers: [] } });
     await worker(startMs + 86400000).tick(); assert.equal(sent.length, 1);
+    const diagnostics = (await request('/api/domains/site/subscription-diagnostics')).data;
+    assert.equal(diagnostics.total, 4); assert.equal(diagnostics.unclassified, 1);
+    assert.equal(diagnostics.groups.find(row => row.device === 'iphone').subscribers, 1);
+    assert.equal(diagnostics.groups.every(row => !row.allowed), true);
     const [[credentials]] = await pool.query("SELECT vapid_public_key, vapid_private_key FROM domains WHERE domain_key = 'site'");
     assert.equal(credentials.vapid_public_key, 'test-public'); assert.equal(credentials.vapid_private_key, 'test-private');
     assert.equal((await request('/api/domains/other/targeting')).status, 404);

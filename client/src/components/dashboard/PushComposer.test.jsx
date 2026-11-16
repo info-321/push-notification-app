@@ -14,6 +14,7 @@ beforeEach(() => {
   apiFetch.mockImplementation(async (url, options) => {
     if (options?.method === 'POST') return response(null, { message: 'Accepted by push services: 2. Failed: 0. Expired subscriptions removed: 0.' });
     if (url.includes('/send-audience?')) return response({ matching: 2, total: 3, device_unknown: 1 });
+    if (url.endsWith('/subscription-diagnostics')) return response({ total: 0, unclassified: 0, groups: [] });
     if (url.endsWith('/push-defaults')) return response({ icon: '', banner: { enabled: false, image: '', actions: [{ title: 'Read More', url: '', type: 'link' }] } });
     return response(domains);
   });
@@ -86,6 +87,25 @@ test('device and browser filters are included in preview and send and are reset 
   fireEvent.click(screen.getByRole('button', { name: 'Create another notification' })); fireEvent.click(screen.getByRole('button', { name: 'Create New Push' }));
   fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Next story' } }); fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   expect(await screen.findByLabelText('Campaign devices selection')).toHaveValue('all'); expect(screen.getByLabelText('Campaign browsers selection')).toHaveValue('all');
+});
+
+test('an empty audience shows saved device records and can refresh newly registered subscribers without losing the draft', async () => {
+  let matching = 0;
+  const original = apiFetch.getMockImplementation();
+  apiFetch.mockImplementation((url, options) => {
+    if (url.includes('/send-audience?')) return Promise.resolve(response({ matching, total: matching, device_unknown: 0 }));
+    if (url.endsWith('/subscription-diagnostics')) return Promise.resolve(response({ total: 12, unclassified: 2, groups: [{ device: 'windows', browser: 'Chrome', subscribers: 10, allowed: false }, { device: null, browser: null, subscribers: 2, allowed: false }] }));
+    return original(url, options);
+  });
+  await compose(); fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByRole('region', { name: 'Saved subscriptions for micetraveladvisor.com' });
+  expect(await screen.findByRole('cell', { name: 'Windows desktop / laptop / tablet' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Send Push Now' })).toBeDisabled();
+  matching = 1; fireEvent.click(screen.getByRole('button', { name: 'Refresh audience', exact: true }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Send Push Now' })).toBeEnabled());
+  expect(screen.queryByRole('region', { name: 'Saved subscriptions for micetraveladvisor.com' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Back', exact: true })); expect(screen.getByLabelText('Title')).toHaveValue('Travel news');
+  expect(apiFetch.mock.calls.some(([, options]) => ['PUT', 'POST', 'PATCH'].includes(options?.method))).toBe(false);
 });
 
 test('invalid links stop progression while both scheduling modes are available', async () => {

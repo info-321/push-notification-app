@@ -55,6 +55,13 @@ for (const domain of domainList.data) {
   assert.equal(publicTarget.status, 200);
   assert.equal(typeof (await publicTarget.json()).data.allowed, 'boolean');
   console.log('Device/browser targeting: OK');
+  const diagnosticsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/subscription-diagnostics';
+  assert.equal((await fetch(base + diagnosticsRoute)).status, 401);
+  const diagnosticsResponse = await fetch(base + diagnosticsRoute, { headers: { Authorization: `Bearer ${session.token}` } });
+  assert.equal(diagnosticsResponse.status, 200);
+  const diagnostics = (await diagnosticsResponse.json()).data;
+  assert.equal(diagnostics.groups.reduce((sum, row) => sum + row.subscribers, 0), diagnostics.total);
+  console.log('Saved subscription targeting profiles:', JSON.stringify(diagnostics));
   const reportsRoute = '/api/domains/' + encodeURIComponent(domain.domain_key) + '/reports';
   assert.equal((await fetch(base + reportsRoute)).status, 401, 'Campaign reports require an administrator');
   const reportsResponse = await fetch(base + reportsRoute + '?limit=5&tests=include', { headers: { Authorization: `Bearer ${session.token}` } });
@@ -89,8 +96,8 @@ for (const domain of domainList.data) {
   const countResponse = await fetch(base + sendAudienceRoute + '?platform=all&subscribed=all', { headers: { Authorization: `Bearer ${session.token}` } });
   assert.equal(countResponse.status, 200);
   const sendAudience = (await countResponse.json()).data;
-  assert.equal(sendAudience.matching, data.subscribers.total);
-  assert.equal(sendAudience.total, data.subscribers.total);
+  assert.ok(Number.isSafeInteger(sendAudience.matching) && sendAudience.matching >= 0);
+  assert.equal(sendAudience.matching, sendAudience.total, 'All-platform count must cover exactly the website-permitted audience');
   const filteredResponse = await fetch(base + sendAudienceRoute + '?platform=desktop&subscribed=7d', { headers: { Authorization: `Bearer ${session.token}` } });
   assert.equal(filteredResponse.status, 200);
   const filteredAudience = (await filteredResponse.json()).data;

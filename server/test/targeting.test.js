@@ -69,6 +69,7 @@ async function fixture(t) {
     if (sql.startsWith('INSERT INTO subscriptions')) { saved.push(params); return [{ insertId: 22 }]; }
     if (sql.startsWith('SELECT') && sql.includes('FROM subscriptions')) {
       if (sql.includes('WHERE endpoint')) return [[]];
+      if (sql.includes('GROUP BY target_device, target_browser')) return [subscriptions.map(row => ({ target_device: row.target_device, target_browser: row.target_browser, subscribers: 1 }))];
       let rows = [...subscriptions], offset = 2;
       if (sql.includes('AND 1 = 0')) rows = [];
       for (const clause of sql.matchAll(/AND (device_type = \?|target_device IN \(([^)]+)\)|target_browser IN \(([^)]+)\))/g)) {
@@ -135,6 +136,20 @@ test('disallowed subscriptions cannot be inserted and Apple Home Screen context 
   const ok = await f.call('/api/subscriptions', 'POST', { ...input, client_context: { standalone: true } }, false, { ...headers, 'User-Agent': agents.iphone });
   assert.equal(ok.status, 200); assert.equal(f.saved[0][11], 'iphone'); assert.equal(f.saved[0][12], 'home_screen');
   assert.equal(f.saved[0].some(value => value === agents.iphone), false);
+});
+
+test('subscription diagnostics show recorded categories before campaign rules and never expose individual subscription credentials', async t => {
+  const f = await fixture(t), route = '/api/domains/site/subscription-diagnostics';
+  assert.equal((await f.call(route)).status, 401);
+  assert.equal((await f.call('/api/domains/another/subscription-diagnostics', 'GET', null, true)).status, 404);
+  const result = await f.call(route, 'GET', null, true);
+  assert.equal(result.status, 200); assert.equal(result.cache, 'no-store');
+  assert.equal(result.data.total, 4); assert.equal(result.data.unclassified, 1);
+  assert.equal(result.data.groups.find(row => row.device === 'windows').allowed, false);
+  assert.equal(result.data.groups.find(row => row.device === 'ipad').browser, 'home_screen');
+  assert.equal(result.data.groups.find(row => row.device === 'ipad').allowed, true);
+  for (const value of ['endpoint', 'p256dh', 'vapid_', 'fcm.googleapis.com']) assert.equal(JSON.stringify(result).includes(value), false);
+  assert.equal(f.sent.length, 0); assert.equal(f.saved.length, 0);
 });
 
 test('SDK checks eligibility before Apple help, permission or worker registration; unavailable and older APIs fail closed', async () => {
