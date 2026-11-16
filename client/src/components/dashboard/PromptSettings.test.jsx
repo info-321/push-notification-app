@@ -28,6 +28,7 @@ beforeEach(() => {
 });
 test('draft editing and previews never publish until the explicit publish action; mobile stays separate', async () => {
   render(<PromptSettings domainKey="one" />);
+  expect(screen.getByRole('note', { name: 'Apple device setup' })).toHaveTextContent('iPads use Desktop, laptop & tablet settings');
   fireEvent.change(await screen.findByLabelText('Heading', { exact: true }), { target: { value: 'Travel updates' } });
   expect(within(screen.getByRole('region', { name: 'Subscription prompt preview' })).getByText('Travel updates')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Tablet', exact: true }));

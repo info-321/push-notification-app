@@ -31,6 +31,14 @@ function check_contract($value, $message) { if (!$value) { throw new Exception($
 require __DIR__ . '/push-notifications-plugin/push-notifications.php';
 $plugin = new Push_Notifications_Plugin();
 $plugin->enqueue_frontend();
+ob_start(); $plugin->apple_web_app_meta(); $apple_meta = ob_get_clean();
+check_contract(strpos($apple_meta, 'apple-mobile-web-app-capable') !== false, 'Configured sites must support Apple Home Screen web-app mode.');
+check_contract(strpos($apple_meta, 'private-sender-key') === false, 'Apple metadata must not expose credentials.');
+$original_settings = $settings;
+$settings['domain_key'] = '';
+ob_start(); $plugin->apple_web_app_meta(); $unconfigured_meta = ob_get_clean();
+check_contract($unconfigured_meta === '', 'Unconfigured plugins must not change the website app mode.');
+$settings = $original_settings;
 check_contract(strpos($inline_config, 'vapidPublicKey') !== false, 'VAPID public key is required.');
 check_contract(strpos($inline_config, 'ttw_push_worker') !== false, 'Bundled worker URL is required.');
 check_contract(strpos($inline_config, 'private-sender-key') === false, 'Sender keys must stay out of browser configuration.');

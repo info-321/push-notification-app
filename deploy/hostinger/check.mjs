@@ -4,7 +4,7 @@ import mysql from 'mysql2/promise';
 import crypto from 'node:crypto';
 
 const base = 'http://127.0.0.1:5000';
-for (const route of ['/sdk/push.js', '/sdk/prompt-ui.js', '/push-sw.js', '/downloads/push-notifications-plugin.zip']) {
+for (const route of ['/sdk/push.js', '/sdk/prompt-ui.js', '/sdk/apple-install.js', '/push-sw.js', '/downloads/push-notifications-plugin.zip']) {
   const response = await fetch(base + route);
   assert.equal(response.status, 200, `${route} must be available`);
   await response.arrayBuffer();

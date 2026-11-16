@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Push Notifications Plugin
  * Description: Sends push notifications when posts are published and allows manual sends from the dashboard.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: ABHIJIT BOSE
  * Requires at least: 5.0
  * Requires PHP: 7.4
@@ -20,6 +20,7 @@ class Push_Notifications_Plugin {
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend']); // Inject SDK + config for visitors
+        add_action('wp_head', [$this, 'apple_web_app_meta']);
         add_action('transition_post_status', [$this, 'maybe_send_on_publish'], 10, 3);
         add_action('admin_post_push_notifications_send', [$this, 'handle_manual_send']);
     }
@@ -299,7 +300,7 @@ class Push_Notifications_Plugin {
             'push-notifications-sdk',
             trailingslashit($settings['api_base']) . 'sdk/push.js',
             [],
-            '1.1.1',
+            '1.3.1',
             true
         );
 
@@ -321,6 +322,17 @@ class Push_Notifications_Plugin {
             'window.pushConfig = ' . wp_json_encode($cfg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';',
             'before'
         );
+    }
+
+    // Let older iOS versions launch Home Screen icons as web apps when a theme
+    // has not supplied a manifest. Existing manifests and icons are untouched.
+    public function apple_web_app_meta() {
+        $settings = $this->get_settings();
+        if (empty($settings['api_base']) || empty($settings['domain_key']) || empty($settings['vapid_public_key']) || 'https' !== wp_parse_url(home_url('/'), PHP_URL_SCHEME)) {
+            return;
+        }
+        echo '<meta name="mobile-web-app-capable" content="yes" />' . "\n";
+        echo '<meta name="apple-mobile-web-app-capable" content="yes" />' . "\n";
     }
 
     public function maybe_send_on_publish($new_status, $old_status, $post) {

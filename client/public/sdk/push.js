@@ -1,13 +1,50 @@
 // Public browser SDK. Never include sender credentials in pushConfig.
 (async () => {
   if (window.PushNotifications) return;
-  if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+  if (!window.isSecureContext || !('serviceWorker' in navigator)) {
     console.warn('[Push SDK] Notifications require a supported browser and HTTPS (or localhost).');
     return;
   }
   const cfg = window.pushConfig || {};
   if (!cfg.apiBase || !cfg.domainKey || !cfg.vapidPublicKey) {
     console.error('[Push SDK] Missing apiBase, domainKey, or vapidPublicKey.');
+    return;
+  }
+  const ua = navigator.userAgent || '';
+  const ipad = /iPad/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  const appleMobile = ipad || /iPhone|iPod/i.test(ua);
+  const tablet = ipad || /Tablet|Silk\/|Kindle/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua));
+  const phone = !tablet && (/iPhone|iPod|Windows Phone|Mobile/i.test(ua) || navigator.userAgentData?.mobile === true);
+  const standalone = navigator.standalone === true || (typeof window.matchMedia === 'function' && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches));
+  const request = async (path, options = {}) => {
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 3000);
+    try { return await fetch(`${cfg.apiBase.replace(/\/$/, '')}${path}`, { ...options, signal: controller.signal, credentials: 'omit' }); }
+    finally { clearTimeout(timeout); }
+  };
+  // Installation guidance is ordinary HTML; it must not depend on Notification
+  // or PushManager, which are absent in ordinary iPhone/iPad browser tabs.
+  if (appleMobile && !standalone) {
+    window.PushNotifications = { subscribe: async () => { throw new Error('Add this website to your Home Screen, then open its icon to enable notifications.'); } };
+    if (cfg.showButton === false) return;
+    try {
+      const response = await request(`/api/prompt/${encodeURIComponent(cfg.domainKey)}${phone ? '?device=mobile' : ''}`), result = await response.json();
+      // Fail closed when settings cannot be checked; a published OFF must win.
+      if (!response.ok || !result.ok || !result.data || !Object.hasOwn(result.data, 'prompt') || (result.data.prompt && phone && result.data.device !== 'mobile')) return;
+      const p = result.data.prompt;
+      if (p && !p.enabled) return;
+      if (!window.PushAppleInstall) await new Promise((resolve, reject) => {
+        const script = document.createElement('script'), timeout = setTimeout(() => { script.remove(); reject(new Error('Apple installation guide timeout')); }, 3000);
+        script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/apple-install.js`;
+        script.onload = () => { clearTimeout(timeout); resolve(); }; script.onerror = () => { clearTimeout(timeout); reject(new Error('Apple installation guide unavailable')); };
+        document.head.appendChild(script);
+      });
+      if (!document.body) await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+      window.PushAppleInstall.mount({ key: cfg.domainKey, ipad, settings: p });
+    } catch (error) { console.warn('[Push SDK] Apple installation guide unavailable:', error.message); }
+    return;
+  }
+  if (!('PushManager' in window) || !('Notification' in window)) {
+    console.warn('[Push SDK] Notifications require a supported browser. Home Screen web push needs iOS/iPadOS 16.4 or later.');
     return;
   }
   const toBytes = value => Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4)), c => c.charCodeAt(0));
@@ -72,17 +109,9 @@
     if (cfg.showButton !== false) {
       // Phones and larger devices have independently published prompts. Tablets
       // (including desktop-mode iPads) use the larger-device group.
-      const ua = navigator.userAgent || '';
-      const tablet = /iPad|Tablet|Silk\/|Kindle/i.test(ua) || /Android/i.test(ua) && !/Mobile/i.test(ua) || /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
-      const phone = !tablet && (/iPhone|iPod|Windows Phone|Mobile/i.test(ua) || navigator.userAgentData?.mobile === true);
       const device = phone ? 'mobile' : 'large';
       {
         try {
-          const request = async (path, options = {}) => {
-            const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 3000);
-            try { return await fetch(`${cfg.apiBase.replace(/\/$/, '')}${path}`, { ...options, signal: controller.signal, credentials: 'omit' }); }
-            finally { clearTimeout(timeout); }
-          };
           const response = await request(`/api/prompt/${encodeURIComponent(cfg.domainKey)}${phone ? '?device=mobile' : ''}`), result = await response.json();
           if (response.ok && result.ok && result.data?.prompt && (!phone || result.data.device === 'mobile')) {
             const p = result.data.prompt, matches = prefix => prefix === '/' || location.pathname === prefix || location.pathname.startsWith(prefix.endsWith('/') ? prefix : prefix + '/');

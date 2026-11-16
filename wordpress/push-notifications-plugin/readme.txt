@@ -2,7 +2,7 @@
 Contributors: abhijitbose
 Requires at least: 5.0
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 
 Connect a WordPress website to your Push Notification project.
 
@@ -19,6 +19,11 @@ The backend API must be deployed at a public HTTPS address before installing on 
 Send on publish is optional and disabled for new installations. Delivery results mean the push service accepted the message; they do not confirm that a device displayed it. Larger subscriber lists need a background delivery queue on the backend.
 
 == Changelog ==
+= 1.3.1 =
+* Load the Apple installation guide for iPhone and iPad browsers through the hosted SDK.
+* Add web-app-capable metadata for configured HTTPS sites so Home Screen icons can open as web apps on older iOS versions.
+* Preserve existing settings, manifests, icons, and subscriptions.
+
 = 1.3.0 =
 * Report notification creation acknowledgements and unique clicks, including notification buttons.
 * Mark WordPress sends in campaign reporting. Existing plugin settings are preserved.

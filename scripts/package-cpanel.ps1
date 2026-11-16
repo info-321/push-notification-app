@@ -41,6 +41,7 @@ $files = [ordered]@{
     'server/schedules.js' = 'server/schedules.js'
     'server/reports.js' = 'server/reports.js'
     'client/public/sdk/prompt-ui.js' = 'client/public/sdk/prompt-ui.js'
+    'client/public/sdk/apple-install.js' = 'client/public/sdk/apple-install.js'
     'server/package.json' = 'server/package.json'
     'server/.env.example' = 'server/.env.example'
     'server/db/schema.sql' = 'server/db/schema.sql'
