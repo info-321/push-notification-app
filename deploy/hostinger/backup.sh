@@ -22,11 +22,13 @@ partial="$(mktemp -d "$script_dir/backups/automatic/.partial-$stamp-XXXXXX")"
 trap 'echo "Backup failed; any incomplete files remain in: $partial" >&2' ERR
 
 cp -- .env "$partial/application.env"
+# Compose exec attaches stdin by default. A dump needs none; preserve any
+# following commands when this script is called from a pasted shell block.
 "${compose[@]}" exec -T db sh -c '
     MYSQL_PWD="$MYSQL_PASSWORD" exec mysqldump --user="$MYSQL_USER" \
         --single-transaction --quick --no-tablespaces --skip-lock-tables \
         --set-gtid-purged=OFF "$MYSQL_DATABASE"
-' | gzip > "$partial/database.sql.gz"
+' </dev/null | gzip > "$partial/database.sql.gz"
 gzip -t "$partial/database.sql.gz"
 # Read the entire stream so pipefail does not mistake SIGPIPE for a dump failure.
 gzip -dc "$partial/database.sql.gz" | grep -F 'CREATE TABLE `domains`' >/dev/null

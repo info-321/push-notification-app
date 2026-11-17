@@ -43,6 +43,34 @@ class StorageTests(unittest.TestCase):
         self.write(p/'backup-info.txt','Fixture only\n')
         return p
 
+    def test_backup_does_not_consume_following_pasted_shell_commands(self):
+        bash=shutil.which('bash')
+        if not bash and Path('C:/Program Files/Git/bin/bash.exe').exists():bash='C:/Program Files/Git/bin/bash.exe'
+        if not bash:self.skipTest('Bash is required for stdin regression')
+        shutil.copyfile(SOURCE/'backup.sh',self.root/'backup.sh')
+        self.write(self.root/'.env','PRIVATE_FIXTURE=isolated-test-only\n')
+        tools=self.base/'bin';tools.mkdir()
+        docker=self.write(tools/'docker',"""#!/usr/bin/env bash
+case "$*" in
+  *"config --quiet"*) exit 0 ;;
+  *"exec -T db"*)
+    # Model Compose exec's default attachment to caller stdin.
+    cat >/dev/null
+    printf '%s\\n' 'CREATE TABLE `domains` (id INT);' 'CREATE TABLE `subscriptions` (id INT);'
+    ;;
+  *) exit 2 ;;
+esac
+""")
+        docker.chmod(0o700)
+        environment={**os.environ,'PATH':str(tools)+os.pathsep+os.environ['PATH']}
+        result=subprocess.run([bash],input='set -euo pipefail\nbash backup.sh\nprintf "FOLLOW_UP_COMMAND_REACHED\\n"\n',cwd=self.root,env=environment,text=True,capture_output=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('Backup completed:',result.stdout)
+        self.assertIn('FOLLOW_UP_COMMAND_REACHED',result.stdout)
+        snapshots=list((self.root/'backups'/'automatic').iterdir())
+        self.assertEqual(len(snapshots),1)
+        self.assertTrue((snapshots[0]/'SHA256SUMS').exists())
+
     def test_unconfigured_backup_requires_no_tools_or_network(self):
         with patch.object(self.offsite.subprocess,'run',side_effect=AssertionError('No external calls')):
             self.offsite.run(self.base/'missing',self.root/'backup-offsite.conf.local')

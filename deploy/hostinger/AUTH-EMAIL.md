@@ -37,9 +37,9 @@ set -Eeuo pipefail
 cd /opt/push-notification-app
 git diff --quiet
 git diff --cached --quiet
-bash deploy/hostinger/backup.sh
+bash deploy/hostinger/backup.sh </dev/null
 git pull --ff-only
-/usr/local/sbin/deploy-push-notifications "$(git rev-parse HEAD)"
+/usr/local/sbin/deploy-push-notifications "$(git rev-parse HEAD)" </dev/null
 NOTIZO_UPGRADE
 ```
 
