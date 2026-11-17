@@ -5,9 +5,24 @@ domain or active subscription is deleted by maintenance. Off-server storage is
 not configured by default: preparing this integration does not create a bucket,
 an external account or an upload destination.
 
-## Installed schedules
+## Activate the schedules once
 
-Successful automatic deployments install these root-owned systemd units:
+The restricted SSH automation uses a separately installed deployment helper.
+Updating its source in Git does not replace that installed copy. From your
+personal Hostinger root SSH session, run this one-time activation after deployment:
+
+```bash
+cd /opt/push-notification-app/deploy/hostinger
+python3 maintenance.py --preview
+bash install-maintenance.sh
+install -o root -g root -m 750 deploy.sh /usr/local/sbin/deploy-push-notifications
+systemctl list-timers --all 'push-notification-*' --no-pager
+```
+
+This keeps the existing forced-command SSH restriction. The automation key cannot
+perform this installation through an arbitrary shell command. See
+[AUTO-DEPLOY.md](AUTO-DEPLOY.md#1-install-the-root-owned-deployment-command).
+Subsequent successful deployments install/update these root-owned systemd units:
 
 | Job | UTC schedule | India time |
 | --- | --- | --- |
