@@ -8,22 +8,23 @@
   font-family: "Poppins", sans-serif;
 }
 
-body {
+body.login-bg {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(120deg, #64181c, #f5eada);
+  background: #f0f5f8;
 }
 
 .container {
   position: relative;
   width: 850px;
+  max-width: calc(100vw - 40px);
   height: 550px;
-  background-color: #efdbbf;
+  background-color: #fff;
   border-radius: 30px;
   margin: 20px;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 12px 36px #24344d1a;
   overflow: hidden;
 }
 
@@ -31,12 +32,11 @@ body {
   position: absolute;
   height: 100%;
   width: 50%;
-  background: #efdbbf;
+  background: #fff;
   right: 0;
   display: flex;
   align-items: center;
-  /* color: #64181c; */
-  color: #b90005;
+  color: #273457;
   text-align: center;
   padding: 40px;
   z-index: 1;
@@ -72,19 +72,17 @@ form {
 .input-box input {
   width: 100%;
   padding: 13px 50px 13px 20px;
-  background: #d3c1a8;
+  background: #f0f5f8;
   border-radius: 8px;
-  border: none;
+  border: 1px solid #d9e3eb;
   outline: none;
   font-size: 14px;
   font-weight: 500;
-  /* color: #64181c; */
-  color: #b90005;
+  color: #273457;
 }
 
 .input-box input::placeholder {
-  /* color: #79373a; */
-  color: #b90005;
+  color: #687489;
   font-weight: 400;
 }
 
@@ -94,8 +92,7 @@ form {
   top: 50%;
   transform: translateY(-50%);
   font-size: 18px;
-  /* color: #64181c; */
-  color: #b90005;
+  color: #388b99;
 }
 
 .forget-link {
@@ -104,8 +101,7 @@ form {
 
 .forget-link a {
   font-size: 12.5px;
-  /* color: #79373a; */
-  color: #b90005;
+  color: #247d86;
   text-decoration: none;
 }
 
@@ -122,16 +118,12 @@ form {
 .btn {
   width: 100%;
   height: 48px;
-  /* background-color: #d9b991; */
-  background-color: #033266;
-  /* background-color: #fff; */
+  background-color: #167b7e;
   border-radius: 8px;
   box-shadow: 0 0 10px rgb(0, 0, 0, 0.1);
   font-size: 14px;
   border: none;
   cursor: pointer;
-  /* color: #64181c; */
-  /* color: #b90005; */
   color: #fff;
   font-weight: 600;
 }
@@ -149,11 +141,10 @@ form {
 .social-icons a {
   display: inline-flex;
   padding: 10px;
-  border: 1px solid #79373a;
+  border: 1px solid #d9e3eb;
   border-radius: 8px;
   font-size: 22px;
-  /* color: #79373a; */
-  color: #b90005;
+  color: #388b99;
   text-decoration: none;
   margin: 0 8px;
 }
@@ -171,8 +162,8 @@ form {
   height: 100%;
   left: -250%;
   border-radius: 100px;
-  /* background-color: #64181c; */
-  background-color: #b90005;
+  background: linear-gradient(110deg, #1d3979, #207f96);
+  background-size: calc(100% / 6) 100%;
   z-index: 2;
   transition: 1.4s ease-in-out;
 }
@@ -185,7 +176,7 @@ form {
   position: absolute;
   width: 50%;
   height: 100%;
-  color: #efdbbf;
+  color: #fff;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -222,9 +213,34 @@ form {
   width: 160px;
   height: 46px;
   background: transparent;
-  border: 2px solid #efdbbf;
-  color: #efdbbf;
+  border: 2px solid #fff;
+  color: #fff;
   box-shadow: none;
+}
+
+.container .input-box input:focus-visible,
+.container button:focus-visible,
+.container a:focus-visible {
+  outline: 3px solid #49b8bd;
+  outline-offset: 3px;
+}
+
+.container .btn:not(:disabled):hover {
+  background-color: #12666a;
+}
+
+.container .toggle-panel .btn:hover {
+  background-color: #ffffff20;
+}
+
+.container .btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.container .social-icons a:hover {
+  background: #e2f1f1;
+  border-color: #8ac6cb;
 }
 
 @media screen and (max-width: 650px) {
@@ -249,6 +265,7 @@ form {
     width: 100%;
     height: 300%;
     border-radius: 20vw;
+    background-size: 100% 100%;
   }
 
   .container.active .toggle-box::before {
