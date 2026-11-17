@@ -1,6 +1,7 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "Notizo",
+  "name": "Notizo — Push Notification Dashboard",
+  "description": "Manage web push notifications, subscribers, and campaigns across your websites with Notizo.",
   "icons": [
     {
       "src": "favicon.ico",

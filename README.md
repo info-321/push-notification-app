@@ -1,4 +1,6 @@
-# Push Notification project
+# Notizo
+
+A web push notification dashboard for managing subscribers and campaigns across multiple websites.
 
 React admin dashboard, Express API, MySQL storage, and a WordPress integration for web push.
 
