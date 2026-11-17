@@ -222,6 +222,11 @@ try {
   const names=tables.map(row=>Object.values(row)[0]);
   for(const name of ['dashboard_sessions','login_attempts','activity_log','notification_drafts','user_domain_access','subscription_events'])assert.ok(names.includes(name));
   console.log('Accounts, session history, activity, drafts and subscription history: OK');
+  for(const name of ['prompt_daily_totals','maintenance_runs'])assert.ok(names.includes(name));
+  const [endpointIndex]=await db.query("SHOW INDEX FROM subscriptions WHERE Key_name='uniq_endpoint_sha256'");
+  assert.equal(endpointIndex.length,1);assert.equal(endpointIndex[0].Column_name,'endpoint_sha256');assert.equal(endpointIndex[0].Non_unique,0);
+  assert.equal((await db.query("SHOW INDEX FROM subscriptions WHERE Key_name='uniq_endpoint'"))[0].length,0);
+  console.log('Database maintenance and full endpoint fingerprint indexes: OK');
   const [[counts]] = await db.query('SELECT (SELECT COUNT(*) FROM domains) AS domains, (SELECT COUNT(*) FROM subscriptions) AS subscriptions, (SELECT COUNT(*) FROM domains WHERE vapid_private_key IS NOT NULL AND vapid_private_key <> "") AS domains_with_private_keys');
   console.log('Database counts (compare with Cloudways):', counts);
 } finally {

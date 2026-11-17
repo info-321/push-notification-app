@@ -93,6 +93,8 @@ cutover_started=true
 "${compose[@]}" up -d --no-deps --no-build --wait --wait-timeout 180 api web
 "${compose[@]}" exec -T api node --input-type=module < "$deploy_dir/check.mjs"
 curl --fail --silent --show-error --max-time 20 --output /dev/null http://127.0.0.1:3001/
+python3 "$deploy_dir/maintenance.py" --preview
+bash "$deploy_dir/install-maintenance.sh"
 printf '%s\n' "$target" > "$state/successful-commit.txt"
 trap - ERR
 printf 'Deployment passed for commit %s\n' "$target"

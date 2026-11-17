@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Notizo backup restore check
+
+[Timer]
+OnCalendar=Sun *-*-* 02:35:00 UTC
+Persistent=true
+Unit=push-notification-restore.service
+
+[Install]
+WantedBy=timers.target

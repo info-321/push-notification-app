@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { endpointWhere, endpointParams } from './storage-maintenance.js';
 import { requestTarget, targetAllowed, readTargeting } from './targeting.js';
 
 const fingerprint = endpoint => crypto.createHash('sha256').update(endpoint).digest('base64url');
@@ -41,7 +42,7 @@ export function installSubscriberLocation(app, { pool, secret }) {
       if (!targetAllowed(readTargeting(domains[0].targeting_policy), requestTarget(req, input.client_context))) return res.status(403).json({ ok: false, message: 'Notifications are not enabled for this device and browser.' });
       const [result] = await pool.query(`UPDATE subscriptions SET latitude = ?, longitude = ?, location_accuracy_m = ?,
         location_consent_at = UTC_TIMESTAMP(3), location_recorded_at = UTC_TIMESTAMP(3)
-        WHERE domain_key = ? AND endpoint = ? AND user_id = 1`, [input.latitude, input.longitude, input.accuracy, key, endpoint]);
+        WHERE domain_key = ? AND ${endpointWhere(pool)} AND user_id = 1`, [input.latitude, input.longitude, input.accuracy, key, ...endpointParams(pool,endpoint)]);
       if (!result.affectedRows) return res.status(404).json({ ok: false, message: 'Subscription not found.' });
       return res.json({ ok: true });
     } catch (error) {

@@ -55,6 +55,11 @@ jobs:
           for script in deploy/hostinger/*.sh; do
             bash -n "$script"
           done
+      - name: Test encrypted backup and retention tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age rclone
+          python3 server/test/storage-ops.test.py
       - name: Check API image with restrictive checkout permissions
         run: |
           chmod 600 server/*.js server/package.json server/package-lock.json

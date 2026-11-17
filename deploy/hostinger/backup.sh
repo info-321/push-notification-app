@@ -41,4 +41,10 @@ final="$script_dir/backups/automatic/${partial##*/.partial-}"
 mv -T -- "$partial" "$final"
 trap - ERR
 printf 'Backup completed: %s\n' "$final"
-printf 'Copy completed backup folders to separate storage for protection against VPS loss.\n'
+if [[ -f "$script_dir/offsite-backup.py" ]]; then
+    # An unconfigured destination is explicitly skipped. Configured uploads must
+    # pass encryption and remote checksum verification or this service fails.
+    python3 "$script_dir/offsite-backup.py" "$final"
+else
+    printf 'Copy completed backup folders to separate storage for protection against VPS loss.\n'
+fi

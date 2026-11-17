@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { endpointWhere, endpointParams } from './storage-maintenance.js';
 export async function ensureSubscriptionHistory(pool) {
   await pool.query(`CREATE TABLE IF NOT EXISTS subscription_history_state (id INT PRIMARY KEY,started_ms BIGINT NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS subscription_events (
@@ -58,7 +59,7 @@ export function installUnsubscribe(app,{pool,requireAdmin}) {
       let origin;try{origin=new URL(req.get('Origin'));}catch{}
       if(!domains.length||!origin||origin.hostname.replace(/^www\./,'')!==domains[0].domain_name.replace(/^www\./,'')||(origin.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(origin.hostname)))return res.status(403).json({ok:false,message:'Website does not match this subscription.'});
       // Withdrawal is allowed even when new targeting rules exclude this browser.
-      const [rows]=await pool.query('SELECT id,p256dh,auth FROM subscriptions WHERE endpoint=? AND domain_key=? AND user_id=1',[subscription.endpoint,key]);
+      const [rows]=await pool.query(`SELECT id,p256dh,auth FROM subscriptions WHERE ${endpointWhere(pool)} AND domain_key=? AND user_id=1`,[...endpointParams(pool,subscription.endpoint),key]);
       if(!rows.length)return res.json({ok:true});
       const equal=(a,b)=>{const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&crypto.timingSafeEqual(x,y);};
       if(!equal(rows[0].p256dh,subscription.keys.p256dh)||!equal(rows[0].auth,subscription.keys.auth))return res.status(403).json({ok:false,message:'Subscription credentials do not match.'});

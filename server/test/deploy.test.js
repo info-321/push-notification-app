@@ -39,6 +39,8 @@ function fixture(t, change = 'app') {
   fs.writeFileSync(path.join(remote, 'deploy/hostinger/check.mjs'), '// fixture check\n');
   fs.writeFileSync(path.join(remote, 'server/db/schema.sql'), '-- original schema\n');
   fs.writeFileSync(path.join(remote, 'deploy/hostinger/backup.sh'), '#!/usr/bin/env bash\nset -e\nprintf "backup\\n" >> "$TEST_LOG"\n[[ "${TEST_FAIL:-}" != backup ]]\n');
+  fs.writeFileSync(path.join(remote, 'deploy/hostinger/install-maintenance.sh'), '#!/usr/bin/env bash\nset -e\nprintf "maintenance-units\\n" >> "$TEST_LOG"\n');
+  fs.writeFileSync(path.join(remote, 'deploy/hostinger/maintenance.py'), '# fixture preview\n');
   git(remote, 'init', '-b', 'main');
   git(remote, 'config', 'core.autocrlf', 'false');
   git(remote, 'config', 'user.name', 'Deployment test');
@@ -75,6 +77,7 @@ fi
 `);
   writeTool('flock', '[[ "${TEST_FAIL:-}" != locked ]]\n');
   writeTool('curl', 'printf "curl\\n" >> "$TEST_LOG"\n[[ "${TEST_FAIL:-}" != web ]]\n');
+  writeTool('python3', 'printf "retention-preview\\n" >> "$TEST_LOG"\n[[ "$2" == --preview ]]\n');
   writeTool('docker', `
 printf 'docker %s\\n' "$*" >> "$TEST_LOG"
 case "$1" in
@@ -115,6 +118,8 @@ test('deployment fast-forwards the tested SHA after a backup and updates only ap
   assert.match(calls, /up -d --no-deps --no-build --wait --wait-timeout 180 api web/);
   assert.ok(!calls.includes(' up -d db') && !calls.includes(' down') && !calls.includes('reset'));
   assert.match(result.stdout, /Deployment passed/);
+  assert.ok(calls.indexOf('curl\n') < calls.indexOf('maintenance-units\n'));
+  assert.ok(calls.indexOf('retention-preview\n') < calls.indexOf('maintenance-units\n'));
 });
 
 test('a failed image build leaves the running app containers untouched', { skip: !available }, t => {

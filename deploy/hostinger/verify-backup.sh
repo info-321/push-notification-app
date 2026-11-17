@@ -62,4 +62,15 @@ if gzip -dc database.sql.gz | grep -F 'CREATE TABLE `admin_accounts`' >/dev/null
     printf 'Administrator account restore check passed.\n'
 fi
 printf 'Restore check passed: %s\n' "$backup_dir"
+if gzip -dc database.sql.gz | grep -F 'CREATE TABLE `maintenance_runs`' >/dev/null; then
+    index_count="$(docker exec "$container_id" mysql --user=root --database=restore_check --batch --skip-column-names --execute='
+        SELECT COUNT(*) FROM information_schema.statistics
+        WHERE table_schema = "restore_check" AND table_name = "subscriptions"
+          AND index_name = "uniq_endpoint_sha256" AND non_unique = 0;
+    ')"
+    [[ "$index_count" == 1 ]] || { echo 'Endpoint fingerprint restore check failed.' >&2; exit 1; }
+    printf 'Storage-maintenance schema restore check passed.\n'
+fi
 printf 'The application.env checksum also passed; its contents were not displayed.\n'
+printf '{"verified_at":"%s","status":"restored_in_isolation"}\n' "$(date -u +%FT%TZ)" > restore-verified.json
+chmod 600 restore-verified.json

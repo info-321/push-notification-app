@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "recipient_file": "/etc/notizo-backup/recipients.txt",
+  "rclone_config": "/etc/notizo-backup/rclone.conf",
+  "remote_dir": "notizo-backup:YOUR_BUCKET/notizo"
+}

@@ -1,0 +1,9 @@
+{
+  "mode": "apply",
+  "days": 90,
+  "auditDays": 365,
+  "batch": 500,
+  "maxBatches": 20,
+  "local_backup_days": 30,
+  "minimum_local_backups": 7
+}

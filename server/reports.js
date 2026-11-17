@@ -69,12 +69,17 @@ const projection = row => { const accepted = row.tracking ? Math.max(Number(row.
   acknowledged: row.tracking ? Number(row.acknowledged || 0) : null, clicks: row.tracking ? Number(row.clicks || 0) : null,
   click_rate: row.tracking && Number(accepted) > 0 ? Number(row.accepted_clicks || 0) / Number(accepted) * 100 : null,
   sent_at: iso(row.created_ms), finished_at: iso(row.finished_ms) }); };
-const selectCampaigns = `SELECT c.*,
-  (SELECT COUNT(*) FROM push_campaign_recipients r WHERE r.campaign_id = c.id AND r.result = 'accepted') AS recipient_accepted,
-  (SELECT COUNT(*) FROM push_campaign_recipients r WHERE r.campaign_id = c.id AND r.acknowledged_ms IS NOT NULL) AS acknowledged,
-  (SELECT COUNT(*) FROM push_campaign_recipients r WHERE r.campaign_id = c.id AND r.clicked_ms IS NOT NULL) AS clicks,
-  (SELECT COUNT(*) FROM push_campaign_recipients r WHERE r.campaign_id = c.id AND r.clicked_ms IS NOT NULL AND r.result = 'accepted') AS accepted_clicks
-  FROM push_campaigns c`;
+const selectCampaigns = pool => {
+  const count = (field, condition) => pool.notizoStorageMaintenance
+    ? `COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(c.archived_telemetry, '$.${field}')) AS UNSIGNED), (SELECT COUNT(*) FROM push_campaign_recipients r WHERE r.campaign_id=c.id AND ${condition}))`
+    : `(SELECT COUNT(*) FROM push_campaign_recipients r WHERE r.campaign_id=c.id AND ${condition})`;
+  return `SELECT c.*,
+    ${count('recipient_accepted',"r.result='accepted'")} AS recipient_accepted,
+    ${count('acknowledged','r.acknowledged_ms IS NOT NULL')} AS acknowledged,
+    ${count('clicks','r.clicked_ms IS NOT NULL')} AS clicks,
+    ${count('accepted_clicks',"r.clicked_ms IS NOT NULL AND r.result='accepted'")} AS accepted_clicks
+    FROM push_campaigns c`;
+};
 export function reportFilter(key, query) {
   const params = [key], clauses = ['c.domain_key = ?', 'c.user_id = 1'];
   if (query.q) { if (typeof query.q !== 'string' || query.q.length > 150) throw new Error('Search titles using up to 150 characters.'); clauses.push("LOCATE(?, JSON_UNQUOTE(JSON_EXTRACT(c.content, '$.title'))) > 0"); params.push(query.q); }
@@ -105,7 +110,7 @@ export function installReports(app, { pool, secret, requireAdmin }) {
     const claims = verifyReportToken(req.body?.token, secret), event = req.body?.event, action = req.body?.action || 'body';
     if (!claims || !['ack', 'click'].includes(event) || !['body', 'button-1', 'button-2'].includes(action)) return res.status(400).json({ ok: false, message: 'Invalid report event.' });
     try {
-      const [rows] = await pool.query('SELECT d.domain_name FROM push_campaigns c INNER JOIN domains d ON d.domain_key = c.domain_key AND d.user_id = c.user_id WHERE c.id = ? AND c.user_id = 1 AND c.tracking = TRUE', [claims.campaign]);
+      const [rows] = await pool.query(`SELECT d.domain_name FROM push_campaigns c INNER JOIN domains d ON d.domain_key = c.domain_key AND d.user_id = c.user_id WHERE c.id = ? AND c.user_id = 1 AND c.tracking = TRUE${pool.notizoStorageMaintenance?' AND c.archived_telemetry IS NULL':''}`, [claims.campaign]);
       let origin; try { origin = new URL(req.get('Origin')); } catch { /* Reject missing origins. */ }
       if (!rows.length || !origin || origin.protocol !== 'https:' || origin.port || origin.hostname.replace(/^www\./, '') !== rows[0].domain_name.replace(/^www\./, '')) return res.status(403).json({ ok: false, message: 'This event does not match the website.' });
       if (event === 'ack') await pool.query('UPDATE push_campaign_recipients SET acknowledged_ms = COALESCE(acknowledged_ms, ?) WHERE id = ? AND campaign_id = ?', [Date.now(), claims.recipient, claims.campaign]);
@@ -122,7 +127,7 @@ export function installReports(app, { pool, secret, requireAdmin }) {
     try {
       if (!await owned(req.params.key)) return res.status(404).json({ ok: false, message: 'Website not found.' });
       const [[count]] = await pool.query(`SELECT COUNT(*) AS total FROM push_campaigns c WHERE ${filter.sql}`, filter.params);
-      const [rows] = await pool.query(`${selectCampaigns} WHERE ${filter.sql} ORDER BY c.created_ms DESC, c.id DESC LIMIT ? OFFSET ?`, [...filter.params, limit, (page - 1) * limit]);
+      const [rows] = await pool.query(`${selectCampaigns(pool)} WHERE ${filter.sql} ORDER BY c.created_ms DESC, c.id DESC LIMIT ? OFFSET ?`, [...filter.params, limit, (page - 1) * limit]);
       return res.json({ ok: true, data: { rows: rows.map(projection), total: Number(count.total), page, pages: Math.max(1, Math.ceil(count.total / limit)) } });
     } catch { return res.status(503).json({ ok: false, message: 'Could not load campaign reports.' }); }
   });
@@ -139,7 +144,7 @@ export function installReports(app, { pool, secret, requireAdmin }) {
       await write('\uFEFF' + ['Sent (UTC)', 'Title', 'Message', 'URL', 'Source', 'Test', 'Status', 'Platform', 'Subscription period', 'Campaign devices', 'Campaign browsers', 'Website rules', 'Targeted', 'Accepted', 'Failed', 'Expired', 'Browser acknowledgements', 'Unique clicks', 'Click rate (%)'].map(csvCell).join(',') + '\r\n');
       let cursor = null;
       while (!res.destroyed) {
-        const [rows] = await pool.query(`${selectCampaigns} WHERE ${filter.sql}${cursor ? ' AND (c.created_ms < ? OR (c.created_ms = ? AND c.id < ?))' : ''} ORDER BY c.created_ms DESC, c.id DESC LIMIT 500`, [...filter.params, ...(cursor ? [cursor.created_ms, cursor.created_ms, cursor.id] : [])]);
+        const [rows] = await pool.query(`${selectCampaigns(pool)} WHERE ${filter.sql}${cursor ? ' AND (c.created_ms < ? OR (c.created_ms = ? AND c.id < ?))' : ''} ORDER BY c.created_ms DESC, c.id DESC LIMIT 500`, [...filter.params, ...(cursor ? [cursor.created_ms, cursor.created_ms, cursor.id] : [])]);
         if (!rows.length) break;
         for (const raw of rows) { if (res.destroyed) break; const c = projection(raw); await write([c.sent_at, c.content.title, c.content.body, c.content.url, c.source, c.is_test, c.status, c.content.audience?.platform || 'all', c.content.audience?.subscribed || 'all', Array.isArray(c.content.audience?.devices) ? c.content.audience.devices.join('; ') : 'all permitted', Array.isArray(c.content.audience?.browsers) ? c.content.audience.browsers.join('; ') : 'all permitted', c.content.website_targeting ? JSON.stringify(c.content.website_targeting) : 'not recorded', c.targeted, c.accepted, c.failed, c.expired, c.acknowledged, c.clicks, c.click_rate?.toFixed(2)].map(csvCell).join(',') + '\r\n'); }
         cursor = rows.at(-1); if (rows.length < 500) break;
@@ -150,7 +155,7 @@ export function installReports(app, { pool, secret, requireAdmin }) {
   app.get('/api/domains/:key/reports/:id', requireAdmin, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
-      const [rows] = await pool.query(`${selectCampaigns} INNER JOIN domains d ON d.domain_key = c.domain_key AND d.user_id = c.user_id WHERE c.id = ? AND c.domain_key = ? AND c.user_id = 1`, [req.params.id, req.params.key]);
+      const [rows] = await pool.query(`${selectCampaigns(pool)} INNER JOIN domains d ON d.domain_key = c.domain_key AND d.user_id = c.user_id WHERE c.id = ? AND c.domain_key = ? AND c.user_id = 1`, [req.params.id, req.params.key]);
       if (!rows.length) return res.status(404).json({ ok: false, message: 'Campaign not found.' });
       return res.json({ ok: true, data: projection(rows[0]) });
     } catch { return res.status(503).json({ ok: false, message: 'Could not load this campaign.' }); }

@@ -27,7 +27,8 @@ export function installAnalytics(app, pool) {
       const [domains] = await pool.query('SELECT user_id FROM domains WHERE domain_key = ? AND user_id = ?', [req.params.key, 1]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
       // TIMESTAMP -> epoch makes UTC grouping independent of MySQL session zone.
-      let [rows] = await pool.query(`SELECT FLOOR(UNIX_TIMESTAMP(created_at) / 86400) AS day_number, browser_family, COUNT(*) AS subscribers, ${deviceCountSql}
+      let rows=[];
+      if(!pool.notizoLifecycle)[rows] = await pool.query(`SELECT FLOOR(UNIX_TIMESTAMP(created_at) / 86400) AS day_number, browser_family, COUNT(*) AS subscribers, ${deviceCountSql}
         FROM subscriptions WHERE domain_key = ? AND user_id = ?
         AND COALESCE(p256dh, '') <> '' AND COALESCE(auth, '') <> ''
         AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)

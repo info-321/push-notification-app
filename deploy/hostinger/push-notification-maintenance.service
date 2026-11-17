@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply bounded Notizo database and local backup retention
+Requires=docker.service
+After=docker.service
+OnFailure=push-notification-ops-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+WorkingDirectory=/opt/push-notification-app/deploy/hostinger
+ExecStart=/usr/bin/python3 /opt/push-notification-app/deploy/hostinger/maintenance.py
+Nice=10
+TimeoutStartSec=20min

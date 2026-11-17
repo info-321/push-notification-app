@@ -19,6 +19,7 @@ export async function deleteOwnedDomain(pool, field, value, userId) {
     await connection.query('DELETE FROM subscriptions WHERE domain_key = ? AND user_id = ?', [rows[0].domain_key, userId]);
     await connection.query('DELETE FROM push_images WHERE domain_key = ?', [rows[0].domain_key]);
     await connection.query('DELETE FROM prompt_events WHERE domain_key = ?', [rows[0].domain_key]);
+    if(pool.notizoStorageMaintenance)await connection.query('DELETE FROM prompt_daily_totals WHERE domain_key=?',[rows[0].domain_key]);
     await connection.query('DELETE FROM domains WHERE id = ? AND user_id = ?', [rows[0].id, userId]);
     await connection.commit();
     return true;

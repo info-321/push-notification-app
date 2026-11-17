@@ -11,6 +11,8 @@ import { ensureSchedules, createScheduleWorker, scheduleGraceMs } from '../sched
 import { ensureReports, createCampaignReporter } from '../reports.js';
 import { mysqlAccountRepository, createAdminToken } from '../accounts.js';
 import { ensureSubscriptionHistory,removeSubscription } from '../subscription-history.js';
+import {ensureStorageMaintenance} from '../storage-maintenance.js';
+import {runRetention} from '../retention.js';
 
 test('MySQL scheduler transactions, ownership, idempotency, concurrency and restart recovery', { skip: process.env.SCHEDULE_TEST_MYSQL !== '1' }, async t => {
   const pool = mysql.createPool({ host: '127.0.0.1', port: 33309, user: 'root', password: 'disposable-scheduler-ci', database: 'scheduler_test', multipleStatements: true, connectionLimit: 10, timezone: 'Z' });
@@ -293,4 +295,54 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
       const again=mysqlAccountRepository(pool);await again.initialize('ignored','ignored');assert.equal((await again.read()).password_hash,hash);assert.ok((await again.sessions(made.data.id)).some(s=>s.end_reason==='logout'));assert.ok((await again.sessions(made.data.id)).some(s=>s.end_reason==='access_changed'));
     }finally{portal.closeAllConnections();await new Promise(r=>portal.close(r));}
   });
+  await t.test('full endpoint fingerprints preserve long/case-distinct URLs and indexed lookups survive restart',async()=>{
+    const [[before]]=await pool.query('SELECT COUNT(*) AS n FROM subscriptions');
+    const [credentials]=await pool.query('SELECT domain_key,SHA2(vapid_private_key,256) AS hash FROM domains ORDER BY id');
+    await ensureStorageMaintenance(pool);await ensureStorageMaintenance(pool);
+    assert.equal((await pool.query('SELECT COUNT(*) AS n FROM subscriptions'))[0][0].n,before.n);
+    assert.deepEqual((await pool.query('SELECT domain_key,SHA2(vapid_private_key,256) AS hash FROM domains ORDER BY id'))[0],credentials);
+    assert.equal((await pool.query("SHOW INDEX FROM subscriptions WHERE Key_name='uniq_endpoint'"))[0].length,0);
+    const key='storage-site';await pool.query('INSERT INTO domains (user_id,domain_name,domain_key,verification_token) VALUES (1,?,?,?)',[key+'.test',key,'fixture-only']);
+    const prefix='https://fcm.googleapis.com/fcm/send/'+'A'.repeat(300),endpoints=[prefix+'One',prefix+'Two',prefix+'one'];
+    const keys={p256dh:Buffer.alloc(65,1).toString('base64url'),auth:Buffer.alloc(16,2).toString('base64url')};
+    for(const endpoint of endpoints){const saved=await request('/api/subscriptions','POST',{domain_key:key,subscription:{endpoint,keys}},false,{Origin:'https://'+key+'.test'});assert.equal(saved.status,200);assert.equal(saved.created,true);}
+    const again=await request('/api/subscriptions','POST',{domain_key:key,subscription:{endpoint:endpoints[0],keys}},false,{Origin:'https://'+key+'.test'});assert.equal(again.status,200);assert.equal(again.created,false);
+    const [[total]]=await pool.query('SELECT COUNT(*) AS n FROM subscriptions WHERE domain_key=?',[key]);assert.equal(total.n,3);
+    await assert.rejects(pool.query('INSERT INTO subscriptions (user_id,domain_key,endpoint) VALUES (1,?,?)',[key,endpoints[0]]),e=>e.code==='ER_DUP_ENTRY');
+    const [plan]=await pool.query('EXPLAIN SELECT id FROM subscriptions WHERE endpoint=? AND endpoint_sha256=UNHEX(SHA2(CAST(? AS BINARY),256))',[endpoints[0],endpoints[0]]);
+    assert.equal(plan[0].key,'uniq_endpoint_sha256');
+    const [audiencePlan]=await pool.query('EXPLAIN SELECT id FROM subscriptions WHERE domain_key=? AND user_id=1 AND created_at>=FROM_UNIXTIME(?)',[key,0]);
+    assert.ok(audiencePlan[0].possible_keys.includes('subscriber_domain_created'));
+  });
+  await t.test('retention is bounded, preserves active data and archives report totals exactly once across restarts',async()=>{
+    const key='storage-site',now=Date.now(),old=now-120*86400000,oldDay=new Date(old).toISOString().slice(0,10),campaign=crypto.randomUUID();
+    await pool.query("INSERT INTO push_campaigns (id,user_id,domain_key,source,content,status,tracking,targeted,accepted,failed,created_ms,updated_ms,finished_ms) VALUES (?,1,?,'api',?,'completed',TRUE,2,1,1,?,?,?)",[campaign,key,JSON.stringify({title:'Retained summary',body:'Fixture',url:'/'}),old,old,old]);
+    await pool.query("INSERT INTO push_campaign_recipients (id,campaign_id,result,acknowledged_ms,clicked_ms) VALUES (?,?,'accepted',?,?),(?,?,'failed',NULL,NULL)",[crypto.randomBytes(16).toString('hex'),campaign,old,old,crypto.randomBytes(16).toString('hex'),campaign]);
+    for(let i=0;i<2;i++)await pool.query('INSERT INTO prompt_events (domain_key,session_id,revision,template,device_group,created_at,clicked_at,dismissed_at,subscribed_at) VALUES (?,?,?,?,?,FROM_UNIXTIME(?),FROM_UNIXTIME(?),FROM_UNIXTIME(?),FROM_UNIXTIME(?))',[key,String(i).repeat(32),'a'.repeat(16),'dialog','large',old/1000,i===0?old/1000:null,i===1?old/1000:null,i===0?old/1000:null]);
+    const reportPath=`/api/domains/${key}/reports/${campaign}`,promptPath=`/api/domains/${key}/prompt-performance?start=${oldDay}&end=${oldDay}`;
+    const reportBefore=await request(reportPath);assert.equal(reportBefore.status,200);assert.equal(reportBefore.data.clicks,1);
+    const promptBefore=await request(promptPath);assert.equal(promptBefore.status,200);assert.equal(promptBefore.data.rows[0].views,2);
+    await pool.query('UPDATE subscriptions SET ip_address=?,ip_recorded_at=FROM_UNIXTIME(?),latitude=1,longitude=2,location_accuracy_m=50,location_consent_at=FROM_UNIXTIME(?),location_recorded_at=FROM_UNIXTIME(?),city_name=?,last_seen_at=NOW() WHERE domain_key=? LIMIT 1',['203.0.113.4',old/1000,old/1000,old/1000,'Coarse city',key]);
+    await pool.query('INSERT INTO login_attempts (username,succeeded,occurred_ms) VALUES (?,FALSE,?)',['old-fixture',old]);
+    const ended=crypto.randomUUID(),active=crypto.randomUUID();
+    for(const [id,expiry] of [[ended,old],[active,now+86400000]])await pool.query('INSERT INTO dashboard_sessions (id,user_id,token_hash,login_ms,last_seen_ms,expires_ms) VALUES (?,1,?,?,?,?)',[id,'a'.repeat(64),old,old,expiry]);
+    await pool.query('INSERT INTO notification_drafts (user_id,domain_key,version,content,updated_ms) VALUES (1,?,1,?,?)',[key,JSON.stringify({draft:{title:'Keep old work'}}),old]);
+    const [[before]]=await pool.query('SELECT COUNT(*) AS n FROM subscriptions');
+    const preview=await runRetention(pool,{now});assert.equal(preview.mode,'preview');assert.ok(preview.eligible.prompt_events>=2);assert.equal((await request(reportPath)).data.clicks,1);
+    for(let i=0;i<4;i++)await runRetention(pool,{apply:true,now,policy:{batch:1,maxBatches:1}});
+    assert.equal((await pool.query('SELECT COUNT(*) AS n FROM subscriptions'))[0][0].n,before.n);
+    const [details]=await pool.query('SELECT ip_address,latitude,longitude,city_name FROM subscriptions WHERE domain_key=?',[key]);
+    assert.ok(details.every(s=>s.ip_address===null&&s.latitude===null&&s.longitude===null));assert.ok(details.some(s=>s.city_name==='Coarse city'));
+    assert.equal((await pool.query('SELECT id FROM dashboard_sessions WHERE id=?',[ended]))[0].length,0);
+    assert.equal((await pool.query('SELECT id FROM dashboard_sessions WHERE id=?',[active]))[0].length,1);
+    assert.equal((await pool.query('SELECT domain_key FROM notification_drafts WHERE domain_key=?',[key]))[0].length,1);
+    assert.equal((await pool.query('SELECT id FROM push_campaign_recipients WHERE campaign_id=?',[campaign]))[0].length,0);
+    assert.equal((await pool.query('SELECT session_id FROM prompt_events WHERE domain_key=?',[key]))[0].length,0);
+    assert.deepEqual((await request(reportPath)).data,reportBefore.data);
+    assert.deepEqual((await request(promptPath)).data,promptBefore.data);
+    await ensureStorageMaintenance(pool);await runRetention(pool,{apply:true,now});
+    assert.deepEqual((await request(reportPath)).data,reportBefore.data);assert.deepEqual((await request(promptPath)).data,promptBefore.data);
+    assert.ok((await pool.query("SELECT id FROM maintenance_runs WHERE status='completed'"))[0].length>=5);
+  });
+
 });

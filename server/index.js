@@ -8,6 +8,7 @@ import { ensureDomainDisplayName, ensureDomainTimeZone, ensureDomainPwa, ensureS
 import { mysqlAccountRepository } from './accounts.js';
 import { ensureSchedules, createScheduleWorker } from './schedules.js';
 import { ensureSubscriptionHistory } from './subscription-history.js';
+import { ensureStorageMaintenance } from './storage-maintenance.js';
 import { ensureReports, createCampaignReporter } from './reports.js';
 
 dotenv.config({ path: fileURLToPath(new URL('.env', import.meta.url)) });
@@ -45,6 +46,7 @@ await ensureSubscriptionHistory(pool);
 const accountRepository = mysqlAccountRepository(pool);
 const reporting = createCampaignReporter({ pool, secret: process.env.PUSH_API_SECRET, publicApiBase: process.env.PUBLIC_API_BASE || `http://localhost:${port}` });
 await accountRepository.initialize(process.env.ADMIN_USERNAME || 'admin', process.env.ADMIN_PASSWORD || 'admin');
+await ensureStorageMaintenance(pool);
 const app = createApp({
   pool, webpush, accountRepository, reporting,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',

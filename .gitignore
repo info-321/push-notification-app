@@ -6,6 +6,9 @@ client/build/
 coverage/
 dist/
 artifacts/
+deploy/hostinger/*.conf.local
+__pycache__/
+*.pyc
 
 # environment / secrets
 .env

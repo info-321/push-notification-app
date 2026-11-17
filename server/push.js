@@ -1,4 +1,5 @@
 import { subscriptionTransaction, recordSubscriptionAdded } from './subscription-history.js';
+import { endpointWhere, endpointParams } from './storage-maintenance.js';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,7 +72,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       const profile = requestTarget(req, req.body?.client_context);
       if (!targetAllowed(readTargeting(domains[0].targeting_policy), profile)) return res.status(403).json({ ok: false, message: 'Notifications are not enabled for this device and browser.' });
       const response = await subscriptionTransaction(pool,async connection=>{
-      const [existing] = await connection.query(`SELECT id, domain_key, country_code, region_name, region_code, city_name, p256dh, auth, latitude, longitude, location_consent_at FROM subscriptions WHERE endpoint = ? LIMIT 1${pool.notizoLifecycle?' FOR UPDATE':''}`, [subscription.endpoint]);
+      const [existing] = await connection.query(`SELECT id, domain_key, country_code, region_name, region_code, city_name, p256dh, auth, latitude, longitude, location_consent_at FROM subscriptions WHERE ${endpointWhere(pool)} LIMIT 1${pool.notizoLifecycle?' FOR UPDATE':''}`, endpointParams(pool,subscription.endpoint));
       if (existing.length && existing[0].domain_key !== domainKey) {
         throw Object.assign(new Error('This browser subscription belongs to a different domain.'),{status:409});
       }

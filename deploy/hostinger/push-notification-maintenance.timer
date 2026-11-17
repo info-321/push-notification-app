@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Notizo retention after the backup window
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+Unit=push-notification-maintenance.service
+
+[Install]
+WantedBy=timers.target
