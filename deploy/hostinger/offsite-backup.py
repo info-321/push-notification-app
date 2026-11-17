@@ -89,7 +89,7 @@ def run(snapshot, config):
         manifest[match[2]] = match[1]
     if len(manifest) != 2 or any(fingerprint(snapshot / name) != digest for name, digest in manifest.items()):
         raise ValueError('Local backup checksum failed; nothing was uploaded.')
-    encrypted = snapshot / 'snapshot.tar.age'
+    encrypted = snapshot / (snapshot.name + '.tar.age')
     seal = snapshot / 'encrypted-checksum.json'
     if not encrypted.exists():
         fd, temporary = tempfile.mkstemp(prefix='.encrypted-', dir=snapshot)
@@ -120,7 +120,9 @@ def run(snapshot, config):
     expected = fingerprint(encrypted)
     target = remote.rstrip('/') + '/' + snapshot.name + '.tar.age'
     options = ['--config', str(rclone_config), '--contimeout', '20s', '--timeout', '2m', '--retries', '3']
-    subprocess.run(['rclone', 'copyto', str(encrypted), target, '--immutable', *options], check=True,
+    # Use copy's synchronization checks: older distribution-packaged rclone
+    # versions accept --immutable with copyto but do not enforce it there.
+    subprocess.run(['rclone', 'copy', str(encrypted), remote.rstrip('/'), '--immutable', *options], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
     if fingerprint(encrypted) != expected:
         raise RuntimeError('The encrypted snapshot changed during upload.')
