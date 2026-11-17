@@ -17,15 +17,18 @@ const authDb = await mysql.createConnection({
   host: process.env.DB_HOST, port: Number(process.env.DB_PORT),
   user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME,
 });
-let accountVersion;
+const probeId = crypto.randomUUID();
+let session;
 try {
-  const [[account]] = await authDb.query('SELECT session_version FROM admin_accounts WHERE id = 1');
-  assert.ok(account?.session_version, 'Persistent administrator account must exist');
-  accountVersion = account.session_version;
-} finally { await authDb.end(); }
-const payload = Buffer.from(JSON.stringify({ exp: Date.now() + 120000, v: accountVersion })).toString('base64url');
-const signature = crypto.createHmac('sha256', process.env.PUSH_API_SECRET).update(`session:${payload}`).digest('base64url');
-const session = { token: `${payload}.${signature}` };
+  const [[account]] = await authDb.query('SELECT session_version FROM admin_accounts WHERE id=1 AND is_active=TRUE');
+  assert.ok(account?.session_version,'Persistent administrator account must exist');
+  const expires=Date.now()+120000;
+  const payload=Buffer.from(JSON.stringify({exp:expires,v:account.session_version,uid:1,sid:probeId})).toString('base64url');
+  const signature=crypto.createHmac('sha256',process.env.PUSH_API_SECRET).update(`session:${payload}`).digest('base64url');
+  session={token:`${payload}.${signature}`};
+  await authDb.query("INSERT INTO dashboard_sessions (id,user_id,token_hash,login_ms,last_seen_ms,expires_ms,source) VALUES (?,1,?,?,?,?,'deployment')",[probeId,crypto.createHash('sha256').update(session.token).digest('hex'),Date.now(),Date.now(),expires]);
+} finally {await authDb.end();}
+try {
 assert.equal((await fetch(base + '/api/account')).status, 401, 'Account must require login');
 const profile = await fetch(base + '/api/account', { headers: { Authorization: `Bearer ${session.token}` } });
 assert.equal(profile.status, 200, 'Account API must be available');
@@ -207,8 +210,20 @@ try {
   assert.equal((await fetch(base + '/sdk/location-ui.js')).status, 200);
   assert.equal((await fetch(base + '/api/subscriptions/location', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403, 'Location writes require a subscription receipt');
   console.log('Subscriber IP and optional location storage: OK; nullable schema and protected endpoint verified');
+  const tracked=await fetch(base+'/api/account/sessions',{headers:{Authorization:`Bearer ${session.token}`}});
+  assert.equal(tracked.status,200);assert.ok((await tracked.json()).data.some(row=>row.id===probeId&&row.current));
+  assert.equal((await fetch(base+'/api/users')).status,401);
+  const [tables]=await db.query("SHOW TABLES");
+  const names=tables.map(row=>Object.values(row)[0]);
+  for(const name of ['dashboard_sessions','login_attempts','activity_log','notification_drafts','user_domain_access','subscription_events'])assert.ok(names.includes(name));
+  console.log('Accounts, session history, activity, drafts and subscription history: OK');
   const [[counts]] = await db.query('SELECT (SELECT COUNT(*) FROM domains) AS domains, (SELECT COUNT(*) FROM subscriptions) AS subscriptions, (SELECT COUNT(*) FROM domains WHERE vapid_private_key IS NOT NULL AND vapid_private_key <> "") AS domains_with_private_keys');
   console.log('Database counts (compare with Cloudways):', counts);
 } finally {
   await db.end();
+}
+
+} finally {
+  const cleanup=await mysql.createConnection({host:process.env.DB_HOST,port:Number(process.env.DB_PORT),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:process.env.DB_NAME});
+  try{await cleanup.query("UPDATE dashboard_sessions SET ended_ms=?,end_reason='probe_finished' WHERE id=? AND source='deployment'",[Date.now(),probeId]);}finally{await cleanup.end();}
 }

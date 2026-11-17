@@ -22,6 +22,24 @@
     finally { clearTimeout(timeout); }
   };
   const clientContext = { ipad, standalone };
+  let pendingWithdrawal;
+  const unsubscribe = async () => {
+    const scope=new URL(cfg.swScope || '/',location.origin).href,workerUrl=new URL(cfg.swPath || '/push-sw.js',location.origin).href;
+    const registrations=await navigator.serviceWorker.getRegistrations();
+    const own=registrations.find(item=>item.scope===scope&&item.active?.scriptURL===workerUrl);
+    if(!own)return false;
+    const sub=await own.pushManager.getSubscription();if(!sub&&!pendingWithdrawal)return true;
+    if(sub){pendingWithdrawal=sub.toJSON();await sub.unsubscribe();}
+    const data=pendingWithdrawal;
+    const response=await request('/api/subscriptions/unsubscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain_key:cfg.domainKey,subscription:data})});
+    const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.message || 'Could not unsubscribe.');
+    // Keep a failed server withdrawal available for an explicit retry in this
+    // page, without writing endpoint credentials to browser storage.
+    pendingWithdrawal=null;
+    window.dispatchEvent(new CustomEvent('push:unsubscribed',{detail:{}}));
+    return true;
+  };
+  window.PushNotifications={unsubscribe};
   // Fail closed before any invitation or worker can interfere with another service.
   try {
     const response = await request(`/api/targeting/${encodeURIComponent(cfg.domainKey)}?ipad=${ipad ? '1' : '0'}&standalone=${standalone ? '1' : '0'}`), result = await response.json();
@@ -30,7 +48,7 @@
   // Installation guidance is ordinary HTML; it must not depend on Notification
   // or PushManager, which are absent in ordinary iPhone/iPad browser tabs.
   if (appleMobile && !standalone) {
-    window.PushNotifications = { subscribe: async () => { throw new Error('Add this website to your Home Screen, then open its icon to enable notifications.'); } };
+    window.PushNotifications = { unsubscribe, subscribe: async () => { throw new Error('Add this website to your Home Screen, then open its icon to enable notifications.'); } };
     if (cfg.showButton === false) return;
     try {
       const response = await request(`/api/prompt/${encodeURIComponent(cfg.domainKey)}${phone ? '?device=mobile' : ''}`), result = await response.json();
@@ -124,7 +142,7 @@
       if (button) button.disabled = false;
     }
   };
-  window.PushNotifications = { subscribe, shareLocation };
+  window.PushNotifications = { subscribe, shareLocation, unsubscribe };
   const checkIdentity = subscription => {
     const existingKey = subscription?.options?.applicationServerKey;
     if (existingKey && Array.from(new Uint8Array(existingKey)).join(',') !== Array.from(toBytes(cfg.vapidPublicKey)).join(',')) throw new Error('An existing subscription uses another provider. It has not been changed.');

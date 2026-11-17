@@ -9,6 +9,8 @@ import { createApp } from '../app.js';
 import * as migrations from '../domain-schema.js';
 import { ensureSchedules, createScheduleWorker, scheduleGraceMs } from '../schedules.js';
 import { ensureReports, createCampaignReporter } from '../reports.js';
+import { mysqlAccountRepository } from '../accounts.js';
+import { ensureSubscriptionHistory,removeSubscription } from '../subscription-history.js';
 
 test('MySQL scheduler transactions, ownership, idempotency, concurrency and restart recovery', { skip: process.env.SCHEDULE_TEST_MYSQL !== '1' }, async t => {
   const pool = mysql.createPool({ host: '127.0.0.1', port: 33309, user: 'root', password: 'disposable-scheduler-ci', database: 'scheduler_test', multipleStatements: true, connectionLimit: 10, timezone: 'Z' });
@@ -233,5 +235,57 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
     assert.equal(again.ip_address, '203.0.113.25'); assert.equal(again.latitude, 0); assert.ok(again.location_consent_at);
     const [[count]] = await pool.query('SELECT COUNT(*) AS n FROM subscriptions WHERE domain_key = ?', [other]); assert.equal(count.n, 0);
     assert.equal((await request('/api/subscriptions', 'POST', { ...body, subscription: { endpoint, keys: { ...keys, auth: Buffer.alloc(16, 3).toString('base64url') } } }, false, headers)).status, 409);
+  });
+  await t.test('persistent users, sessions, audits, drafts and lifecycle events survive reinitialization with per-domain isolation',async()=>{
+    const accounts=mysqlAccountRepository(pool),password='Ci-dashboard-owner-123',secret='isolated-five-improvements-test-secret';
+    await accounts.initialize('ci-owner',password);const hash=(await accounts.read()).password_hash;
+    await accounts.initialize('ignored-bootstrap','ignored-password');assert.equal((await accounts.read()).password_hash,hash);
+    const key='security-site';await pool.query('INSERT INTO domains (user_id,domain_name,domain_key,verification_token,vapid_public_key,vapid_private_key) VALUES (1,?,?,?,?,?)',[`${key}.test`,key,'fixture-verification','fixture-public','fixture-private']);
+    const [[before]]=await pool.query('SELECT COUNT(*) AS n FROM subscriptions');await ensureSubscriptionHistory(pool);await ensureSubscriptionHistory(pool);
+    assert.equal((await pool.query('SELECT COUNT(*) AS n FROM subscriptions'))[0][0].n,before.n);
+    const portal=createApp({pool,accountRepository:accounts,webpush:{sendNotification:()=>{throw new Error('No provider calls in identity tests');}},secret,publicApiBase:'https://api.test'}).listen(0,'127.0.0.1');await new Promise(r=>portal.once('listening',r));
+    try{
+      const call=async(path,method='GET',body,token,headers={})=>{const r=await fetch(`http://127.0.0.1:${portal.address().port}${path}`,{method,headers:{'Content-Type':'application/json','User-Agent':'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36',...headers,...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,...await r.json()};};
+      const root=(await call('/api/login','POST',{username:'ci-owner',password},null,{'X-Forwarded-For':'104.16.0.1','CF-Connecting-IP':'203.0.113.42'})).token;assert.ok(root);
+      const made=await call('/api/users','POST',{username:'ci-editor',password,role:'editor',domains:[key]},root);assert.equal(made.status,201);
+      assert.equal((await call('/api/users','POST',{username:'ci-editor',password,role:'editor',domains:[key]},root)).status,409);
+      const editor=(await call('/api/login','POST',{username:'ci-editor',password})).token;assert.ok(editor);
+      const sites=(await call('/api/domains','GET',null,editor)).data;assert.deepEqual(sites.map(d=>d.domain_key),[key]);
+      assert.equal((await call('/api/domains/site/overview','GET',null,editor)).status,403);
+      assert.equal((await call('/api/users','GET',null,editor)).status,403);
+      const draft={draft:{title:'Saved work',body:'',url:'/',icon:'',banner:{enabled:false,image:'',actions:[]}},selected:[key],platform:'all',subscribed:'all',targetDevices:'all',targetBrowsers:'all',webEnabled:true,sendMode:'now',schedule:{kind:'once'},step:2};
+      const draftPath=`/api/domains/${key}/draft`;
+      assert.equal((await call(draftPath,'PUT',{version:0,content:draft},editor)).status,200);
+      assert.equal((await call(draftPath,'PUT',{version:0,content:draft},editor)).status,409);
+      assert.equal((await call(draftPath,'GET',null,root)).data,null);
+      assert.equal((await call(draftPath,'GET',null,editor)).data.content.draft.title,'Saved work');
+      const rootSessions=(await call('/api/account/sessions','GET',null,root)).data;assert.equal(rootSessions[0].ip_address,'203.0.113.42');assert.equal(rootSessions[0].browser,'Chrome');assert.equal(rootSessions[0].token_hash,undefined);
+      await call('/api/login','POST',{username:'ci-editor',password:'incorrect'});
+      assert.ok((await call('/api/users/login-attempts','GET',null,root)).data.some(a=>a.username==='ci-editor'&&!a.succeeded));
+      assert.equal((await call('/api/logout','POST',null,editor)).status,200);
+      assert.equal((await call('/api/account','GET',null,editor)).status,401);
+      const fresh=(await call('/api/login','POST',{username:'ci-editor',password})).token;
+      assert.equal((await call(draftPath,'GET',null,fresh)).data.version,1);
+      assert.equal((await call(`/api/users/${made.data.id}`,'PATCH',{role:'viewer',domains:[key],is_active:true,version:1},root)).status,200);
+      assert.equal((await call('/api/account','GET',null,fresh)).status,401);
+      const viewer=(await call('/api/login','POST',{username:'ci-editor',password})).token;
+      assert.equal((await call(draftPath,'PUT',{version:1,content:draft},viewer)).status,403);
+      const browserKeys={p256dh:Buffer.alloc(65,1).toString('base64url'),auth:Buffer.alloc(16,2).toString('base64url')};
+      const sub={endpoint:'https://fcm.googleapis.com/fcm/send/lifecycle-ci',keys:browserKeys},headers={Origin:`https://${key}.test`};
+      const subscribe=subscription=>call('/api/subscriptions','POST',{domain_key:key,subscription},null,headers);
+      assert.equal((await subscribe(sub)).status,200);assert.equal((await subscribe(sub)).created,false);
+      assert.equal((await call('/api/subscriptions/unsubscribe','POST',{domain_key:key,subscription:{...sub,keys:{...browserKeys,auth:Buffer.alloc(16,3).toString('base64url')}}},null,headers)).status,403);
+      for(let i=0;i<2;i++)assert.equal((await call('/api/subscriptions/unsubscribe','POST',{domain_key:key,subscription:sub},null,headers)).status,200);
+      const expired={...sub,endpoint:sub.endpoint+'-expired'};await subscribe(expired);
+      const [[record]]=await pool.query('SELECT id FROM subscriptions WHERE endpoint=?',[expired.endpoint]);
+      assert.equal(await removeSubscription(pool,record.id,key,'expired'),true);assert.equal(await removeSubscription(pool,record.id,key,'expired'),false);
+      const [events]=await pool.query('SELECT event_type FROM subscription_events WHERE domain_key=?',[key]);
+      assert.equal(events.filter(e=>e.event_type==='added').length,2);assert.equal(events.filter(e=>e.event_type==='unsubscribed').length,1);assert.equal(events.filter(e=>e.event_type==='expired').length,1);
+      const today=new Date().toISOString().slice(0,10),analytics=(await call(`/api/domains/${key}/analytics?start=${today}&end=${today}`,'GET',null,root)).data;
+      assert.equal(analytics.added,2);assert.equal(analytics.unsubscribed,2);assert.equal(analytics.history_complete,false);assert.equal(analytics.net,null);
+      await new Promise(r=>setTimeout(r,30));const activity=(await call('/api/account/activity','GET',null,root)).data;
+      assert.ok(activity.some(a=>a.actor_id===made.data.id&&a.http_status===200));assert.equal(JSON.stringify(activity).includes(password),false);assert.equal(JSON.stringify(activity).includes(root),false);
+      const again=mysqlAccountRepository(pool);await again.initialize('ignored','ignored');assert.equal((await again.read()).password_hash,hash);assert.ok((await again.sessions(made.data.id)).some(s=>s.end_reason==='logout'));assert.ok((await again.sessions(made.data.id)).some(s=>s.end_reason==='access_changed'));
+    }finally{portal.closeAllConnections();await new Promise(r=>portal.close(r));}
   });
 });

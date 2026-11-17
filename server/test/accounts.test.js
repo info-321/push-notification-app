@@ -40,7 +40,7 @@ test('account profile requires authentication and reports real login data withou
   assert.equal(result.cache, 'no-store');
   assert.equal(result.data.email, 'owner@example.test');
   assert.ok(Number.isFinite(Date.parse(result.data.last_login_at)));
-  assert.equal(result.data.last_login_ip, '127.0.0.1', 'Untrusted forwarding headers must not spoof login records');
+  assert.equal(result.data.last_login_ip, '203.0.113.66', 'The sanitizing local proxy supplies the connecting visitor IP');
   for (const key of ['password', 'password_hash', 'session_version']) assert.equal(result.data[key], undefined);
 });
 

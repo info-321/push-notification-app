@@ -1,3 +1,4 @@
+import SubscriptionHistory from './SubscriptionHistory';
 import React, { useEffect, useId, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import WebsiteHeader from './WebsiteHeader';
@@ -70,8 +71,8 @@ function PeriodReport({ domainKey, refresh, browser = false }) {
       {loading && <p className="analytics-note" role="status">Loading analytics...</p>}
       {error && <p className="analytics-error" role="alert">{error} <button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></p>}
       {report && !browser && <>
-        <div className="analytics-chart-layout"><SubscriberChart key={`${range.start}-${range.end}`} daily={report.daily} devicesAvailable={report.device_available === true} /><table className="analytics-summary"><caption className="overview-sr-only">Subscriber period summary</caption><tbody>
-          {[['Mobile', report.mobile], ['Desktop', report.desktop], ['App', report.app], ['Subscribers Added', report.added], ['Un-Subscribers', report.unsubscribed], ['Net Subscribers', report.net]].map(([label, value]) => <tr key={label}><th scope="row">{label}</th><td>{value === null ? <span aria-label="Not recorded" title="Not recorded">—</span> : number(value)}</td></tr>)}
+        <div className="analytics-chart-layout"><SubscriberChart key={`${range.start}-${range.end}`} daily={report.daily} devicesAvailable={report.device_available === true} removalsAvailable={report.history_complete === true} historyAvailable={report.removals_tracked === true} /><table className="analytics-summary"><caption className="overview-sr-only">Subscriber period summary</caption><tbody>
+          {[['Mobile', report.mobile], ['Desktop', report.desktop], ['App', report.app], ['Subscribers Added', report.added], [report.removals_tracked?(report.history_complete?'Subscriptions removed':'Recorded removals'):'Un-Subscribers', report.unsubscribed], ['Net Subscribers', report.net]].map(([label, value]) => <tr key={label}><th scope="row">{label}</th><td>{value === null ? <span aria-label="Not recorded" title="Not recorded">—</span> : number(value)}</td></tr>)}
         </tbody></table></div>
         {report.device_unknown > 0 && <p className="analytics-note analytics-device-note" role="note">Device type is unknown for {number(report.device_unknown)} {report.device_unknown === 1 ? 'subscription' : 'subscriptions'} in this period. Desktop and mobile counts include recorded devices only. Visit the website from those subscribed browsers, then refresh data.</p>}
         <p className="analytics-note">{report.basis}</p>
@@ -124,6 +125,7 @@ export default function Analytics({ domainKey, onAllSites, onManageDomains, onSe
       {audience && <div className="analytics-map"><AudienceMap domainKey={domainKey} data={audience} showHeading={false} /></div>}
       <PeriodReport key={`${domainKey}-subscribers`} domainKey={domainKey} refresh={refresh} />
       <PeriodReport key={`${domainKey}-browser`} domainKey={domainKey} refresh={refresh} browser />
+      <SubscriptionHistory key={`${domainKey}-history`} domainKey={domainKey} refresh={refresh}/>
       <PromptPerformance key={`${domainKey}-prompts`} domainKey={domainKey} />
     </main>
   </div>;

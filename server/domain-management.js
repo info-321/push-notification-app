@@ -1,3 +1,4 @@
+import { recordDomainRemovals } from './subscription-history.js';
 export async function deleteOwnedDomain(pool, field, value, userId) {
   if (!['id', 'domain_key'].includes(field)) throw new Error('Unsupported domain identifier');
   const connection = await pool.getConnection();
@@ -13,6 +14,8 @@ export async function deleteOwnedDomain(pool, field, value, userId) {
     await connection.query('DELETE FROM push_campaigns WHERE domain_key = ? AND user_id = ?', [rows[0].domain_key, userId]);
     await connection.query('DELETE r FROM notification_schedule_runs r INNER JOIN notification_schedules j ON j.id = r.schedule_id WHERE j.domain_key = ? AND j.user_id = ?', [rows[0].domain_key, userId]);
     await connection.query('DELETE FROM notification_schedules WHERE domain_key = ? AND user_id = ?', [rows[0].domain_key, userId]);
+    await recordDomainRemovals(pool,connection,rows[0].domain_key);
+    if(pool.notizoIdentity){await connection.query('DELETE FROM notification_drafts WHERE domain_key=?',[rows[0].domain_key]);await connection.query('DELETE FROM user_domain_access WHERE domain_key=?',[rows[0].domain_key]);}
     await connection.query('DELETE FROM subscriptions WHERE domain_key = ? AND user_id = ?', [rows[0].domain_key, userId]);
     await connection.query('DELETE FROM push_images WHERE domain_key = ?', [rows[0].domain_key]);
     await connection.query('DELETE FROM prompt_events WHERE domain_key = ?', [rows[0].domain_key]);

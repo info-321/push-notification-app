@@ -117,7 +117,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
       <nav className="domain-list-tabs" aria-label="Settings navigation">
         <button className="is-active" aria-current="page">Settings</button><button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeKey || loading}>Configuration</button>
-        <button onClick={onBack}>Domain</button><button onClick={onPwa}>PWA Setting</button><button disabled title="User management is not available yet">User</button>
+        <button onClick={onBack}>Domain</button><button onClick={onPwa}>PWA Setting</button><button onClick={() => { window.location.href='/settings/users'; }}>User</button>
       </nav>
       {domainsError && <p className="settings-error" role="alert">{domainsError} <button onClick={retry}>Try again</button></p>}
       {domainsLoading && !activeKey && <p role="status" className="settings-page-note">Loading websites…</p>}
@@ -145,7 +145,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
         <section className="settings-panel" aria-labelledby="push-settings-heading">
           <h2 id="push-settings-heading"><SettingsIcon type="push" />Push Sending Settings</h2>
           <TextField id="settings-project" label="Domain / Project Key" value={push?.domain_key || ''} placeholder="Select a configured website" readOnly />
-          <div className="settings-field"><label htmlFor="settings-sender-key">Sender API Key</label><div className="settings-secret-field"><input id="settings-sender-key" type={showSender ? 'text' : 'password'} value={push?.sender_api_key || ''} readOnly autoComplete="off" /><button type="button" disabled={!push} onClick={() => setShowSender(value => !value)} aria-pressed={showSender}>{showSender ? 'Hide' : 'Show'}</button></div></div>
+          <div className="settings-field"><label htmlFor="settings-sender-key">Sender API Key</label><div className="settings-secret-field"><input id="settings-sender-key" type={showSender ? 'text' : 'password'} value={push?.sender_api_key || ''} readOnly autoComplete="off" /><button type="button" disabled={!push?.sender_api_key} onClick={() => setShowSender(value => !value)} aria-pressed={showSender}>{showSender ? 'Hide' : 'Show'}</button></div></div>
           <TextField id="settings-public-key" label="Public Key" value={push?.vapid_public_key || ''} readOnly />
           <TextField id="settings-private-key" label="Private Key" value={push ? 'Managed securely on the server' : ''} readOnly />
           <p className="settings-help">Web-push keys are managed automatically. Installation details are available in Configuration.</p>

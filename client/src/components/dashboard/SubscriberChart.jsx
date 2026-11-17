@@ -7,18 +7,19 @@ const series = [
 const number = value => new Intl.NumberFormat().format(value);
 const dateLabel = date => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 
-export default function SubscriberChart({ daily, devicesAvailable = false }) {
+export default function SubscriberChart({ daily, devicesAvailable = false, removalsAvailable = false, historyAvailable = false }) {
   const [hidden, setHidden] = useState({});
   const [selected, setSelected] = useState(null);
   const id = useId();
   if (!daily.length) return <p className="analytics-note">No saved subscription dates are available.</p>;
-  const max = Math.max(1, ...daily.map(day => day.added));
+  const max = Math.max(1, ...daily.map(day => Math.max(day.added,removalsAvailable?day.unsubscribed||0:0)));
   const magnitude = 10 ** Math.floor(Math.log10(Math.max(1, max / 8)));
   const step = [1, 2, 5, 10].find(value => value * magnitude >= max / 8) * magnitude;
   const top = Math.max(4, Math.ceil(max / step)) * step;
   const x = index => daily.length === 1 ? 275 : 44 + index / (daily.length - 1) * 462;
   const y = count => 246 - count / top * 228;
-  const available = series.filter(([, , key]) => key === 'added' || (devicesAvailable && ['desktop', 'mobile'].includes(key)));
+  const definitions = series.map(([label,color,key])=>[key==='unsubscribed'&&removalsAvailable?'Removed subscriptions':label,color,key]);
+  const available = definitions.filter(([, , key]) => key === 'added' || (removalsAvailable && key==='unsubscribed') || (devicesAvailable && ['desktop', 'mobile'].includes(key)));
   const shown = available.filter(([, , key]) => !hidden[key]);
   const interval = Math.max(1, Math.ceil((daily.length - 1) / 14));
   const labels = daily.map((_, index) => index).filter(index => index % interval === 0 || index === daily.length - 1);
@@ -40,7 +41,7 @@ export default function SubscriberChart({ daily, devicesAvailable = false }) {
           const position = (event.clientX - bounds.left) / bounds.width * 520;
           setSelected(daily[Math.max(0, Math.min(daily.length - 1, Math.round((position - 44) / 462 * (daily.length - 1))))].date);
         }}>
-        <title>Daily additions among currently saved subscriptions</title>
+        <title>{historyAvailable?'Recorded subscription additions':'Daily additions among currently saved subscriptions'}</title>
         {Array.from({ length: top / step + 1 }, (_, index) => <g key={index}>
           <line x1="44" x2="506" y1={y(index * step)} y2={y(index * step)} className="analytics-chart-grid" />
           <text x="34" y={y(index * step) + 4} textAnchor="end">{number(index * step)}</text>
@@ -63,7 +64,7 @@ export default function SubscriberChart({ daily, devicesAvailable = false }) {
       {!shown.length && <p className="analytics-chart-hidden">All series hidden. Select a legend item to show the chart.</p>}
     </div>
     <div className="analytics-chart-legend" role="group" aria-label="Subscriber chart series">
-      {series.map(([label, color, key]) => <button type="button" key={label} disabled={!available.some(item => item[2] === key)} aria-pressed={available.some(item => item[2] === key) ? !hidden[key] : undefined}
+      {definitions.map(([label, color, key]) => <button type="button" key={label} disabled={!available.some(item => item[2] === key)} aria-pressed={available.some(item => item[2] === key) ? !hidden[key] : undefined}
         title={available.some(item => item[2] === key) ? `Show or hide ${label}` : `${label}: not recorded`}
         onClick={() => { setHidden(current => ({ ...current, [key]: !current[key] })); setSelected(null); }}>
         <span className="analytics-legend-swatch" style={{ borderColor: color }} /><span>{label}</span>{!available.some(item => item[2] === key) && <span className="overview-sr-only"> (Not recorded)</span>}

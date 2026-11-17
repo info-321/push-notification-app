@@ -5,7 +5,7 @@ export function apiFetch(url, options = {}) {
   const token = localStorage.getItem('sessionToken');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   return fetch(url, { ...options, headers }).then(response => {
-    if (response.status === 401) {
+    if (response.status === 401 && localStorage.getItem('sessionToken') === token) {
       localStorage.removeItem('sessionToken');
       localStorage.removeItem('auth');
       window.dispatchEvent(new Event('auth-expired'));

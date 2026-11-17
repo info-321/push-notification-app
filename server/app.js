@@ -6,7 +6,7 @@ import { installPush } from './push.js';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { deleteOwnedDomain } from './domain-management.js';
 import { installDomainSettings, validTimeZone, defaultTimeZone } from './domain-settings.js';
-import { installAccountRoutes, memoryAccountRepository, verifyPassword } from './accounts.js';
+import { installAccountRoutes, memoryAccountRepository, verifyPassword, hashPassword } from './accounts.js';
 import { installPwa, pwaBodyParser } from './pwa.js';
 import { installAudience } from './audience.js';
 import { installAnalytics } from './analytics.js';
@@ -15,6 +15,9 @@ import { installSubscriptionPrompts } from './subscription-prompts.js';
 import { installSchedules } from './schedules.js';
 import { installReports } from './reports.js';
 import { installTargeting } from './targeting.js';
+import { installSecurityRoutes, loginMetadata } from './security.js';
+import { installUnsubscribe } from './subscription-history.js';
+import { installDrafts } from './drafts.js';
 import { installSubscriberLocation } from './subscriber-location.js';
 
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository, reporting }) {
@@ -24,7 +27,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   pwaBodyParser(app);
   pushImageBodyParser(app);
   app.use(express.json({ limit: '32kb' }));
-  const { requireAdmin, createToken } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting });
+  const { requireAdmin, createToken, security } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting });
   installTargeting(app, { pool, requireAdmin });
   installSubscriberLocation(app, { pool, secret });
   installReports(app, { pool, secret, requireAdmin });
@@ -32,6 +35,9 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   installSubscriptionPrompts(app, { pool, secret, requireAdmin });
   installSchedules(app, { pool, requireAdmin });
   installAccountRoutes(app, { accounts, requireAdmin, createToken });
+  installSecurityRoutes(app, {accounts,pool,security});
+  installDrafts(app, {pool,requireAdmin,security});
+  installUnsubscribe(app,{pool,requireAdmin});
 
   // Utility: generate a URL-safe domain key (Base64URL, no padding) so it's safe in URLs/headers.
   const generateDomainKey = () => {
@@ -46,27 +52,21 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   };
 
   // POST /api/login - basic admin auth.
-  let failedLogins = 0, loginWindow = 0;
+  const dummyPassword = hashPassword(crypto.randomBytes(32).toString('hex'));
   app.post('/api/login', async (req, res) => {
-    res.set('Cache-Control', 'no-store');
-    const { username, password } = req.body || {};
-    if (Date.now() - loginWindow > 15 * 60 * 1000) { failedLogins = 0; loginWindow = Date.now(); }
-    if (failedLogins >= 10) return res.status(429).json({ ok: false, message: 'Too many incorrect attempts. Try again in 15 minutes.' });
+    res.set('Cache-Control','no-store');
+    const {username,password}=req.body || {};
+    if(typeof username!=='string'||username.length>255||!username.trim()) return res.status(400).json({ok:false,message:'Enter your username and password.'});
+    const metadata=loginMetadata(req);
     try {
-      const row = await accounts.read();
-      if (!row || !await verifyPassword(password, row.password_hash) || username !== row.username) {
-        failedLogins++;
-        return res.status(401).json({ ok: false, message: 'Invalid credentials' });
-      }
-      if (!await accounts.recordLogin(row.password_hash, new Date(), req.socket.remoteAddress?.replace(/^::ffff:/, '') || null)) {
-        return res.status(401).json({ ok: false, message: 'Credentials changed. Please sign in again.' });
-      }
-      failedLogins = 0;
-      return res.json({ ok: true, token: createToken(row.session_version) });
-    } catch (error) {
-      console.error('Login failed:', error.code);
-      return res.status(503).json({ ok: false, message: 'Sign in is temporarily unavailable. Please try again.' });
-    }
+      if(await accounts.failures(username,metadata.ip_address)>=10) return res.status(429).json({ok:false,message:'Too many incorrect attempts. Try again in 15 minutes.'});
+      const row=await accounts.find(username);
+      const valid=await verifyPassword(password,row?.password_hash || await dummyPassword);
+      await accounts.attempt({username,user_id:row?.id,succeeded:Boolean(valid&&row?.is_active),...metadata});
+      if(!valid||!row?.is_active) return res.status(401).json({ok:false,message:'Invalid credentials'});
+      if(!await accounts.recordLogin(row.password_hash,new Date(),metadata.ip_address,row.id)) return res.status(401).json({ok:false,message:'Credentials changed. Please sign in again.'});
+      return res.json({ok:true,token:await createToken(row.session_version,row.id,req)});
+    } catch(error) {console.error('Login failed:',error.code);return res.status(503).json({ok:false,message:'Sign in is temporarily unavailable. Please try again.'});}
   });
 
   // POST /api/domains - create a domain record after frontend validation.
@@ -79,6 +79,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   app.post('/api/domains', async (req, res) => {
     const { name, domain, domain_name } = req.body || {};
 
+    if(req.auth.role!=='admin') return res.status(403).json({ok:false,message:'Only administrators can add websites.'});
     const userId = 1;
     const rawDomain = domain_name || domain;
     const domainName = typeof rawDomain === 'string' ? rawDomain.trim().toLowerCase() : '';
@@ -126,7 +127,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
         `${selectPublicDomains} WHERE d.user_id = ? ORDER BY d.created_at DESC`,
         [userId]
       );
-      return res.json({ ok: true, data: rows.map(publicDomain) });
+      return res.json({ ok: true, data: rows.filter(row=>security.domainAllowed(req,row.domain_key)).map(publicDomain) });
     } catch (err) {
       console.error('Error fetching domains', err);
       return res.status(500).json({ ok: false, message: 'Failed to fetch domains.' });
@@ -198,6 +199,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
   // DELETE /api/domains/:id - delete a domain by numeric id for the given user.
   app.delete('/api/domains/:id', async (req, res) => {
+    if(req.auth.role!=='admin') return res.status(403).json({ok:false,message:'Only administrators can delete websites.'});
     const userId = 1;
     const id = Number(req.params.id);
 
@@ -219,6 +221,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
   // DELETE /api/domains?userId=1&domain_key=XXX - delete by domain_key (fallback for clients using keys).
   app.delete('/api/domains', async (req, res) => {
+    if(req.auth.role!=='admin') return res.status(403).json({ok:false,message:'Only administrators can delete websites.'});
     const userId = 1;
     const domainKey = req.query.domain_key;
     if (typeof domainKey !== 'string' || !domainKey) {

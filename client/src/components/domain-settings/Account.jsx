@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import './domain-list.css';
 import './account.css';
+import AccountSecurity from './AccountSecurity';
 
 export default function Account({ selectedDomainKey = '', onSelectDomain = () => {}, onSettings = () => {}, onDomains = () => {}, onConfiguration = () => {}, onPwa = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
   const [profile, setProfile] = useState(null);
@@ -87,7 +88,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
     <main className="domain-list-main">
       <nav className="domain-list-tabs" aria-label="Settings navigation"><button onClick={onSettings}>Settings</button><button className="is-active" aria-current="page">Account</button>
         <button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button>
-        <button onClick={onDomains}>Domain</button><button onClick={onPwa}>PWA Setting</button><button disabled title="User management is not available yet">User</button>
+        <button onClick={onDomains}>Domain</button><button onClick={onPwa}>PWA Setting</button><button onClick={() => { window.location.href='/settings/users'; }}>User</button>
       </nav>
       <div className="account-grid">
         <section className="account-panel" aria-label="Account profile">
@@ -99,7 +100,8 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
               <div><dt>{profile.email ? 'Email' : 'Username'}</dt><dd>{profile.email || profile.username}</dd></div>
               <div><dt>Password</dt><dd aria-label="Password hidden">••••••••</dd></div>
               <div><dt>Last Login</dt><dd>{lastLogin}</dd></div>
-              <div><dt>Connection IP</dt><dd>{profile.last_login_ip || 'Not recorded yet'}</dd></div>
+              <div><dt>Last login IP</dt><dd>{profile.last_login_ip || 'Not recorded yet'}</dd></div>
+              {profile.role && <div><dt>Role</dt><dd>{profile.role}</dd></div>}
               <div><dt>Status</dt><dd>{profile.status}</dd></div>
             </dl>
             <button type="button" className="account-delete" disabled title="Deletion of the administrator account is not available">Delete Account</button>
@@ -118,6 +120,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
           </form>
         </section>
       </div>
+      {profile && <AccountSecurity/>}
     </main>
   </div>;
 }

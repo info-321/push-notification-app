@@ -70,6 +70,25 @@ test('saved GPS, disabled invitations and location opt-out suppress the optional
   assert.equal(b.locationCalls(), 0);
 });
 
+test('explicit unsubscribe withdraws only our worker subscription and remains available after targeting excludes a browser', async () => {
+  const b=browser(),ordinary=b.context.fetch,order=[];
+  b.context.fetch=async(url,options)=>{
+    if(url.includes('/api/targeting/'))return {ok:true,json:async()=>({ok:true,data:{allowed:false}})};
+    if(url.endsWith('/unsubscribe'))order.push('server');
+    return ordinary(url,options);
+  };
+  const own={scope:'https://website.test/',active:{scriptURL:'https://website.test/push-sw.js'},pushManager:{getSubscription:async()=>({toJSON:()=>({endpoint:'https://fcm.googleapis.com/fixture',keys:{p256dh:'fixture',auth:'fixture'}}),unsubscribe:async()=>{order.push('browser');return true;}})}};
+  b.context.navigator.serviceWorker.getRegistrations=async()=>[own];
+  await vm.runInNewContext(sdk,b.context);
+  assert.equal(b.permissionCalls(),0);assert.equal(b.subscriptions(),0);
+  assert.equal(await b.context.window.PushNotifications.unsubscribe(),true);
+  assert.deepEqual(order,['browser','server']);
+  const sent=JSON.parse(b.requests.find(r=>r.url.endsWith('/unsubscribe')).options.body);
+  assert.equal(sent.domain_key,'domain-key');assert.equal(sent.subscription.keys.auth,'fixture');
+  own.active.scriptURL='https://website.test/another-provider.js';order.length=0;
+  assert.equal(await b.context.window.PushNotifications.unsubscribe(),false);assert.deepEqual(order,[]);
+});
+
 test('SDK waits for a visitor action, then saves the subscription and hides the button', async () => {
   const b = browser();
   await vm.runInNewContext(sdk, b.context);

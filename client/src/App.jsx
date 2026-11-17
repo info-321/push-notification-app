@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
+import {API_BASE,apiFetch} from './api';
+import UserManagement from './components/domain-settings/UserManagement';
 import Login from './components/login/Login';
 import Splash from './components/splash/Splash';
 import Domain from './components/domain-settings/Domain';
@@ -23,7 +25,7 @@ const App = () => {
   const routeKey = params.get('domain') || '';
   const routeView = window.location.pathname === '/push/reports' ? 'reports' : window.location.pathname === '/push/schedules' ? 'schedules' : window.location.pathname === '/push/settings' ? 'prompt-settings' : window.location.pathname === '/push' ? 'push' : window.location.pathname === '/analytics' ? 'analytics'
     : window.location.pathname === '/settings/pwa' ? 'pwa'
-    : window.location.pathname === '/settings/account' ? 'account'
+    : window.location.pathname === '/settings/users' ? 'users' : window.location.pathname === '/settings/account' ? 'account'
     : ['/settings', '/settings/general'].includes(window.location.pathname) ? 'settings'
     : window.location.pathname === '/settings/domains' ? 'domains'
     : window.location.pathname === '/dashboard' ? (routeKey ? 'overview' : 'sites')
@@ -70,6 +72,8 @@ const App = () => {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
       setView('pwa');
+    } else if(path === '/settings/users') {
+      setView('users');
     } else if (path === '/settings/account') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
@@ -106,6 +110,16 @@ const App = () => {
     return () => window.removeEventListener('popstate', handler);
   }, [syncViewFromUrl]);
 
+  useEffect(() => {
+    if(!isAuthenticated)return;
+    const heartbeat=()=>{if(document.visibilityState==='visible')apiFetch(`${API_BASE}/api/account/heartbeat`,{method:'POST'}).catch(()=>{});};
+    const interval=setInterval(heartbeat,60000);
+    document.addEventListener('visibilitychange',heartbeat);
+    const changed=event=>{if(event.key==='sessionToken'){if(!event.newValue){setIsAuthenticated(false);setView('login');}else if(event.oldValue!==event.newValue)window.location.reload();}};
+    window.addEventListener('storage',changed);
+    return()=>{clearInterval(interval);document.removeEventListener('visibilitychange',heartbeat);window.removeEventListener('storage',changed);};
+  },[isAuthenticated]);
+
   // Apply page-specific body backgrounds.
   useEffect(() => {
     const classes = ['login-bg', 'splash-bg', 'domain-bg'];
@@ -116,7 +130,7 @@ const App = () => {
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
-    } else if (view === 'reports' || view === 'schedules' || view === 'prompt-settings' || view === 'push' || view === 'analytics' || view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'sites' || view === 'overview' || view === 'domains') {
+    } else if (view === 'reports' || view === 'schedules' || view === 'prompt-settings' || view === 'push' || view === 'analytics' || view === 'pwa' || view === 'domain' || view === 'settings' || view === 'account' || view === 'users' || view === 'sites' || view === 'overview' || view === 'domains') {
       document.body.classList.add('domain-bg');
       if (view === 'push' || view === 'analytics' || view === 'prompt-settings' || view === 'schedules' || view === 'reports') {
         const url = `/${view === 'reports' ? 'push/reports' : view === 'schedules' ? 'push/schedules' : view === 'prompt-settings' ? 'push/settings' : view === 'push' ? 'push' : 'analytics'}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
@@ -129,6 +143,7 @@ const App = () => {
         const url = view === 'overview' && selectedDomainKey ? `/dashboard?domain=${encodeURIComponent(selectedDomainKey)}` : '/dashboard';
         if (window.location.pathname + window.location.search !== url) window.history.pushState({}, '', url);
       }
+      if(view === 'users' && window.location.pathname !== '/settings/users') window.history.pushState({},'', '/settings/users');
       if (view === 'domains' && window.location.pathname !== '/settings/domains') window.history.pushState({}, '', '/settings/domains');
       if (view === 'settings' || view === 'account' || view === 'pwa') {
         const url = `/settings${view === 'account' ? '/account' : view === 'pwa' ? '/pwa' : ''}${selectedDomainKey ? `?domain=${encodeURIComponent(selectedDomainKey)}` : ''}`;
@@ -161,7 +176,9 @@ const App = () => {
     if (selectedDomainName) localStorage.setItem('selectedDomainName', selectedDomainName);
   }, [selectedDomainKey, selectedDomainName]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {await apiFetch(`${API_BASE}/api/logout`,{method:'POST',signal:AbortSignal.timeout(5000)});}catch{/* Local sign-out still works offline; the server session expires separately. */}
+    setSelectedDomainKey(''); setSelectedDomainName('');
     setIsAuthenticated(false);
     setView('login');
     // Also push the login URL on logout for consistency.
@@ -218,6 +235,8 @@ const App = () => {
   if (view === 'splash' && remainingSplashViews > 0) {
     return <Splash onDone={handleSplashDone} />;
   }
+
+  if(view === 'users') return <UserManagement onDashboard={()=>setView('sites')} onLogout={handleLogout}/>;
 
   if (view === 'settings') {
     return <Settings

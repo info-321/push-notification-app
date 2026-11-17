@@ -1,3 +1,4 @@
+import { removeSubscription } from './subscription-history.js';
 import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
 import { normalizeBanner, validImageUrl } from './push-content.js';
 import { readTargeting } from './targeting.js';
@@ -57,7 +58,7 @@ export async function deliverNotification({ pool, webpush, vapidSubject, reporti
         counts.sent++;
       } catch (error) {
         if ([404, 410].includes(error.statusCode)) {
-          await pool.query('DELETE FROM subscriptions WHERE id = ? AND domain_key = ?', [subscription.id, domainKey]); counts.removed++; outcome = 'expired';
+          if(await removeSubscription(pool,subscription.id,domainKey,'expired')) counts.removed++; outcome = 'expired';
         } else { counts.failed++; outcome = 'failed'; }
       }
       if (campaign) await campaign.result(recipient.id, outcome);

@@ -117,6 +117,7 @@ export default function ConfigurationPanel({ domainKey, onDomains = () => {} }) 
                 <div><dt><label htmlFor="configuration-sender-key">Sender API Key</label></dt><dd className="configuration-sender-field"><input id="configuration-sender-key" type={showSender ? 'text' : 'password'} value={details.sender_api_key || ''} readOnly autoComplete="off" /><button type="button" className="configuration-copy" aria-pressed={showSender} onClick={() => setShowSender(value => !value)}>{showSender ? 'Hide' : 'Show'}</button><button type="button" className="configuration-copy" onClick={() => copy(details.sender_api_key, 'Sender API Key')} aria-label="Copy Sender API Key">Copy</button></dd></div>
               </dl>
               <p>Leave Service Worker Path empty to use the bundled worker. Save settings, visit your website, click Enable notifications, and choose Allow.</p>
+              {!details.sender_api_key&&<p>An administrator must provide the WordPress Sender API Key. Editors send notifications through their own dashboard session.</p>}
               <p>The plugin installs the script automatically. Keep the Sender API Key in WordPress settings; it is not part of the visitor script.</p>
               <p>Enable Send on publish in WordPress if you want notifications for new posts.</p>
               <a className="configuration-download" href={`${API_BASE}/downloads/push-notifications-plugin.zip?v=1.1.1`} download>Download WordPress Plugin</a>

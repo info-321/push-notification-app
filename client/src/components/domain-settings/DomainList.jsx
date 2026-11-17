@@ -134,7 +134,7 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
         <button onClick={configure} disabled={!activeDomain}>Configuration</button>
         <button className="is-active" aria-current="page">Domain</button>
         <button onClick={onPwa}>PWA Setting</button>
-        <button disabled title="User management is not available yet">User</button>
+        <button onClick={() => { window.location.href='/settings/users'; }}>User</button>
       </nav>
 
       <section className="domain-list-panel" aria-label="Domains">

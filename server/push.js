@@ -1,9 +1,10 @@
+import { subscriptionTransaction, recordSubscriptionAdded } from './subscription-history.js';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
-import { createAdminToken } from './accounts.js';
+import { createSecurity } from './security.js';
 import { requestLocation, mergeLocation, requestVisitorIp } from './audience.js';
 import { locationReceipt } from './subscriber-location.js';
 import { requestDevice, requestBrowser, deviceCountSql, summarizeDevices } from './subscriber-device.js';
@@ -24,22 +25,8 @@ const hostMatches = (a, b) => a.replace(/^www\./, '') === b.replace(/^www\./, ''
 export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting }) {
   const sign = (value) => crypto.createHmac('sha256', secret).update(value).digest('base64url');
   const senderKey = (key) => sign(`send:${key}`);
-  const createToken = version => createAdminToken(secret, version);
-  const isAdmin = async (req) => {
-    let session;
-    try {
-      const [payload, signature, extra] = (req.get('Authorization') || '').replace(/^Bearer /, '').split('.');
-      if (extra || !equal(signature, sign(`session:${payload}`))) return false;
-      session = JSON.parse(Buffer.from(payload, 'base64url'));
-      if (!Number.isFinite(session.exp) || session.exp <= Date.now()) return false;
-    } catch { return false; }
-    const account = await accounts.read();
-    return Boolean(account && (session.v === account.session_version || (session.v === undefined && !account.password_changed_at)));
-  };
-  const requireAdmin = async (req, res, next) => {
-    try { return await isAdmin(req) ? next() : res.status(401).json({ ok: false, message: 'Please sign in again.' }); }
-    catch { return res.status(503).json({ ok: false, message: 'Sign in is temporarily unavailable.' }); }
-  };
+  const security = createSecurity({accounts,pool,secret});
+  const {createToken,requireAdmin,authenticate:isAdmin}=security;
   const apiBase = publicApiBase.replace(/\/$/, '');
   let liveReady = false;
   try {
@@ -56,7 +43,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
     try {
       const [rows] = await pool.query(`${selectPublicDomains} WHERE d.domain_key = ? AND d.user_id = 1 LIMIT 1`, [req.params.key]);
       if (!rows.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
-      return res.json({ ok: true, data: { ...publicDomain(rows[0]), api_base: apiBase, service_url: `${apiBase}/api/notifications`, sender_api_key: senderKey(req.params.key), live_ready: liveReady } });
+      return res.json({ ok: true, data: { ...publicDomain(rows[0]), api_base: apiBase, service_url: `${apiBase}/api/notifications`, sender_api_key: req.auth.role==='admin'?senderKey(req.params.key):null, live_ready: liveReady } });
     } catch (error) {
       console.error('Integration configuration failed:', error.code);
       return res.status(500).json({ ok: false, message: 'Could not load integration settings. Check the database connection.' });
@@ -83,34 +70,40 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       }
       const profile = requestTarget(req, req.body?.client_context);
       if (!targetAllowed(readTargeting(domains[0].targeting_policy), profile)) return res.status(403).json({ ok: false, message: 'Notifications are not enabled for this device and browser.' });
-      const [existing] = await pool.query('SELECT id, domain_key, country_code, region_name, region_code, city_name, p256dh, auth, latitude, longitude, location_consent_at FROM subscriptions WHERE endpoint = ? LIMIT 1', [subscription.endpoint]);
+      const response = await subscriptionTransaction(pool,async connection=>{
+      const [existing] = await connection.query(`SELECT id, domain_key, country_code, region_name, region_code, city_name, p256dh, auth, latitude, longitude, location_consent_at FROM subscriptions WHERE endpoint = ? LIMIT 1${pool.notizoLifecycle?' FOR UPDATE':''}`, [subscription.endpoint]);
       if (existing.length && existing[0].domain_key !== domainKey) {
-        return res.status(409).json({ ok: false, message: 'This browser subscription belongs to a different domain.' });
+        throw Object.assign(new Error('This browser subscription belongs to a different domain.'),{status:409});
       }
       if (existing.length && (!equal(existing[0].p256dh, keys.p256dh) || !equal(existing[0].auth, keys.auth))) {
-        return res.status(409).json({ ok: false, message: 'Existing subscription credentials do not match this browser.' });
+        throw Object.assign(new Error('Existing subscription credentials do not match this browser.'),{status:409});
       }
       const location = mergeLocation(existing[0], requestLocation(req));
       const device = requestDevice(req);
       const browser = requestBrowser(req);
       const ip = requestVisitorIp(req);
       if (existing.length) {
-        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family), target_device = ?, target_browser = ?, ip_address = COALESCE(?, ip_address), ip_recorded_at = CASE WHEN ? IS NULL THEN ip_recorded_at ELSE UTC_TIMESTAMP(3) END, last_seen_at = UTC_TIMESTAMP(3) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser, ip, ip, existing[0].id, domainKey]);
+        await connection.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family), target_device = ?, target_browser = ?, ip_address = COALESCE(?, ip_address), ip_recorded_at = CASE WHEN ? IS NULL THEN ip_recorded_at ELSE UTC_TIMESTAMP(3) END, last_seen_at = UTC_TIMESTAMP(3) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser, ip, ip, existing[0].id, domainKey]);
+      if(pool.notizoLifecycle)await connection.query('UPDATE subscription_events SET device_type=COALESCE(?,device_type),browser_family=COALESCE(?,browser_family) WHERE event_key=?',[device,browser,`subscribe:${existing[0].id}`]);
       } else {
-        const [inserted] = await pool.query(
+        const [inserted] = await connection.query(
           'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, browser_family, target_device, target_browser, ip_address, ip_recorded_at, last_seen_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE UTC_TIMESTAMP(3) END, UTC_TIMESTAMP(3), NOW())',
           [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser, ip, ip],
         );
+        await recordSubscriptionAdded(pool,connection,{id:inserted.insertId,domain_key:domainKey,user_id:domains[0].user_id,device_type:device,browser_family:browser});
         if (req.body?.prompt_token) {
-          try { await recordPromptSubscription(pool, secret, req.body.prompt_token, domainKey, inserted.insertId); }
+          try { await recordPromptSubscription(connection, secret, req.body.prompt_token, domainKey, inserted.insertId); }
           catch (error) { console.error('Prompt conversion tracking failed:', error.code || 'storage'); }
         }
       }
-      return res.json({ ok: true, created: !existing.length,
+      return { ok: true, created: !existing.length,
         location_token: locationReceipt(secret, domainKey, subscription.endpoint),
         location_shared: Boolean(existing[0]?.location_consent_at && existing[0]?.latitude != null && existing[0]?.longitude != null),
+      };
       });
+      return res.json(response);
     } catch (error) {
+      if(error.status===409)return res.status(409).json({ok:false,message:error.message});
       if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ ok: false, message: 'Subscription conflict. Please try enabling notifications again.' });
       console.error('Subscription storage failed:', error.code);
       return res.status(500).json({ ok: false, message: 'Could not save the subscription.' });
@@ -151,6 +144,11 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
     if (typeof domainKey !== 'string' || !authorized) {
       return res.status(401).json({ ok: false, message: 'Valid sender credentials are required.' });
     }
+    if (!senderAuthorized) {
+      req.auditDomain=domainKey;
+      try{await security.auditMutation(req);}catch{return res.status(503).json({ok:false,message:'Could not record this action. Nothing was sent.'});}
+      if (!security.domainAllowed(req,domainKey,true)) return res.status(403).json({ok:false,message:'Your account cannot send to this website.'});
+    }
     if (typeof title !== 'string' || !title.trim() || title.length > 150 || typeof body !== 'string' || body.length > 1000 || typeof icon !== 'string') {
       return res.status(400).json({ ok: false, message: 'Provide a title (up to 150 characters) and body (up to 1000 characters).' });
     }
@@ -175,5 +173,5 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       return res.status(500).json({ ok: false, message: 'Could not send the notification. Check the database and VAPID configuration.' });
     }
   });
-  return { requireAdmin, createToken };
+  return { requireAdmin, createToken, security };
 }

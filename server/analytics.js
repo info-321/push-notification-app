@@ -27,11 +27,19 @@ export function installAnalytics(app, pool) {
       const [domains] = await pool.query('SELECT user_id FROM domains WHERE domain_key = ? AND user_id = ?', [req.params.key, 1]);
       if (!domains.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
       // TIMESTAMP -> epoch makes UTC grouping independent of MySQL session zone.
-      const [rows] = await pool.query(`SELECT FLOOR(UNIX_TIMESTAMP(created_at) / 86400) AS day_number, browser_family, COUNT(*) AS subscribers, ${deviceCountSql}
+      let [rows] = await pool.query(`SELECT FLOOR(UNIX_TIMESTAMP(created_at) / 86400) AS day_number, browser_family, COUNT(*) AS subscribers, ${deviceCountSql}
         FROM subscriptions WHERE domain_key = ? AND user_id = ?
         AND COALESCE(p256dh, '') <> '' AND COALESCE(auth, '') <> ''
         AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)
         GROUP BY day_number, browser_family ORDER BY day_number`, [req.params.key, domains[0].user_id, range.first.getTime() / 1000, range.afterLast.getTime() / 1000]);
+      let lifecycleSince=null,historyComplete=false,removed=0,removals=new Map();
+      if(pool.notizoLifecycle){
+        lifecycleSince=Number((await pool.query('SELECT started_ms FROM subscription_history_state WHERE id=1'))[0][0].started_ms);
+        historyComplete=range.first.getTime()>=lifecycleSince;
+        [rows]=await pool.query(`SELECT FLOOR(occurred_ms/86400000) AS day_number,browser_family,COUNT(*) AS subscribers, ${deviceCountSql} FROM subscription_events WHERE domain_key=? AND user_id=? AND event_type IN ('added','baseline') AND occurred_ms>=? AND occurred_ms<? GROUP BY day_number,browser_family ORDER BY day_number`,[req.params.key,domains[0].user_id,range.first.getTime(),range.afterLast.getTime()]);
+        const [removedRows]=await pool.query("SELECT FLOOR(occurred_ms/86400000) AS day_number,COUNT(*) AS n FROM subscription_events WHERE domain_key=? AND user_id=? AND event_type IN ('unsubscribed','expired','domain_deleted') AND occurred_ms>=? AND occurred_ms<? GROUP BY day_number",[req.params.key,domains[0].user_id,range.first.getTime(),range.afterLast.getTime()]);
+        for(const row of removedRows){removals.set(Number(row.day_number),Number(row.n));removed+=Number(row.n);}
+      }
       const counts = new Map(), browsers = new Map();
       let browserUnknown = 0;
       for (const row of rows) {
@@ -46,17 +54,18 @@ export function installAnalytics(app, pool) {
         const row = counts.get(timestamp / dayMs) || {};
         const devices = summarizeDevices(row);
         daily.push({ date: new Date(timestamp).toISOString().slice(0, 10), added: Number(row.subscribers || 0),
-          desktop: devices.desktop || 0, mobile: devices.mobile || 0, device_unknown: devices.device_unknown });
+          ...(pool.notizoLifecycle?{unsubscribed:removals.get(timestamp/dayMs)||0}:{}), desktop: devices.desktop || 0, mobile: devices.mobile || 0, device_unknown: devices.device_unknown });
       }
       const totals = daily.reduce((sum, day) => ({ subscribers: sum.subscribers + day.added, desktop: sum.desktop + day.desktop, mobile: sum.mobile + day.mobile }), { subscribers: 0, desktop: 0, mobile: 0 });
       return res.json({ ok: true, data: {
         range: { start: range.start, end: range.end, time_zone: 'UTC' }, daily,
         added: totals.subscribers, ...summarizeDevices(totals),
-        app: null, unsubscribed: null, net: null,
+        app: null, unsubscribed: pool.notizoLifecycle?removed:null, net: historyComplete?totals.subscribers-removed:null,
+        removals_tracked:Boolean(pool.notizoLifecycle),history_complete:historyComplete,lifecycle_since:lifecycleSince?new Date(lifecycleSince).toISOString():null,
         browser: { available: browserUnknown < totals.subscribers || totals.subscribers === 0,
           total: totals.subscribers, recorded: totals.subscribers - browserUnknown, unknown: browserUnknown,
           rows: browserFamilies.filter(name => browsers.has(name)).map(name => ({ name, subscribers: browsers.get(name) })) },
-        basis: 'Currently saved subscription records created during this period. Browser and device categories are approximate and update when subscribed browsers revisit. Removal history is not recorded.',
+        basis: pool.notizoLifecycle?`Addition history includes subscriptions present when tracking began and all subsequent registrations, including records removed later. Removal tracking began ${new Date(lifecycleSince).toISOString()}. ${historyComplete?'Net subscribers is additions minus removals.':'This period starts before complete removal tracking; only recorded removals are shown and net change is unavailable.'}` : 'Currently saved subscription records created during this period. Browser and device categories are approximate and update when subscribed browsers revisit. Removal history is not recorded.',
       } });
     } catch (error) {
       console.error('Analytics lookup failed:', error.code);

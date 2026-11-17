@@ -272,3 +272,27 @@ test('failed defaults saves block progression, and invalid button URLs cannot re
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not save the icon');
   expect(screen.queryByText('Choose Audience')).not.toBeInTheDocument();
 });
+
+
+test('saved account draft restores on reload and stale-tab save conflicts preserve edits without sending', async () => {
+  const saved={version:3,updated_ms:Date.now(),content:{draft:{title:'Saved overnight',body:'Unfinished text',url:'/story',icon:'',banner:{enabled:false,image:'',actions:[]}},selected:['mice'],platform:'desktop',subscribed:'7d',targetDevices:'all',targetBrowsers:'all',webEnabled:true,sendMode:'now',schedule:{kind:'once',time_zone:'UTC',start:''},step:3}};
+  const original=apiFetch.getMockImplementation();
+  apiFetch.mockImplementation(async(url,options)=>{
+    if(url.endsWith('/draft')){
+      if(options?.method==='PUT')return {ok:false,status:409,json:async()=>({ok:false,message:'Another tab changed this draft. Reload before editing.'})};
+      return response(saved);
+    }
+    return original(url,options);
+  });
+  render(<PushComposer domainKey="mice"/>);
+  await waitFor(()=>expect(screen.getByLabelText('Title')).toHaveValue('Saved overnight'));
+  expect(screen.getByLabelText('Message')).toHaveValue('Unfinished text');
+  expect(screen.getByText(/saved draft was restored/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Title'),{target:{value:'My current edits'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save draft now'}));
+  await screen.findByText(/Another tab changed this draft/);
+  expect(screen.getByLabelText('Title')).toHaveValue('My current edits');
+  expect(apiFetch.mock.calls.some(([,options])=>options?.method==='POST')).toBe(false);
+  const request=apiFetch.mock.calls.find(([,options])=>options?.method==='PUT');
+  expect(JSON.parse(request[1].body).version).toBe(3);
+});

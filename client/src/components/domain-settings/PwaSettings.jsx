@@ -122,7 +122,7 @@ export default function PwaSettings({ selectedDomainKey = '', onSelectDomain = (
       </div>
     </div></header>
     <main className="domain-list-main">
-      <nav ref={navigation} className="domain-list-tabs" aria-label="Settings navigation"><button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button><button onClick={onDomains}>Domain</button><button className="is-active" aria-current="page">PWA Setting</button><button disabled title="User management is not available yet">User</button></nav>
+      <nav ref={navigation} className="domain-list-tabs" aria-label="Settings navigation"><button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button><button onClick={onDomains}>Domain</button><button className="is-active" aria-current="page">PWA Setting</button><button onClick={() => { window.location.href='/settings/users'; }}>User</button></nav>
       {error && <p className="pwa-error" role="alert">{error}{!loadedKey && <button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button>}</p>}
       {loading && <p className="pwa-note" role="status">Loading PWA settings...</p>}
       {!loading && !activeKey && !error && <p className="pwa-note">Add a website in <button onClick={onDomains}>Domains</button> to configure its PWA.</p>}

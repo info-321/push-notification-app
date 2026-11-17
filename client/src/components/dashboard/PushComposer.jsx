@@ -5,6 +5,7 @@ import NotificationPreview from './NotificationPreview';
 import BannerSettings, { newBanner } from './BannerSettings';
 import ScheduleControls, { newSchedule, ScheduleSummary } from './ScheduleControls';
 import { TargetChoices, TargetSummary, deviceChoices, browserChoices } from './TargetingSettings';
+import usePushDraft from './usePushDraft';
 import AudienceDiagnostics from './AudienceDiagnostics';
 import './dashboard.css';
 import './analytics.css';
@@ -103,6 +104,17 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
     return () => { cancelled = true; };
   }, [domainKey, reload, copyId]);
 
+  const restoreDraft = useCallback(saved => {
+    if(!saved.draft || !Array.isArray(saved.selected))return;
+    setDraft(saved.draft);setSelected(saved.selected.filter(key=>domains.some(site=>site.domain_key===key)));
+    setPlatform(saved.platform || 'all');setSubscribed(saved.subscribed || 'all');
+    setTargetDevices(saved.targetDevices || 'all');setTargetBrowsers(saved.targetBrowsers || 'all');
+    setWebEnabled(saved.webEnabled!==false);setSendMode(saved.sendMode || 'now');setSchedule(saved.schedule || newSchedule());setStep(2);
+  },[domains]);
+  const draftStorage=usePushDraft({domainKey,ready:!loading&&!loadError,copyId,
+    content:{draft,selected,platform,subscribed,targetDevices,targetBrowsers,webEnabled,sendMode,schedule,step:Math.max(2,step)},
+    enabled:step>1,sending,finished,onRestore:restoreDraft});
+
   const saveIcon = useCallback(value => {
     const job = saveQueue.current.catch(() => {}).then(async () => {
       if (savedIcon.current === value) return true;
@@ -146,7 +158,11 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   useEffect(() => { headingRef.current?.focus({ preventScroll: true }); }, [step]);
   const move = next => { if (sendLock.current || finished) return; setError(''); setStep(next); };
   const update = (field, value) => setDraft(current => ({ ...current, [field]: value }));
-  const navigate = callback => (...args) => { if (!sendLock.current) callback?.(...args); };
+  const navigate = callback => async (...args) => {
+    if(sendLock.current)return;
+    if(step>1&&!finished){const saved=await draftStorage.save();if(!saved&&!window.confirm('Draft could not be saved. Leave and discard unsaved edits?'))return;}
+    callback?.(...args);
+  };
   const next = async event => {
     event.preventDefault(); const message = validatePushDraft(draft, [domain]);
     if (message) { setError(message); return; }
@@ -186,6 +202,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
       setResults(current => [...current, outcome]);
     }
     setSending(false); setFinished(true); sendLock.current = false;
+    try{await draftStorage.discard();}catch{setError('The send attempt finished, but its saved draft could not be cleared. Check Reports before reusing it.');}
   };
   const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: savedIcon.current, banner: JSON.parse(JSON.stringify(savedBanner.current)) }); setSaveBanner(false); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setTargetDevices('all'); setTargetBrowsers('all'); setWebEnabled(true); setSendMode('now'); setSchedule(newSchedule(domain?.time_zone || 'Asia/Kolkata')); setSchedulePreview(null); schedulingKey.current = null; setStep(1); setError(''); };
 
@@ -193,6 +210,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
     <WebsiteHeader activePage="push" domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={navigate(onAllSites)} onManageDomains={navigate(onManageDomains)} onSettings={navigate(onSettings)} onSelectDomain={navigate(onSelectDomain)} onDashboard={() => navigate(onDashboard)(domainKey, domain?.domain_name)} onConfiguration={navigate(onConfiguration)} onLogout={navigate(onLogout)} />
     <main className="overview-main push-main">
       <nav className="analytics-navigation" aria-label="Push navigation"><span aria-current="page">Send Push</span><button disabled>Segments</button><a href={`/push/reports?domain=${encodeURIComponent(domainKey)}`}>Reports</a><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>Schedule List</a><button disabled>Template Gallery</button><a href={`/push/settings?domain=${encodeURIComponent(domainKey)}`}>Push Setting</a><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></nav>
+      {!loading&&!loadError&&<div className="push-draft-status"><p role="status">{draftStorage.status}</p><div><button type="button" disabled={!draftStorage.loaded||draftStorage.busy||sending||finished||step===1} onClick={draftStorage.save}>Save draft now</button><button type="button" disabled={!draftStorage.loaded||draftStorage.busy||sending} onClick={async()=>{if(!window.confirm('Discard your saved draft and start a new notification?'))return;try{await draftStorage.discard();reset();}catch(e){setError(e.message);}}}>Discard draft</button></div></div>}
       <h1 className="overview-sr-only">Send Push for {domain?.domain_name || 'your website'}</h1>
       {loading && <p role="status">Loading websites...</p>}
       {loadError && <div className="overview-panel push-message" role="alert">{loadError}<button onClick={() => setReload(value => value + 1)}>Try again</button></div>}

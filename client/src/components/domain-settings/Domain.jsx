@@ -193,7 +193,7 @@ const Domain = ({
           <button className={activeTab === 'config' ? 'is-active' : ''} aria-current={activeTab === 'config' ? 'page' : undefined} disabled={activeTab !== 'config' && !selectedDomainKey} onClick={() => { setActiveTab('config'); onSelectDomainTab('config'); }}>Configuration</button>
           <button className={activeTab === 'domain' ? 'is-active' : ''} aria-current={activeTab === 'domain' ? 'page' : undefined} onClick={onDomains}>Domain</button>
           <button onClick={onPwa}>PWA Setting</button>
-          <button disabled title="User management is not available yet">User</button>
+          <button onClick={() => { window.location.href='/settings/users'; }}>User</button>
         </nav>
 
         {activeTab === 'domain' && (
