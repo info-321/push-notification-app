@@ -95,3 +95,9 @@ test('email failure invalidates verification token, and account/IP request limit
   for(let n=0;n<4;n++)await f.c.call('/api/account/recovery',{email:'owner@example.test',password:'wrong'});
   assert.equal((await f.c.call('/api/account/recovery',{email:'owner@example.test',password})).status,429);
 });
+
+test('pre-cookie tracked credentials are rejected even if presented in a Cookie header',async t=>{
+  const f=await fixture(t),login=await f.c.login();
+  const session=(await f.accounts.sessions(1))[0];session.auth_transport='legacy';
+  assert.equal((await f.c.call('/api/account')).status,401);
+});

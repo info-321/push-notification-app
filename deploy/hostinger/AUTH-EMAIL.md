@@ -4,7 +4,8 @@ The dashboard uses a host-only `Secure; HttpOnly; SameSite=Lax` session cookie o
 HTTPS. Browser session credentials are no longer returned in login JSON or saved
 in localStorage. Existing localStorage tokens are removed; users must sign in once
 after this deployment. Saved accounts, passwords, website keys and subscribers
-are preserved. Cookies retain the existing 12-hour server session expiry.
+are preserved. Previous interactive sessions are marked ended (`cookie_upgrade`);
+only new cookie sessions and short-lived internal probes are accepted. Cookies retain the existing 12-hour server session expiry.
 
 CSRF tokens remain in page memory. Mutations require a session-bound HMAC token
 and an allowed Origin. Login and recovery also require a pre-login CSRF token.
@@ -18,6 +19,44 @@ its URL in `PUBLIC_DASHBOARD_BASE`. Wildcards are rejected. For an explicitly
 allowed local dashboard, add `http://localhost:3000` to `DASHBOARD_ORIGINS`; browser
 third-party-cookie restrictions can still block cross-site cookies. Prefer the
 hosted dashboard. Local HTTP development uses a non-Secure development cookie.
+
+## One-time live upgrade
+
+The installed deployment helper intentionally rejects changes to `compose.yml` or
+`server/db/schema.sql`. This release adds optional mail environment variables and
+additive recovery/session storage. A failed automatic run stops before changing
+running containers. Do not remove that deployment guard or import schema.sql over
+an existing database.
+
+After GitHub's **Test and build** job succeeds for this release, connect through
+your personal Hostinger SSH terminal and run this block once:
+
+```bash
+bash <<'NOTIZO_UPGRADE'
+set -Eeuo pipefail
+cd /opt/push-notification-app
+git diff --quiet
+git diff --cached --quiet
+bash deploy/hostinger/backup.sh
+git pull --ff-only
+/usr/local/sbin/deploy-push-notifications "$(git rev-parse HEAD)"
+NOTIZO_UPGRADE
+```
+
+This is the coordinated manual upgrade: it backs up before accepting the changed
+infrastructure files, then invokes the existing installed deployment command. That
+command backs up again, retains previous app images, builds and replaces only
+`api`/`web`, runs additive migrations, and verifies readiness. It does not replace
+the MySQL volume, import subscriber data, or change DNS/WordPress. The shell block
+stops on errors. If tracked server files differ or the branch cannot fast-forward,
+resolve that instead of resetting or deleting files. On a readiness failure the
+helper attempts to restore the previous app images; it does not undo database
+migrations, which are additive here. Old interactive sessions intentionally end.
+
+When it prints `Deployment passed for commit ...`, refresh the hosted dashboard
+and sign in. You can rerun the GitHub workflow to confirm normal automatic app
+deployments resume with the clean, updated checkout. Email remains disabled until
+the following setup is complete.
 
 ## Enable recovery email on Hostinger
 

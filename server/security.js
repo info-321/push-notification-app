@@ -13,7 +13,7 @@ export function createSecurity({ accounts, pool, secret, browser }) {
   const createToken = async (version, userId = 1, req) => {
     const id = crypto.randomUUID(), lifetime = 12 * 3600000;
     const token = createAdminToken(secret, version, lifetime, { uid: Number(userId), sid: id });
-    await accounts.startSession({ id, user_id: Number(userId), token_hash: tokenHash(token), login_ms: Date.now(), expires_ms: Date.now()+lifetime, ...(req ? loginMetadata(req) : { ip_address:null,device:null,browser:null,os:null }) });
+    await accounts.startSession({ id, auth_transport:'cookie', user_id: Number(userId), token_hash: tokenHash(token), login_ms: Date.now(), expires_ms: Date.now()+lifetime, ...(req ? loginMetadata(req) : { ip_address:null,device:null,browser:null,os:null }) });
     return token;
   };
   const authenticate = async req => {
@@ -33,6 +33,7 @@ export function createSecurity({ accounts, pool, secret, browser }) {
     if (session.sid) {
       const saved = await accounts.session(session.sid);
       if (!cookieToken && (saved?.source!=='deployment' || session.exp-Date.now()>120000 || req.get('Origin'))) return false;
+      if(cookieToken && saved?.auth_transport!=='cookie' && saved?.source!=='deployment')return false;
       if (!saved || saved.user_id!==Number(account.id) || saved.token_hash!==tokenHash(token) || saved.ended_ms || saved.expires_ms<=Date.now()) return false;
       await accounts.touch(session.sid);
     } else return false; // Interactive browser sessions must be tracked and cookie-based.

@@ -16,7 +16,10 @@ export async function ensureIdentity(pool) {
     login_ms BIGINT NOT NULL, last_seen_ms BIGINT NOT NULL, expires_ms BIGINT NOT NULL,
     ip_address VARCHAR(45) NULL, device VARCHAR(32) NULL, browser VARCHAR(32) NULL, os VARCHAR(32) NULL,
     ended_ms BIGINT NULL, end_reason VARCHAR(24) NULL, source VARCHAR(24) NOT NULL DEFAULT 'interactive',
+    auth_transport VARCHAR(12) NOT NULL DEFAULT 'legacy',
     KEY session_user(user_id,login_ms), KEY session_expiry(expires_ms))`);
+  if(!(await pool.query("SHOW COLUMNS FROM dashboard_sessions LIKE 'auth_transport'"))[0].length)await pool.query("ALTER TABLE dashboard_sessions ADD COLUMN auth_transport VARCHAR(12) NOT NULL DEFAULT 'legacy'");
+  await pool.query("UPDATE dashboard_sessions SET ended_ms=?,end_reason='cookie_upgrade' WHERE auth_transport='legacy' AND source<>'deployment' AND ended_ms IS NULL AND expires_ms>?",[Date.now(),Date.now()]);
   await pool.query(`CREATE TABLE IF NOT EXISTS login_attempts (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255) NOT NULL, user_id BIGINT UNSIGNED NULL,
     succeeded BOOLEAN NOT NULL, occurred_ms BIGINT NOT NULL, ip_address VARCHAR(45) NULL,
@@ -60,7 +63,7 @@ export function mysqlIdentityStore(pool) {
         await c.commit(); return true;
       } catch (error) { await c.rollback(); throw error; } finally { c.release(); }
     },
-    async startSession(row) { await pool.query('INSERT INTO dashboard_sessions (id,user_id,token_hash,login_ms,last_seen_ms,expires_ms,ip_address,device,browser,os) VALUES (?,?,?,?,?,?,?,?,?,?)', [row.id,row.user_id,row.token_hash,row.login_ms,row.login_ms,row.expires_ms,row.ip_address,row.device,row.browser,row.os]); },
+    async startSession(row) { await pool.query('INSERT INTO dashboard_sessions (id,user_id,token_hash,login_ms,last_seen_ms,expires_ms,ip_address,device,browser,os,auth_transport) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [row.id,row.user_id,row.token_hash,row.login_ms,row.login_ms,row.expires_ms,row.ip_address,row.device,row.browser,row.os,row.auth_transport||'legacy']); },
     async session(id) { return (await pool.query('SELECT * FROM dashboard_sessions WHERE id=?', [id]))[0][0]; },
     async touch(id) { await pool.query('UPDATE dashboard_sessions SET last_seen_ms=? WHERE id=? AND last_seen_ms<? AND ended_ms IS NULL', [Date.now(),id,Date.now()-60000]); },
     async endSession(id, userId, reason='logout') { return (await pool.query('UPDATE dashboard_sessions SET ended_ms=?,end_reason=? WHERE id=? AND user_id=? AND ended_ms IS NULL AND expires_ms>?', [Date.now(),reason,id,userId,Date.now()]))[0].affectedRows > 0; },
