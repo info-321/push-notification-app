@@ -90,6 +90,7 @@ def run(snapshot, config):
     if len(manifest) != 2 or any(fingerprint(snapshot / name) != digest for name, digest in manifest.items()):
         raise ValueError('Local backup checksum failed; nothing was uploaded.')
     encrypted = snapshot / 'snapshot.tar.age'
+    seal = snapshot / 'encrypted-checksum.json'
     if not encrypted.exists():
         fd, temporary = tempfile.mkstemp(prefix='.encrypted-', dir=snapshot)
         try:
@@ -108,16 +109,21 @@ def run(snapshot, config):
                         child.wait()
             os.chmod(temporary, 0o600)
             os.replace(temporary, encrypted)
+            write_json(seal, {'sha256':fingerprint(encrypted)})
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
     if encrypted.is_symlink() or not encrypted.is_file():
         raise ValueError('Invalid encrypted snapshot path.')
+    if seal.is_symlink() or not seal.is_file() or json.loads(seal.read_text(encoding='utf-8')).get('sha256') != fingerprint(encrypted):
+        raise ValueError('The encrypted snapshot changed. Retain the original local dump and investigate before retrying.')
+    expected = fingerprint(encrypted)
     target = remote.rstrip('/') + '/' + snapshot.name + '.tar.age'
     options = ['--config', str(rclone_config), '--contimeout', '20s', '--timeout', '2m', '--retries', '3']
     subprocess.run(['rclone', 'copyto', str(encrypted), target, '--immutable', *options], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
-    expected = fingerprint(encrypted)
+    if fingerprint(encrypted) != expected:
+        raise RuntimeError('The encrypted snapshot changed during upload.')
     h = hashlib.sha256()
     child = subprocess.Popen(['rclone', 'cat', target, *options], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
