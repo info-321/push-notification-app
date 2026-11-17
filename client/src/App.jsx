@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import {API_BASE,apiFetch} from './api';
+import {saveLoginReturn,readLoginReturn,clearLoginReturn,permittedLoginDestination} from './login-routing';
 import UserManagement from './components/domain-settings/UserManagement';
 import Login from './components/login/Login';
 import Splash from './components/splash/Splash';
@@ -37,6 +38,8 @@ const App = () => {
   const initialDomainName = localStorage.getItem('selectedDomainName') || '';
 
   const [isAuthenticated, setIsAuthenticated] = useState(initialAuth);
+  const [returnPath,setReturnPath]=useState(()=>!initialAuth ? saveLoginReturn(window.location.pathname+window.location.search+window.location.hash)||readLoginReturn() : null);
+  const [loginNotice,setLoginNotice]=useState('');
   // Splash count (persisted). Keep at 1 so it only shows on first login unless changed.
   const [remainingSplashViews, setRemainingSplashViews] = useState(initialSplash);
   // Which view to show: login, splash, domain, settings, site-select.
@@ -50,7 +53,11 @@ const App = () => {
   const [domainTab, setDomainTab] = useState(window.location.pathname === '/settings/config' ? 'config' : 'domain');
 
   useEffect(() => {
-    const expire = () => { setIsAuthenticated(false); setView('login'); };
+    const expire = () => {
+      const next=saveLoginReturn(window.location.pathname+window.location.search+window.location.hash)||readLoginReturn();
+      setReturnPath(next);setLoginNotice('Your session has ended. Sign in again to continue.');
+      setIsAuthenticated(false);setView('login');
+    };
     window.addEventListener('auth-expired', expire);
     return () => window.removeEventListener('auth-expired', expire);
   }, []);
@@ -105,17 +112,24 @@ const App = () => {
 
   // Listen for manual URL changes (back/forward or typing new path) to resync view.
   useEffect(() => {
-    const handler = () => syncViewFromUrl();
+    const handler = () => {
+      if(isAuthenticated)syncViewFromUrl();
+      else {
+        const next=saveLoginReturn(window.location.pathname+window.location.search+window.location.hash);
+        if(next)setReturnPath(next);
+        window.history.replaceState({},'','/login');
+      }
+    };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
-  }, [syncViewFromUrl]);
+  }, [syncViewFromUrl,isAuthenticated]);
 
   useEffect(() => {
     if(!isAuthenticated)return;
     const heartbeat=()=>{if(document.visibilityState==='visible')apiFetch(`${API_BASE}/api/account/heartbeat`,{method:'POST'}).catch(()=>{});};
     const interval=setInterval(heartbeat,60000);
     document.addEventListener('visibilitychange',heartbeat);
-    const changed=event=>{if(event.key==='sessionToken'){if(!event.newValue){setIsAuthenticated(false);setView('login');}else if(event.oldValue!==event.newValue)window.location.reload();}};
+    const changed=event=>{if(event.key==='sessionToken'){if(!event.newValue){setReturnPath(saveLoginReturn(window.location.pathname+window.location.search+window.location.hash));setLoginNotice('Your session ended in another tab. Sign in again to continue.');setIsAuthenticated(false);setView('login');}else if(event.oldValue!==event.newValue)window.location.reload();}};
     window.addEventListener('storage',changed);
     return()=>{clearInterval(interval);document.removeEventListener('visibilitychange',heartbeat);window.removeEventListener('storage',changed);};
   },[isAuthenticated]);
@@ -126,7 +140,7 @@ const App = () => {
     document.body.classList.remove(...classes);
     if (view === 'login') {
       // Keep URL consistent when on the login screen.
-      window.history.pushState({}, '', '/login');
+      window.history.replaceState({}, '', '/login');
       document.body.classList.add('login-bg');
     } else if (view === 'splash') {
       document.body.classList.add('splash-bg');
@@ -178,11 +192,12 @@ const App = () => {
 
   const handleLogout = async () => {
     try {await apiFetch(`${API_BASE}/api/logout`,{method:'POST',signal:AbortSignal.timeout(5000)});}catch{/* Local sign-out still works offline; the server session expires separately. */}
+    clearLoginReturn();setReturnPath(null);setLoginNotice('You have signed out.');
     setSelectedDomainKey(''); setSelectedDomainName('');
     setIsAuthenticated(false);
     setView('login');
     // Also push the login URL on logout for consistency.
-    window.history.pushState({}, '', '/login');
+    window.history.replaceState({}, '', '/login');
     localStorage.removeItem('auth');
     localStorage.removeItem('sessionToken');
     localStorage.removeItem('view');
@@ -191,19 +206,37 @@ const App = () => {
     setDomainTab('domain');
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = async ({signal}={}) => {
+    const token=localStorage.getItem('sessionToken');
+    let profile=null,domains=[],target=null;
+    try {
+      const responses=await Promise.all([apiFetch(`${API_BASE}/api/account`,{signal}),apiFetch(`${API_BASE}/api/domains`,{signal})]);
+      const results=await Promise.all(responses.map(response=>response.json()));
+      if(responses[0].ok&&results[0].ok)profile=results[0].data;
+      if(responses[1].ok&&results[1].ok&&Array.isArray(results[1].data))domains=results[1].data;
+      target=permittedLoginDestination(returnPath||readLoginReturn(),profile,domains);
+    }catch{/* A failed permission lookup falls back to website selection, never the requested restricted page. */}
+    if(!token||localStorage.getItem('sessionToken')!==token)throw Object.assign(new Error('Your session could not be verified. Please sign in again.'),{handled:true});
+    const hadReturn=Boolean(returnPath||readLoginReturn());
+    clearLoginReturn();setReturnPath(null);setLoginNotice('');
+    setSelectedDomainKey('');setSelectedDomainName('');
+    localStorage.removeItem('selectedDomainKey');localStorage.removeItem('selectedDomainName');
     setIsAuthenticated(true);
-    // If domain setup is done, jump straight to site selection on future logins.
-    if (domainSetupComplete) {
-      setView('sites');
+    if(target){
+      const url=new URL(target,window.location.origin),key=url.searchParams.get('domain')||'';
+      setSelectedDomainKey(key);setSelectedDomainName(domains.find(site=>site.domain_key===key)?.domain_name||'');
+      setDomainTab(url.pathname==='/settings/config'?'config':'domain');
+      const destinations={'/push':'push','/push/reports':'reports','/push/schedules':'schedules','/push/settings':'prompt-settings','/analytics':'analytics','/settings':'settings','/settings/general':'settings','/settings/account':'account','/settings/users':'users','/settings/domains':'domains','/settings/pwa':'pwa','/settings/config':'domain','/settings/domain':'domain'};
+      window.history.replaceState({},'',target);
+      setView(url.pathname==='/dashboard'?(key?'overview':'sites'):destinations[url.pathname]);
+      if(domains.length)setDomainSetupComplete(true);
       return;
     }
-    // Otherwise, show splash once, then domain setup.
-    if (remainingSplashViews > 0) {
-      setView('splash');
-    } else {
-      setView('domain');
-    }
+    if(hadReturn||domains.length||domainSetupComplete||profile?.role!=='admin'){
+      window.history.replaceState({},'','/dashboard');setView('sites');
+      if(domains.length)setDomainSetupComplete(true);
+    }else if(remainingSplashViews>0)setView('splash');
+    else{window.history.replaceState({},'','/settings/domain');setView('domain');}
   };
 
   const handleSplashDone = () => {
@@ -229,7 +262,7 @@ const App = () => {
   };
 
   if (!isAuthenticated) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return <Login onLoginSuccess={handleLoginSuccess} notice={loginNotice || (returnPath?'Sign in to continue to your workspace.':'')} />;
   }
 
   if (view === 'splash' && remainingSplashViews > 0) {

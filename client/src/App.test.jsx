@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 import { apiFetch } from './api';
 
@@ -10,6 +10,7 @@ jest.mock('./components/domain-settings/Domain', () => function MockConfiguratio
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   localStorage.setItem('auth', 'true');
   localStorage.setItem('sessionToken', 'test-token');
   localStorage.setItem('domainSetupComplete', 'true');
@@ -17,7 +18,7 @@ beforeEach(() => {
   apiFetch.mockImplementation(async url => {
     const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
     return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/api/account')
-      ? { username: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
+      ? { username: 'admin', role: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
       : url.includes('/prompt-settings') ? { version: '0', published: null, previous: null, draft: { enabled: true, template: 'slide-in', heading: 'Stay updated', message: 'Get news', allow_label: 'Enable notifications', dismiss_label: 'Maybe later', logo: '', accent: '#12ad88', background: '#ffffff', text: '#25394b', position: 'right', trigger: 'delay', delay: 15, scroll: 50, cooldown: 7, include_paths: [], exclude_paths: [] } }
       : url.includes('/prompt-performance?') ? { rows: [] }
       : url.endsWith('/api/schedules/status') ? { running: true }
@@ -117,7 +118,7 @@ test('Account opens from Settings and survives direct URL navigation', async () 
   fireEvent.click(screen.getByRole('button', { name: 'Account', exact: true }));
   expect(await screen.findByRole('heading', { name: 'Change Password' })).toBeTruthy();
   expect(window.location.pathname).toBe('/settings/account');
-  expect(await screen.findByText('admin')).toBeTruthy();
+  expect((await screen.findAllByText('admin')).length).toBeGreaterThan(0);
   fireEvent.click(screen.getByRole('button', { name: 'Domain', exact: true }));
   await screen.findByRole('button', { name: 'Edit MICE Travel Advisor' });
   window.history.replaceState({}, '', '/settings/account?domain=mice-key');
@@ -203,4 +204,40 @@ test('Reports restores its own URL and selected website after reload or browser 
   window.history.replaceState({}, '', '/push?domain=mice-key'); fireEvent(window, new PopStateEvent('popstate'));
   await screen.findByRole('button', { name: 'Create New Push' });
   const reports = screen.getAllByRole('link', { name: 'Reports', exact: true }); expect(reports.every(link => link.getAttribute('href') === '/push/reports?domain=mice-key')).toBe(true);
+});
+
+
+function submitLogin() {
+  global.fetch=jest.fn(async()=>({ok:true,status:200,json:async()=>({ok:true,token:'fresh-login-session'})}));
+  fireEvent.change(screen.getByLabelText('Username'),{target:{value:'admin'}});
+  fireEvent.change(screen.getByLabelText('Password'),{target:{value:'fixture-password'}});
+  fireEvent.click(screen.getByRole('button',{name:'Sign in'}));
+}
+
+test('a signed-out direct analytics link resumes only after the account and website access are checked',async()=>{
+  localStorage.removeItem('auth');localStorage.removeItem('sessionToken');window.history.replaceState({},'','/analytics?domain=mice-key');
+  render(<App/>);expect(screen.getByRole('heading',{name:'Welcome back to Notizo'})).toBeTruthy();expect(window.location.pathname).toBe('/login');
+  submitLogin();await screen.findByRole('heading',{name:'MICE Travel Advisor Analytics'});
+  expect(window.location.pathname+window.location.search).toBe('/analytics?domain=mice-key');
+  expect(apiFetch).toHaveBeenCalledWith('https://api.example.test/api/account',expect.anything());
+  expect(sessionStorage.getItem('notizo.signInReturn')).toBeNull();
+});
+
+test('session-expiry feedback preserves the current page for reauthentication',async()=>{
+  window.history.replaceState({},'','/analytics?domain=mice-key');render(<App/>);await screen.findByRole('heading',{name:'MICE Travel Advisor Analytics'});
+  act(()=>{localStorage.removeItem('sessionToken');window.dispatchEvent(new Event('auth-expired'));});
+  expect(await screen.findByText('Your session has ended. Sign in again to continue.')).toBeTruthy();
+  submitLogin();await screen.findByRole('heading',{name:'MICE Travel Advisor Analytics'});expect(window.location.search).toBe('?domain=mice-key');
+});
+
+test('a previous website outside the newly signed-in account falls back to website selection',async()=>{
+  localStorage.removeItem('auth');localStorage.removeItem('sessionToken');localStorage.setItem('selectedDomainKey','forbidden');
+  window.history.replaceState({},'','/analytics?domain=forbidden');render(<App/>);submitLogin();
+  await screen.findByText('Select Domain');expect(window.location.pathname+window.location.search).toBe('/dashboard');expect(screen.queryByRole('heading',{name:/Analytics/})).toBeNull();expect(localStorage.getItem('selectedDomainKey')).toBeNull();
+});
+
+test('explicit sign-out clears the return page and shows a sign-out confirmation',async()=>{
+  window.history.replaceState({},'','/analytics?domain=mice-key');render(<App/>);await screen.findByRole('heading',{name:'MICE Travel Advisor Analytics'});
+  fireEvent.click(screen.getByRole('button',{name:/Log out/i}));await screen.findByText('You have signed out.');
+  expect(sessionStorage.getItem('notizo.signInReturn')).toBeNull();submitLogin();await screen.findByText('Select Domain');expect(window.location.pathname+window.location.search).toBe('/dashboard');
 });

@@ -262,3 +262,30 @@ At first startup, subscriptions still present are marked as a baseline using the
 ### Storage maintenance and off-server backups
 
 See [STORAGE.md](deploy/hostinger/STORAGE.md) for encrypted off-server backup preparation, daily retention, weekly isolated restore checks, recovery instructions and full-endpoint indexes. Off-server uploads remain disabled until an external destination and public encryption recipient are configured. Existing deployments need the guide's one-time timer activation and installed SSH-helper refresh through a personal root SSH session; subsequent deployments update those timers automatically. The default detail retention is 90 days and audit retention is 365 days; active subscriptions, accounts, drafts, lifecycle history and report totals are preserved. Use `python3 maintenance.py --preview` from the Hostinger deployment directory to inspect eligible changes.
+
+
+### Notizo sign-in experience
+
+The login page uses the existing N logo and dashboard navy/teal palette, visible
+username/password labels, password-manager autocomplete, a password visibility
+control, Caps Lock feedback and a layout that can scroll on short/mobile screens.
+Errors distinguish invalid credentials, network/timeout failures, service failures
+and rate limits without revealing backend messages or whether an account exists.
+A 429 response starts a retry countdown (using Retry-After when supplied); server
+limits remain authoritative. Duplicate submissions are blocked and requests abort
+on navigation or after 15 seconds.
+
+Remember username is opt-in and stores only the username in this browser. Turning
+it off removes the remembered value immediately. Passwords are never stored by
+this feature. Need access opens a keyboard-accessible help dialog with a copyable
+request for the organisation's administrator; no unconfirmed email address,
+external message delivery or public registration is introduced.
+
+Known internal routes can be resumed after sign-in, including an expired session.
+Only allowed domain/campaign route parameters are retained per tab for 30 minutes.
+The frontend reloads the current account and assigned domain list before restoring
+a destination. Unavailable websites, restricted roles and failed permission lookups
+fall back to website selection; backend permissions remain authoritative. Explicit
+logout clears the return destination, and old website selections are cleared when
+a different account signs in. Login styles are scoped; the existing shared font
+and reset now live in index.css.
