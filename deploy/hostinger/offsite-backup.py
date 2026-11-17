@@ -89,7 +89,13 @@ def run(snapshot, config):
         manifest[match[2]] = match[1]
     if len(manifest) != 2 or any(fingerprint(snapshot / name) != digest for name, digest in manifest.items()):
         raise ValueError('Local backup checksum failed; nothing was uploaded.')
-    encrypted = snapshot / (snapshot.name + '.tar.age')
+    upload_dir = snapshot / 'ciphertext'
+    if upload_dir.is_symlink():
+        raise ValueError('The encrypted upload directory must not be a symbolic link.')
+    upload_dir.mkdir(mode=0o700, exist_ok=True)
+    encrypted = upload_dir / (snapshot.name + '.tar.age')
+    if any(path.name != encrypted.name for path in upload_dir.iterdir()):
+        raise ValueError('Only the encrypted archive may exist in the upload directory.')
     seal = snapshot / 'encrypted-checksum.json'
     if not encrypted.exists():
         fd, temporary = tempfile.mkstemp(prefix='.encrypted-', dir=snapshot)
@@ -120,9 +126,10 @@ def run(snapshot, config):
     expected = fingerprint(encrypted)
     target = remote.rstrip('/') + '/' + snapshot.name + '.tar.age'
     options = ['--config', str(rclone_config), '--contimeout', '20s', '--timeout', '2m', '--retries', '3']
-    # Use copy's synchronization checks: older distribution-packaged rclone
-    # versions accept --immutable with copyto but do not enforce it there.
-    subprocess.run(['rclone', 'copy', str(encrypted), remote.rstrip('/'), '--immutable', *options], check=True,
+    # A directory source is essential: older rclone versions bypass immutable
+    # checks for a single-file source, even with `copy`. This folder is checked
+    # above to contain exactly one ciphertext file, never the plaintext backup.
+    subprocess.run(['rclone', 'copy', str(upload_dir), remote.rstrip('/'), '--immutable', *options], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
     if fingerprint(encrypted) != expected:
         raise RuntimeError('The encrypted snapshot changed during upload.')
