@@ -9,7 +9,7 @@ import { createApp } from '../app.js';
 import * as migrations from '../domain-schema.js';
 import { ensureSchedules, createScheduleWorker, scheduleGraceMs } from '../schedules.js';
 import { ensureReports, createCampaignReporter } from '../reports.js';
-import { mysqlAccountRepository } from '../accounts.js';
+import { mysqlAccountRepository, createAdminToken } from '../accounts.js';
 import { ensureSubscriptionHistory,removeSubscription } from '../subscription-history.js';
 
 test('MySQL scheduler transactions, ownership, idempotency, concurrency and restart recovery', { skip: process.env.SCHEDULE_TEST_MYSQL !== '1' }, async t => {
@@ -260,6 +260,11 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
       assert.equal((await call(draftPath,'GET',null,root)).data,null);
       assert.equal((await call(draftPath,'GET',null,editor)).data.content.draft.title,'Saved work');
       const rootSessions=(await call('/api/account/sessions','GET',null,root)).data;assert.equal(rootSessions[0].ip_address,'203.0.113.42');assert.equal(rootSessions[0].browser,'Chrome');assert.equal(rootSessions[0].token_hash,undefined);
+      const legacy=createAdminToken(secret,(await accounts.read()).session_version,1000);
+      assert.equal((await call('/api/account','GET',null,legacy)).status,200);
+      assert.equal((await call('/api/account/sessions/revoke-others','POST',null,root)).status,200);
+      assert.equal((await call('/api/account','GET',null,legacy)).status,401);
+      assert.equal((await call('/api/account','GET',null,root)).status,200);
       await call('/api/login','POST',{username:'ci-editor',password:'incorrect'});
       assert.ok((await call('/api/users/login-attempts','GET',null,root)).data.some(a=>a.username==='ci-editor'&&!a.succeeded));
       assert.equal((await call('/api/logout','POST',null,editor)).status,200);

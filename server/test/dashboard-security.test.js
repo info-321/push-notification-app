@@ -109,3 +109,12 @@ test('logging out an old untracked token closes its migration grace without inve
   assert.equal((await f.call('/api/account','GET',null,f.root)).status,401);
   assert.equal((await f.login()).status,200);
 });
+
+test('revoking other sessions also closes pre-migration sessions while preserving the current tracked login',async t=>{
+  const f=await fixture(t),row=await f.accounts.read(),legacy=createAdminToken(secret,row.session_version,1000);
+  assert.equal((await f.call('/api/account','GET',null,legacy)).status,200);
+  assert.equal((await f.call('/api/account/sessions/revoke-others','POST',null,f.root)).status,200);
+  assert.equal((await f.call('/api/account','GET',null,legacy)).status,401);
+  assert.equal((await f.call('/api/account','GET',null,f.root)).status,200);
+  assert.equal((await f.accounts.read()).password_changed_at,null);
+});
