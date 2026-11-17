@@ -37,6 +37,15 @@ assert.equal(typeof account.username, 'string');
 assert.equal(account.password_hash, undefined);
 assert.equal(account.session_version, undefined);
 console.log('Account API: OK');
+// Probe only the deployment session; never uses a person's password or sends mail.
+const cookieHeader=`__Host-notizo_session=${session.token}`;
+const browserState=await fetch(base+'/api/auth/session',{headers:{Cookie:cookieHeader}});
+const browserData=await browserState.json();assert.equal(browserData.authenticated,true);assert.equal(browserData.token,undefined);assert.equal(typeof browserData.csrfToken,'string');
+assert.equal((await fetch(base+'/api/account/heartbeat',{method:'POST',headers:{Cookie:cookieHeader}})).status,403);
+assert.equal((await fetch(base+'/api/account/heartbeat',{method:'POST',headers:{Cookie:cookieHeader,'X-CSRF-Token':browserData.csrfToken}})).status,200);
+const recovery=await fetch(base+'/api/account/recovery',{headers:{Authorization:`Bearer ${session.token}`}});assert.equal(recovery.status,200);assert.equal(typeof (await recovery.json()).data.mail_enabled,'boolean');
+console.log('HttpOnly cookie sessions, CSRF checks and recovery settings: OK');
+
 const domains = await fetch(base + '/api/domains', { headers: { Authorization: `Bearer ${session.token}` } });
 assert.equal(domains.status, 200, 'Authenticated database access must succeed');
 const domainList = await domains.json();

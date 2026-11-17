@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
-import {API_BASE,apiFetch} from './api';
+import {API_BASE,apiFetch,browserSession,authEpoch,authChanged} from './api';
 import {saveLoginReturn,readLoginReturn,clearLoginReturn,permittedLoginDestination} from './login-routing';
 import UserManagement from './components/domain-settings/UserManagement';
 import Login from './components/login/Login';
@@ -19,9 +19,12 @@ import Account from './components/domain-settings/Account';
 import PwaSettings from './components/domain-settings/PwaSettings';
 // Note: Configuration content now lives inside Domain tabs; no separate view.
 
-const App = () => {
+const Workspace = ({onLogoutError}) => {
   // Restore persisted auth/view state so reloads stay on the same page.
-  const initialAuth = localStorage.getItem('auth') === 'true' && Boolean(localStorage.getItem('sessionToken'));
+  const initialAuth = false; // The server cookie is the authority; localStorage never authenticates.
+  const recoveryLink=/^#(?:reset|verify)=/.test(window.location.hash);
+  const [booting,setBooting]=useState(!recoveryLink);
+  const [bootError,setBootError]=useState('');
   const params = new URLSearchParams(window.location.search);
   const routeKey = params.get('domain') || '';
   const routeView = window.location.pathname === '/push/reports' ? 'reports' : window.location.pathname === '/push/schedules' ? 'schedules' : window.location.pathname === '/push/settings' ? 'prompt-settings' : window.location.pathname === '/push' ? 'push' : window.location.pathname === '/analytics' ? 'analytics'
@@ -113,6 +116,7 @@ const App = () => {
   // Listen for manual URL changes (back/forward or typing new path) to resync view.
   useEffect(() => {
     const handler = () => {
+      if(!isAuthenticated&&/^#(?:reset|verify)=/.test(window.location.hash))return; // Let Login consume recovery fragments before URL normalization.
       if(isAuthenticated)syncViewFromUrl();
       else {
         const next=saveLoginReturn(window.location.pathname+window.location.search+window.location.hash);
@@ -129,7 +133,7 @@ const App = () => {
     const heartbeat=()=>{if(document.visibilityState==='visible')apiFetch(`${API_BASE}/api/account/heartbeat`,{method:'POST'}).catch(()=>{});};
     const interval=setInterval(heartbeat,60000);
     document.addEventListener('visibilitychange',heartbeat);
-    const changed=event=>{if(event.key==='sessionToken'){if(!event.newValue){setReturnPath(saveLoginReturn(window.location.pathname+window.location.search+window.location.hash));setLoginNotice('Your session ended in another tab. Sign in again to continue.');setIsAuthenticated(false);setView('login');}else if(event.oldValue!==event.newValue)window.location.reload();}};
+    const changed=event=>{if(event.key==='notizo.authChange'){if(localStorage.getItem('auth')!=='true'){setReturnPath(saveLoginReturn(window.location.pathname+window.location.search+window.location.hash));setLoginNotice('Your session ended in another tab. Sign in again to continue.');setIsAuthenticated(false);setView('login');}else window.location.reload();}};
     window.addEventListener('storage',changed);
     return()=>{clearInterval(interval);document.removeEventListener('visibilitychange',heartbeat);window.removeEventListener('storage',changed);};
   },[isAuthenticated]);
@@ -191,7 +195,10 @@ const App = () => {
   }, [selectedDomainKey, selectedDomainName]);
 
   const handleLogout = async () => {
-    try {await apiFetch(`${API_BASE}/api/logout`,{method:'POST',signal:AbortSignal.timeout(5000)});}catch{/* Local sign-out still works offline; the server session expires separately. */}
+    onLogoutError('');const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
+    try {const response=await apiFetch(`${API_BASE}/api/logout`,{method:'POST',signal:controller.signal});if(!response.ok&&response.status!==401)throw new Error();}
+    catch{onLogoutError('Could not complete sign-out. Check your connection and try Log out again.');return;}
+    finally{clearTimeout(timeout);}
     clearLoginReturn();setReturnPath(null);setLoginNotice('You have signed out.');
     setSelectedDomainKey(''); setSelectedDomainName('');
     setIsAuthenticated(false);
@@ -199,7 +206,7 @@ const App = () => {
     // Also push the login URL on logout for consistency.
     window.history.replaceState({}, '', '/login');
     localStorage.removeItem('auth');
-    localStorage.removeItem('sessionToken');
+    authChanged();
     localStorage.removeItem('view');
     localStorage.removeItem('selectedDomainKey');
     localStorage.removeItem('selectedDomainName');
@@ -207,16 +214,17 @@ const App = () => {
   };
 
   const handleLoginSuccess = async ({signal}={}) => {
-    const token=localStorage.getItem('sessionToken');
-    let profile=null,domains=[],target=null;
+    const epoch=authEpoch();
+    let profile=null,domains=[],target=null,rejected=false;
     try {
       const responses=await Promise.all([apiFetch(`${API_BASE}/api/account`,{signal}),apiFetch(`${API_BASE}/api/domains`,{signal})]);
+      rejected=responses.some(response=>response.status===401);
       const results=await Promise.all(responses.map(response=>response.json()));
       if(responses[0].ok&&results[0].ok)profile=results[0].data;
       if(responses[1].ok&&results[1].ok&&Array.isArray(results[1].data))domains=results[1].data;
       target=permittedLoginDestination(returnPath||readLoginReturn(),profile,domains);
     }catch{/* A failed permission lookup falls back to website selection, never the requested restricted page. */}
-    if(!token||localStorage.getItem('sessionToken')!==token)throw Object.assign(new Error('Your session could not be verified. Please sign in again.'),{handled:true});
+    if(rejected||signal?.aborted||authEpoch()!==epoch)throw Object.assign(new Error('Your session could not be verified. Please sign in again.'),{handled:true});
     const hadReturn=Boolean(returnPath||readLoginReturn());
     clearLoginReturn();setReturnPath(null);setLoginNotice('');
     setSelectedDomainKey('');setSelectedDomainName('');
@@ -239,6 +247,16 @@ const App = () => {
     else{window.history.replaceState({},'','/settings/domain');setView('domain');}
   };
 
+  useEffect(()=>{
+    if(recoveryLink)return;
+    const controller=new AbortController();let disposed=false,timedOut=false;
+    const timeout=setTimeout(()=>{timedOut=true;controller.abort();},15000);
+    browserSession({signal:controller.signal}).then(async data=>{if(data.authenticated)await handleLoginSuccess({signal:controller.signal});}).catch(error=>{if(!disposed)setBootError(timedOut?'Session check timed out. Check your connection and try again.':error.message);}).finally(()=>{clearTimeout(timeout);if(!disposed)setBooting(false);});
+    return()=>{disposed=true;clearTimeout(timeout);controller.abort();};
+    // Restore once on mount; subsequent sign-ins use the current route state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   const handleSplashDone = () => {
     // Force exit the splash carousel and navigate to Domain.jsx.
     setRemainingSplashViews(0);
@@ -260,6 +278,8 @@ const App = () => {
     window.history.pushState({}, '', `/settings/config?domain=${encodeURIComponent(key)}${send ? '#send-push' : ''}`);
     setView('domain');
   };
+
+  if(booting||bootError)return <main className="login-page"><section className="login-help"><h1>Notizo</h1>{bootError?<><p role="alert">{bootError}</p><button className="login-submit" onClick={()=>window.location.reload()}>Try again</button></>:<p role="status">Checking your session...</p>}</section></main>;
 
   if (!isAuthenticated) {
     return <Login onLoginSuccess={handleLoginSuccess} notice={loginNotice || (returnPath?'Sign in to continue to your workspace.':'')} />;
@@ -436,4 +456,7 @@ const App = () => {
   );
 };
 
-export default App;
+export default function App(){
+  const [logoutError,setLogoutError]=useState('');
+  return <><Workspace onLogoutError={setLogoutError}/>{logoutError&&<div className="logout-error" role="alert"><span>{logoutError}</span><button type="button" aria-label="Dismiss sign-out message" onClick={()=>setLogoutError('')}>Dismiss</button></div>}</>;
+}

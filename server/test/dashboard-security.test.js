@@ -1,3 +1,4 @@
+import {fetch} from './browser-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createApp} from '../app.js';
@@ -78,7 +79,7 @@ test('failed logins and action outcomes persist without passwords; old untracked
   const events=(await f.call('/api/account/activity','GET',null,f.root)).data;
   assert.ok(events.some(e=>e.domain_key==='one'&&e.http_status===200));assert.equal(JSON.stringify(events).includes(f.root),false);
   const row=await f.accounts.read(),legacy=createAdminToken(secret,row.session_version,1000);
-  assert.equal((await f.call('/api/account','GET',null,legacy)).status,200);
+  assert.equal((await f.call('/api/account','GET',null,legacy)).status,401);
   const read=f.accounts.read.bind(f.accounts);f.accounts.read=async id=>({...await read(id),legacy_deadline_ms:0});
   assert.equal((await f.call('/api/account','GET',null,legacy)).status,401);
   assert.equal((await f.call('/api/account','GET',null,f.root)).status,200);
@@ -101,18 +102,18 @@ test('drafts persist incomplete content per user/domain; stale tabs and cross-do
   assert.equal((await f.call(path+'?version=2','DELETE',null,editor.token)).status,200);
 });
 
-test('logging out an old untracked token closes its migration grace without inventing a password change',async t=>{
+test('untracked legacy bearer tokens cannot log in or log out cookie sessions',async t=>{
   const f=await fixture(t),row=await f.accounts.read(),legacy=createAdminToken(secret,row.session_version,1000);
-  assert.equal((await f.call('/api/logout','POST',null,legacy)).status,200);
+  assert.equal((await f.call('/api/logout','POST',null,legacy)).status,401);
   assert.equal((await f.accounts.read()).password_changed_at,null);
   assert.equal((await f.call('/api/account','GET',null,legacy)).status,401);
-  assert.equal((await f.call('/api/account','GET',null,f.root)).status,401);
+  assert.equal((await f.call('/api/account','GET',null,f.root)).status,200);
   assert.equal((await f.login()).status,200);
 });
 
 test('revoking other sessions also closes pre-migration sessions while preserving the current tracked login',async t=>{
   const f=await fixture(t),row=await f.accounts.read(),legacy=createAdminToken(secret,row.session_version,1000);
-  assert.equal((await f.call('/api/account','GET',null,legacy)).status,200);
+  assert.equal((await f.call('/api/account','GET',null,legacy)).status,401);
   assert.equal((await f.call('/api/account/sessions/revoke-others','POST',null,f.root)).status,200);
   assert.equal((await f.call('/api/account','GET',null,legacy)).status,401);
   assert.equal((await f.call('/api/account','GET',null,f.root)).status,200);

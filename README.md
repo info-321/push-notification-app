@@ -278,8 +278,8 @@ on navigation or after 15 seconds.
 Remember username is opt-in and stores only the username in this browser. Turning
 it off removes the remembered value immediately. Passwords are never stored by
 this feature. Need access opens a keyboard-accessible help dialog with a copyable
-request for the organisation's administrator; no unconfirmed email address,
-external message delivery or public registration is introduced.
+request for the organisation's administrator and mailto links to ttwabhijit@gmail.com
+and kaushik@travelandtourworld.com. It does not send automatically or create accounts.
 
 Known internal routes can be resumed after sign-in, including an expired session.
 Only allowed domain/campaign route parameters are retained per tab for 30 minutes.
@@ -289,3 +289,8 @@ fall back to website selection; backend permissions remain authoritative. Explic
 logout clears the return destination, and old website selections are cleared when
 a different account signs in. Login styles are scoped; the existing shared font
 and reset now live in index.css.
+
+
+### Cookie sessions and recovery email
+
+Dashboard authentication now uses HttpOnly cookies with CSRF checks instead of a browser-stored bearer token. Sign in again after upgrading. See [Hostinger SMTP and recovery setup](deploy/hostinger/AUTH-EMAIL.md) to configure email delivery and verify each account's recovery address. Email remains disabled until SMTP is configured. Access help links to the two administrator mailboxes; it does not send messages automatically.

@@ -1,3 +1,4 @@
+import {fetch} from './browser-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';

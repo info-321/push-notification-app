@@ -9,7 +9,7 @@ export function loginMetadata(req) {
   return { ip_address: requestVisitorIp(req), device: requestDevice(req), browser: requestBrowser(req),
     os: /iPhone|iPod/i.test(ua) ? 'iOS' : /iPad/i.test(ua) ? 'iPadOS' : /Windows/i.test(ua) ? 'Windows' : /Android/i.test(ua) ? 'Android' : /Macintosh/i.test(ua) ? 'macOS' : /Linux|X11/i.test(ua) ? 'Linux' : null };
 }
-export function createSecurity({ accounts, pool, secret }) {
+export function createSecurity({ accounts, pool, secret, browser }) {
   const createToken = async (version, userId = 1, req) => {
     const id = crypto.randomUUID(), lifetime = 12 * 3600000;
     const token = createAdminToken(secret, version, lifetime, { uid: Number(userId), sid: id });
@@ -18,7 +18,8 @@ export function createSecurity({ accounts, pool, secret }) {
   };
   const authenticate = async req => {
     if (req.auth) return true;
-    const token = (req.get('Authorization') || '').replace(/^Bearer /, '');
+    const cookieToken=browser.session(req);
+    const token = cookieToken || (req.get('Authorization') || '').replace(/^Bearer /, '');
     let session;
     try {
       const [payload, signature, extra] = token.split('.');
@@ -31,9 +32,11 @@ export function createSecurity({ accounts, pool, secret }) {
     if (!account || !account.is_active || !(session.v===account.session_version || (session.v===undefined&&!account.password_changed_at))) return false;
     if (session.sid) {
       const saved = await accounts.session(session.sid);
+      if (!cookieToken && (saved?.source!=='deployment' || session.exp-Date.now()>120000 || req.get('Origin'))) return false;
       if (!saved || saved.user_id!==Number(account.id) || saved.token_hash!==tokenHash(token) || saved.ended_ms || saved.expires_ms<=Date.now()) return false;
       await accounts.touch(session.sid);
-    } else if (Number(account.id)!==1 || session.exp>Number(account.legacy_deadline_ms || 0)) return false;
+    } else return false; // Interactive browser sessions must be tracked and cookie-based.
+    if(cookieToken && !['GET','HEAD','OPTIONS'].includes(req.method) && !browser.validCsrf(req)) return false;
     req.auth = { id:Number(account.id), username:account.username, role:account.role, sid:session.sid || null,
       domains: account.role==='admin' ? null : await accounts.permissions(account.id) };
     return true;
@@ -75,6 +78,7 @@ export function createSecurity({ accounts, pool, secret }) {
   };
   const requireAdmin = async (req,res,next) => {
     try {
+      if(browser.session(req)&&!['GET','HEAD','OPTIONS'].includes(req.method)&&!browser.validCsrf(req))return res.status(403).json({ok:false,code:'CSRF',message:'Reload this page before trying again.'});
       if (!await authenticate(req)) return res.status(401).json({ok:false,message:'Please sign in again.'});
       const allowed=await authorizeRequest(req);
       await auditMutation(req);
@@ -82,7 +86,7 @@ export function createSecurity({ accounts, pool, secret }) {
       return next();
     } catch(error) { console.error('Session/access check failed:',error.code); return res.status(503).json({ok:false,message:'Sign in is temporarily unavailable.'}); }
   };
-  return {createToken,authenticate,requireAdmin,domainAllowed,auditMutation};
+  return {createToken,authenticate,requireAdmin,domainAllowed,auditMutation,browser};
 }
 
 const publicUser = row => ({id:Number(row.id),username:row.username,role:row.role,is_active:Boolean(row.is_active),version:row.access_version,last_login_at:row.last_login_at || null});
@@ -95,7 +99,7 @@ export function installSecurityRoutes(app,{accounts,pool,security}) {
     try {
       if(req.auth.sid) await accounts.endSession(req.auth.sid,req.auth.id);
       else {await accounts.closeLegacy(req.auth.id);await accounts.endOthers(req.auth.id,null,'legacy_logout');}
-      res.json({ok:true});
+      security.browser.clear(res);res.json({ok:true});
     }catch{res.status(503).json({ok:false,message:'Could not record logout. Please try again.'});}
   });
   app.post('/api/account/heartbeat',requireAdmin,(req,res)=>res.json({ok:true}));

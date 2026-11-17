@@ -66,3 +66,10 @@ body.login-bg #root { width:100%; }
 @media(max-width:650px) { .login-page { align-items:flex-start; padding:20px 16px; } .login-shell { grid-template-columns:minmax(0,1fr); max-width:440px; border-radius:16px; } .login-story { padding:21px 25px; } .login-brand { font-size:25px; gap:11px; } .login-brand-mark { padding:3px; border-radius:8px; } .login-brand-mark img { width:34px; height:34px; } .login-story-copy { margin:14px 0 0; } .login-story-copy .login-eyebrow,.login-story h2,.login-features,.login-story-footer { display:none; } .login-story-copy p { font-size:11px; line-height:1.7; max-width:290px; } .login-form-panel { padding:30px 25px 26px; } .login-form-panel h1 { font-size:28px; } .login-form-panel h1 br { display:none; } .login-form-panel h1 br::after { content:' '; } .login-field input { font-size:16px; } .login-help { padding:30px 23px; } }
 @media(max-width:360px) { .login-page { padding:10px; } .login-form-panel { padding:27px 20px 24px; } .login-form-options { flex-wrap:wrap; } .login-form-panel h1 { font-size:25px; } }
 @media(prefers-reduced-motion:reduce) { .login-page *, .login-page *::before, .login-page *::after { transition:none!important; animation:none!important; } }
+
+.login-forgot { display:block; margin:0 0 20px auto; padding:4px 0; border:0; background:none; color:#167b7e; font:inherit; font-size:12px; cursor:pointer; }
+.login-contact-links { display:grid; gap:8px; overflow-wrap:anywhere; }
+.login-contact-links a { color:#167b7e; text-decoration:underline; }
+.login-recovery > p { font-size:13px; line-height:1.8; margin:20px 0; }
+.login-recovery .login-submit { margin-top:20px; }
+.login-recovery > .login-forgot { margin:24px 0 0; }

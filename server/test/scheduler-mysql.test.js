@@ -1,3 +1,4 @@
+import {fetch} from './browser-client.js';
 // Opt-in integration test: only the disposable CI MySQL service is used.
 // Never reads .env or contacts a push provider.
 import test from 'node:test';
@@ -9,7 +10,7 @@ import { createApp } from '../app.js';
 import * as migrations from '../domain-schema.js';
 import { ensureSchedules, createScheduleWorker, scheduleGraceMs } from '../schedules.js';
 import { ensureReports, createCampaignReporter } from '../reports.js';
-import { mysqlAccountRepository, createAdminToken } from '../accounts.js';
+import { mysqlAccountRepository, createAdminToken, hashPassword, verifyPassword } from '../accounts.js';
 import { ensureSubscriptionHistory,removeSubscription } from '../subscription-history.js';
 import {ensureStorageMaintenance} from '../storage-maintenance.js';
 import {runRetention} from '../retention.js';
@@ -263,7 +264,7 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
       assert.equal((await call(draftPath,'GET',null,editor)).data.content.draft.title,'Saved work');
       const rootSessions=(await call('/api/account/sessions','GET',null,root)).data;assert.equal(rootSessions[0].ip_address,'203.0.113.42');assert.equal(rootSessions[0].browser,'Chrome');assert.equal(rootSessions[0].token_hash,undefined);
       const legacy=createAdminToken(secret,(await accounts.read()).session_version,1000);
-      assert.equal((await call('/api/account','GET',null,legacy)).status,200);
+      assert.equal((await call('/api/account','GET',null,legacy)).status,401);
       assert.equal((await call('/api/account/sessions/revoke-others','POST',null,root)).status,200);
       assert.equal((await call('/api/account','GET',null,legacy)).status,401);
       assert.equal((await call('/api/account','GET',null,root)).status,200);
@@ -343,6 +344,26 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
     await ensureStorageMaintenance(pool);await runRetention(pool,{apply:true,now});
     assert.deepEqual((await request(reportPath)).data,reportBefore.data);assert.deepEqual((await request(promptPath)).data,promptBefore.data);
     assert.ok((await pool.query("SELECT id FROM maintenance_runs WHERE status='completed'"))[0].length>=5);
+  });
+
+  await t.test('recovery tokens are hashed, persist across restart and redeem atomically once in MySQL',async()=>{
+    const accounts=mysqlAccountRepository(pool);await accounts.initialize('ignored','ignored');
+    const id=await accounts.createUser({username:'ci-recovery',password_hash:await hashPassword('Old-ci-password-123'),role:'editor',domains:[]});
+    let user=await accounts.read(id);
+    const issue=async(purpose,email,expires=Date.now()+600000)=>{const raw=crypto.randomBytes(32).toString('base64url'),token_hash=crypto.createHash('sha256').update(raw).digest('hex');assert.equal(await accounts.issueRecovery({user_id:id,session_version:user.session_version,purpose,email,token_hash,expires_ms:expires}),true);return {raw,hash:token_hash};};
+    const verify=await issue('verify','ci@example.test');
+    assert.equal((await accounts.recovery(id)).verified_email,null);
+    const stored=(await pool.query('SELECT * FROM account_recovery_tokens WHERE token_hash=?',[verify.hash]))[0][0];assert.equal(stored.token_hash.includes(verify.raw),false);
+    const restarted=mysqlAccountRepository(pool);await restarted.initialize('ignored','ignored');
+    assert.ok(await restarted.redeemRecovery(verify.hash,'verify'));assert.equal(await restarted.redeemRecovery(verify.hash,'verify'),false);
+    const token=await issue('reset','ci@example.test'),next=await hashPassword('Next-ci-password-456');
+    await accounts.startSession({id:crypto.randomUUID(),user_id:id,token_hash:'a'.repeat(64),login_ms:Date.now(),expires_ms:Date.now()+600000,ip_address:null,device:null,browser:null,os:null});
+    const attempts=await Promise.all([accounts.redeemRecovery(token.hash,'reset',next),restarted.redeemRecovery(token.hash,'reset',next)]);
+    assert.equal(attempts.filter(Boolean).length,1);assert.equal(await verifyPassword('Next-ci-password-456',(await accounts.read(id)).password_hash),true);
+    assert.equal((await accounts.sessions(id))[0].end_reason,'password_reset');
+    user=await accounts.read(id);const expired=await issue('reset','ci@example.test',Date.now()-1000);assert.equal(await accounts.redeemRecovery(expired.hash,'reset',next),false);
+    const stale=await issue('reset','ci@example.test');await accounts.changePassword(user.password_hash,await hashPassword('Changed-ci-password-789'),crypto.randomUUID(),new Date(),id);assert.equal(await accounts.redeemRecovery(stale.hash,'reset',next),false);
+    assert.equal(await accounts.recoveryLimit('b'.repeat(64),1),true);assert.equal(await restarted.recoveryLimit('b'.repeat(64),1),false);
   });
 
 });

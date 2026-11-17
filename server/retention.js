@@ -16,6 +16,8 @@ function operations(policy, now) {
     { name:'subscriber_ips', table:'subscriptions', where:'ip_address IS NOT NULL AND COALESCE(ip_recorded_at,last_seen_at,created_at) < FROM_UNIXTIME(?)', params:[cutoff/1000], set:'ip_address=NULL,ip_recorded_at=NULL' },
     { name:'subscriber_coordinates', table:'subscriptions', where:'(latitude IS NOT NULL OR longitude IS NOT NULL) AND COALESCE(location_recorded_at,location_consent_at,created_at) < FROM_UNIXTIME(?)', params:[cutoff/1000], set:'latitude=NULL,longitude=NULL,location_accuracy_m=NULL,location_consent_at=NULL,location_recorded_at=NULL' },
     { name:'ended_sessions', table:'dashboard_sessions', where:'expires_ms < ? AND COALESCE(ended_ms,expires_ms) < ?', params:[cutoff,cutoff] },
+    { name:'recovery_tokens', table:'account_recovery_tokens', where:'expires_ms < ?', params:[now-day] },
+    { name:'recovery_limits', table:'account_recovery_limits', where:'start_ms < ?', params:[now-day] },
     { name:'login_attempts', table:'login_attempts', where:'occurred_ms < ?', params:[cutoff] },
     { name:'activity_history', table:'activity_log', where:'occurred_ms < ?', params:[now-policy.auditDays*day] },
     { name:'maintenance_history', table:'maintenance_runs', where:"status <> 'running' AND started_ms < ?", params:[now-policy.auditDays*day] },

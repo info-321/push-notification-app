@@ -23,10 +23,10 @@ const equal = (a, b) => {
 };
 const hostMatches = (a, b) => a.replace(/^www\./, '') === b.replace(/^www\./, '');
 
-export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting }) {
+export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting, browser }) {
   const sign = (value) => crypto.createHmac('sha256', secret).update(value).digest('base64url');
   const senderKey = (key) => sign(`send:${key}`);
-  const security = createSecurity({accounts,pool,secret});
+  const security = createSecurity({accounts,pool,secret,browser});
   const {createToken,requireAdmin,authenticate:isAdmin}=security;
   const apiBase = publicApiBase.replace(/\/$/, '');
   let liveReady = false;

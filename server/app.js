@@ -1,6 +1,8 @@
 import { deviceCountSql, summarizeDevices } from './subscriber-device.js';
 import express from 'express';
 import cors from 'cors';
+import {browserAuth} from './browser-auth.js';
+import {installRecoveryRoutes} from './recovery.js';
 import crypto from 'node:crypto';
 import { installPush } from './push.js';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
@@ -20,21 +22,23 @@ import { installUnsubscribe } from './subscription-history.js';
 import { installDrafts } from './drafts.js';
 import { installSubscriberLocation } from './subscriber-location.js';
 
-export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository, reporting }) {
+export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository, reporting, dashboardOrigins=process.env.DASHBOARD_ORIGINS||'', mailer, dashboardBase=publicApiBase }) {
   const app = express();
   const accounts = accountRepository || memoryAccountRepository(adminUsername, adminPassword);
-  app.use(cors());
+  const browser=browserAuth({secret,publicApiBase,dashboardOrigins});
+  app.use(cors((req,done)=>done(null,browser.origins.has(req.get('Origin'))?{origin:req.get('Origin'),credentials:true}:{origin:'*'})));
+  app.use('/api',(req,res,next)=>{res.set('Cache-Control','no-store');next();});
   pwaBodyParser(app);
   pushImageBodyParser(app);
   app.use(express.json({ limit: '32kb' }));
-  const { requireAdmin, createToken, security } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting });
+  const { requireAdmin, createToken, security } = installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting, browser });
   installTargeting(app, { pool, requireAdmin });
   installSubscriberLocation(app, { pool, secret });
   installReports(app, { pool, secret, requireAdmin });
   installPushContent(app, { pool, requireAdmin, publicApiBase });
   installSubscriptionPrompts(app, { pool, secret, requireAdmin });
   installSchedules(app, { pool, requireAdmin });
-  installAccountRoutes(app, { accounts, requireAdmin, createToken });
+  installAccountRoutes(app, { accounts, requireAdmin, createToken, browser });
   installSecurityRoutes(app, {accounts,pool,security});
   installDrafts(app, {pool,requireAdmin,security});
   installUnsubscribe(app,{pool,requireAdmin});
@@ -53,19 +57,23 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
   // POST /api/login - basic admin auth.
   const dummyPassword = hashPassword(crypto.randomBytes(32).toString('hex'));
-  app.post('/api/login', async (req, res) => {
+  app.get('/api/auth/session',async(req,res)=>{try{const authenticated=await security.authenticate(req);res.json({ok:true,authenticated,csrfToken:browser.bootstrap(req,res)});}catch{res.status(503).json({ok:false,message:'Session check unavailable.'});}});
+  installRecoveryRoutes(app,{accounts,requireAdmin,browser,mailer,secret,dashboardBase});
+  app.post('/api/login', browser.guard, async (req, res) => {
     res.set('Cache-Control','no-store');
     const {username,password}=req.body || {};
     if(typeof username!=='string'||username.length>255||!username.trim()) return res.status(400).json({ok:false,message:'Enter your username and password.'});
     const metadata=loginMetadata(req);
     try {
-      if(await accounts.failures(username,metadata.ip_address)>=10) return res.status(429).json({ok:false,message:'Too many incorrect attempts. Try again in 15 minutes.'});
+      if(await accounts.failures(username,metadata.ip_address)>=10) return res.set('Retry-After','900').status(429).json({ok:false,message:'Too many incorrect attempts. Try again in 15 minutes.'});
       const row=await accounts.find(username);
       const valid=await verifyPassword(password,row?.password_hash || await dummyPassword);
       await accounts.attempt({username,user_id:row?.id,succeeded:Boolean(valid&&row?.is_active),...metadata});
       if(!valid||!row?.is_active) return res.status(401).json({ok:false,message:'Invalid credentials'});
       if(!await accounts.recordLogin(row.password_hash,new Date(),metadata.ip_address,row.id)) return res.status(401).json({ok:false,message:'Credentials changed. Please sign in again.'});
-      return res.json({ok:true,token:await createToken(row.session_version,row.id,req)});
+      const old=browser.session(req);if(old){await security.authenticate(req);if(req.auth?.sid)await accounts.endSession(req.auth.sid,req.auth.id,'replaced');}
+      const token=await createToken(row.session_version,row.id,req);
+      return res.json({ok:true,csrfToken:browser.issue(res,token)});
     } catch(error) {console.error('Login failed:',error.code);return res.status(503).json({ok:false,message:'Sign in is temporarily unavailable. Please try again.'});}
   });
 

@@ -36,3 +36,6 @@
     transform: rotate(360deg);
   }
 }
+
+.logout-error { position:fixed; z-index:10000; top:16px; left:50%; transform:translateX(-50%); width:min(600px,calc(100% - 32px)); display:flex; align-items:center; gap:16px; padding:16px; border:1px solid #ba665d; border-radius:10px; color:#8b3028; background:#fff4f2; box-shadow:0 8px 30px #24365326; font-size:13px; }
+.logout-error button { border:1px solid currentColor; border-radius:6px; padding:8px; color:inherit; background:#fff; cursor:pointer; }

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {ensureRecovery,mysqlRecoveryStore,memoryRecoveryStore} from './recovery-store.js';
 import { promisify } from 'node:util';
 import { ensureIdentity, mysqlIdentityStore, memoryIdentityStore } from './identity-store.js';
 const scrypt = promisify(crypto.scrypt);
@@ -26,6 +27,7 @@ export async function verifyPassword(password, stored) {
 export function mysqlAccountRepository(pool) {
   return {
     ...mysqlIdentityStore(pool),
+    ...mysqlRecoveryStore(pool),
     async initialize(username, password) {
       await pool.query(`CREATE TABLE IF NOT EXISTS admin_accounts (
         id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -37,6 +39,7 @@ export function mysqlAccountRepository(pool) {
         last_login_ip VARCHAR(45) NULL
       )`);
       await ensureIdentity(pool);
+      await ensureRecovery(pool);
       if (await this.read()) return;
       await pool.query('INSERT IGNORE INTO admin_accounts (id, username, password_hash, session_version) VALUES (1, ?, ?, ?)', [username, await hashPassword(password), crypto.randomBytes(24).toString('hex')]);
     },
@@ -63,6 +66,7 @@ export function memoryAccountRepository(username, password) {
   const identity = memoryIdentityStore(async () => { await api.read(); return record; });
   const api = {
     ...identity,
+    ...memoryRecoveryStore(async id=>Number(id)===1?(await api.read(),record):identity.readUser(id),identity),
     async read(id = 1) {
       if (Number(id) !== 1) return identity.readUser(id);
       initialization ||= hashPassword(password).then(hash => { record = { id: 1, username, role: 'admin', is_active: 1, access_version: 1, legacy_deadline_ms: Date.now() + 43200000, password_hash: hash, session_version: crypto.randomBytes(24).toString('hex'), password_changed_at: null, last_login_at: null, last_login_ip: null }; });
@@ -86,7 +90,7 @@ export function memoryAccountRepository(username, password) {
   return api;
 }
 
-export function installAccountRoutes(app, { accounts, requireAdmin, createToken }) {
+export function installAccountRoutes(app, { accounts, requireAdmin, createToken, browser }) {
   const failedChanges = new Map();
   app.get('/api/account', requireAdmin, async (req, res) => {
     res.set('Cache-Control', 'no-store');
@@ -126,7 +130,7 @@ export function installAccountRoutes(app, { accounts, requireAdmin, createToken 
       failedChanges.delete(req.auth.id);
       await accounts.endOthers(req.auth.id, null, 'password_changed');
       const token = await createToken(version, req.auth.id, req);
-      return res.json({ ok: true, token, message: 'Password changed. Other dashboard sessions have been signed out.' });
+      return res.json({ ok: true, csrfToken: browser.issue(res,token), message: 'Password changed. Other dashboard sessions have been signed out.' });
     } catch (error) {
       console.error('Password change failed:', error.code);
       return res.status(503).json({ ok: false, message: 'Could not change your password. Please try again.' });

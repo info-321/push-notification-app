@@ -1,9 +1,9 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
-import { apiFetch } from './api';
+import { apiFetch,browserSession } from './api';
 
-jest.mock('./api', () => ({ API_BASE: 'https://api.example.test', apiFetch: jest.fn() }));
+jest.mock('./api', () => ({ API_BASE: 'https://api.example.test', apiFetch: jest.fn(),browserSession:jest.fn(),authEpoch:()=>globalThis.localStorage.getItem('notizo.authChange')||'',authChanged:()=>{globalThis.localStorage.removeItem('sessionToken');},acceptSession:jest.fn() }));
 jest.mock('./components/domain-settings/Domain', () => function MockConfiguration(props) {
   return <div><h1>Configuration screen</h1><span>{props.selectedDomainKey}</span><button onClick={props.onDashboard}>Return to dashboard</button></div>;
 });
@@ -14,10 +14,11 @@ beforeEach(() => {
   localStorage.setItem('auth', 'true');
   localStorage.setItem('sessionToken', 'test-token');
   localStorage.setItem('domainSetupComplete', 'true');
+  browserSession.mockResolvedValue({ok:true,authenticated:true,csrfToken:'fixture-csrf'});
   window.history.replaceState({}, '', '/dashboard');
   apiFetch.mockImplementation(async url => {
     const domain = { id: 1, domain_key: 'mice-key', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com', is_configured: true };
-    return { ok: true, json: async () => ({ ok: true, data: url.endsWith('/api/account')
+    return { ok: true, json: async () => ({ ok: true, csrfToken:'fixture-csrf',data: url.endsWith('/api/account')
       ? { username: 'admin', role: 'admin', email: null, status: 'Active', last_login_at: null, last_login_ip: null }
       : url.includes('/prompt-settings') ? { version: '0', published: null, previous: null, draft: { enabled: true, template: 'slide-in', heading: 'Stay updated', message: 'Get news', allow_label: 'Enable notifications', dismiss_label: 'Maybe later', logo: '', accent: '#12ad88', background: '#ffffff', text: '#25394b', position: 'right', trigger: 'delay', delay: 15, scroll: 50, cooldown: 7, include_paths: [], exclude_paths: [] } }
       : url.includes('/prompt-performance?') ? { rows: [] }
@@ -215,8 +216,8 @@ function submitLogin() {
 }
 
 test('a signed-out direct analytics link resumes only after the account and website access are checked',async()=>{
-  localStorage.removeItem('auth');localStorage.removeItem('sessionToken');window.history.replaceState({},'','/analytics?domain=mice-key');
-  render(<App/>);expect(screen.getByRole('heading',{name:'Welcome back to Notizo'})).toBeTruthy();expect(window.location.pathname).toBe('/login');
+  browserSession.mockResolvedValue({ok:true,authenticated:false,csrfToken:'fixture-csrf'});localStorage.removeItem('auth');localStorage.removeItem('sessionToken');window.history.replaceState({},'','/analytics?domain=mice-key');
+  render(<App/>);expect(await screen.findByRole('heading',{name:'Welcome back to Notizo'})).toBeTruthy();expect(window.location.pathname).toBe('/login');
   submitLogin();await screen.findByRole('heading',{name:'MICE Travel Advisor Analytics'});
   expect(window.location.pathname+window.location.search).toBe('/analytics?domain=mice-key');
   expect(apiFetch).toHaveBeenCalledWith('https://api.example.test/api/account',expect.anything());
@@ -231,8 +232,8 @@ test('session-expiry feedback preserves the current page for reauthentication',a
 });
 
 test('a previous website outside the newly signed-in account falls back to website selection',async()=>{
-  localStorage.removeItem('auth');localStorage.removeItem('sessionToken');localStorage.setItem('selectedDomainKey','forbidden');
-  window.history.replaceState({},'','/analytics?domain=forbidden');render(<App/>);submitLogin();
+  browserSession.mockResolvedValue({ok:true,authenticated:false,csrfToken:'fixture-csrf'});localStorage.removeItem('auth');localStorage.removeItem('sessionToken');localStorage.setItem('selectedDomainKey','forbidden');
+  window.history.replaceState({},'','/analytics?domain=forbidden');render(<App/>);await screen.findByRole('button',{name:'Sign in'});submitLogin();
   await screen.findByText('Select Domain');expect(window.location.pathname+window.location.search).toBe('/dashboard');expect(screen.queryByRole('heading',{name:/Analytics/})).toBeNull();expect(localStorage.getItem('selectedDomainKey')).toBeNull();
 });
 
@@ -240,4 +241,16 @@ test('explicit sign-out clears the return page and shows a sign-out confirmation
   window.history.replaceState({},'','/analytics?domain=mice-key');render(<App/>);await screen.findByRole('heading',{name:'MICE Travel Advisor Analytics'});
   fireEvent.click(screen.getByRole('button',{name:/Log out/i}));await screen.findByText('You have signed out.');
   expect(sessionStorage.getItem('notizo.signInReturn')).toBeNull();submitLogin();await screen.findByText('Select Domain');expect(window.location.pathname+window.location.search).toBe('/dashboard');
+});
+
+test('a recovery link opened in an existing login tab survives popstate URL normalization',async()=>{
+  browserSession.mockResolvedValue({ok:true,authenticated:false,csrfToken:'fixture-csrf'});render(<App/>);await screen.findByRole('button',{name:'Sign in'});
+  window.history.pushState({},'','/login#reset=fixture-token');fireEvent(window,new PopStateEvent('popstate'));fireEvent(window,new HashChangeEvent('hashchange'));
+  expect(screen.getByRole('heading',{name:'Choose a new password'})).toBeTruthy();expect(window.location.hash).toBe('');
+});
+
+test('a failed server logout keeps the dashboard visible and never claims the cookie session ended',async()=>{
+  window.history.replaceState({},'','/analytics?domain=mice-key');render(<App/>);await screen.findByRole('heading',{name:'MICE Travel Advisor Analytics'});
+  apiFetch.mockRejectedValueOnce(new Error('Network unavailable'));fireEvent.click(screen.getByRole('button',{name:/Log out/i}));
+  expect((await screen.findByRole('alert')).textContent).toContain('Could not complete sign-out');expect(screen.getByRole('heading',{name:'MICE Travel Advisor Analytics'})).toBeTruthy();expect(screen.queryByText('You have signed out.')).toBeNull();
 });

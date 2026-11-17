@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import {createRecoveryMailer} from './mail.js';
 import mysql from 'mysql2/promise';
 import webpush from 'web-push';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +50,7 @@ await accountRepository.initialize(process.env.ADMIN_USERNAME || 'admin', proces
 await ensureStorageMaintenance(pool);
 const app = createApp({
   pool, webpush, accountRepository, reporting,
+  mailer:createRecoveryMailer(), dashboardBase:process.env.PUBLIC_DASHBOARD_BASE||process.env.PUBLIC_API_BASE||`http://localhost:${port}`,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin',
   secret: process.env.PUSH_API_SECRET,

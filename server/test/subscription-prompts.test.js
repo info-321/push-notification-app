@@ -1,3 +1,4 @@
+import {fetch} from './browser-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -63,7 +64,7 @@ async function fixture(t) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const login = await (await fetch(base + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'testing' }) })).json();
   const request = async (route, body, auth = false, origin = 'https://www.website.test') => {
-    const response = await fetch(base + route, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', Origin: origin, ...(auth ? { Authorization: `Bearer ${login.token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const response = await fetch(base + route, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', Origin: auth ? 'https://push.test' : origin, ...(auth ? { Authorization: `Bearer ${login.token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, ...await response.json() };
   };
   const change = operation => request('/api/domains/one/prompt-settings', { operation, version: row.subscription_prompt?.version || '0', settings: row.subscription_prompt?.draft || promptDefaults(row.domain_name) }, true);

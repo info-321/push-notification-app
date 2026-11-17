@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { API_BASE, apiFetch } from '../../api';
+import { API_BASE, apiFetch, acceptSession, authChanged } from '../../api';
 import './domain-list.css';
 import './account.css';
 import AccountSecurity from './AccountSecurity';
+import RecoverySettings from './RecoverySettings';
 
 export default function Account({ selectedDomainKey = '', onSelectDomain = () => {}, onSettings = () => {}, onDomains = () => {}, onConfiguration = () => {}, onPwa = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
   const [profile, setProfile] = useState(null);
@@ -47,16 +48,14 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
     if (newPassword.length < 12 || newPassword.length > 128) { setSaveError('Use 12–128 characters for your new password.'); return; }
     if (newPassword === currentPassword) { setSaveError('Choose a password different from your current password.'); return; }
     setSaving(true);
-    const initiatingToken = localStorage.getItem('sessionToken');
     try {
       const response = await apiFetch(`${API_BASE}/api/account/password`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       });
       const result = await response.json();
-      if (!response.ok || !result.ok || !result.token) throw new Error(result.message || 'Could not change your password.');
-      if (localStorage.getItem('sessionToken') !== initiatingToken) return;
-      localStorage.setItem('sessionToken', result.token);
+      if (!response.ok || !result.ok || !result.csrfToken) throw new Error(result.message || 'Could not change your password.');
+      acceptSession(result);authChanged();
       setCurrentPassword(''); setNewPassword(''); setShowPassword(false);
       setMessage(result.message);
     } catch (err) { setSaveError(err.message); }
@@ -120,7 +119,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
           </form>
         </section>
       </div>
-      {profile && <AccountSecurity/>}
+      {profile && <><RecoverySettings/><AccountSecurity/></>}
     </main>
   </div>;
 }
