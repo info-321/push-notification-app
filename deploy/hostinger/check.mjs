@@ -152,7 +152,12 @@ for (const domain of domainList.data) {
   assert.ok(Array.isArray(analytics.daily) && analytics.daily.length > 0);
   assert.equal(analytics.daily.reduce((total, day) => total + day.added, 0), analytics.added);
   assert.equal(analytics.range.time_zone, 'UTC');
-  assert.equal(analytics.unsubscribed, null);
+  assert.equal(analytics.removals_tracked, true);
+  assert.ok(Number.isSafeInteger(analytics.unsubscribed) && analytics.unsubscribed >= 0);
+  assert.equal(analytics.daily.reduce((total, day) => total + day.unsubscribed, 0), analytics.unsubscribed);
+  assert.ok(Number.isFinite(Date.parse(analytics.lifecycle_since)));
+  assert.equal(analytics.history_complete, Date.parse(analytics.range.start + 'T00:00:00Z') >= Date.parse(analytics.lifecycle_since));
+  assert.equal(analytics.net, analytics.history_complete ? analytics.added - analytics.unsubscribed : null);
   assert.equal((analytics.desktop || 0) + (analytics.mobile || 0) + analytics.device_unknown, analytics.added);
   for (const day of analytics.daily) assert.equal(day.desktop + day.mobile + day.device_unknown, day.added);
   assert.equal(analytics.browser.total, analytics.added);
