@@ -66,7 +66,7 @@ jobs:
             import fs from "node:fs";
             await import("./app.js");
             assert.notEqual(process.getuid(), 0);
-            for (const file of ["sdk/push.js", "sdk/prompt-ui.js", "sdk/apple-install.js", "push-sw.js", "downloads/push-notifications-plugin.zip"]) {
+            for (const file of ["sdk/push.js", "sdk/prompt-ui.js", "sdk/apple-install.js", "sdk/location-ui.js", "push-sw.js", "downloads/push-notifications-plugin.zip"]) {
               assert.ok(fs.readFileSync("../client/public/" + file).length > 0);
             }
             console.log("API modules and assets are readable by the non-root runtime user.");

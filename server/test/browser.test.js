@@ -6,10 +6,12 @@ import { readFileSync } from 'node:fs';
 const sdk = readFileSync(new URL('../../client/public/sdk/push.js', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../../client/public/push-sw.js', import.meta.url), 'utf8');
 
-function browser({ existing, permission = 'default', rejectSave = false } = {}) {
+function browser({ existing, permission = 'default', rejectSave = false, locationResult = {}, locationDenied = false, config = {} } = {}) {
   const requests = [];
   const buttons = [];
   const events = [];
+  const locationPrompts = [];
+  let locationCalls = 0;
   let permissionCalls = 0;
   let subscriptions = 0;
   const subscription = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/test', keys: {} }) };
@@ -19,17 +21,54 @@ function browser({ existing, permission = 'default', rejectSave = false } = {}) 
     async subscribe() { subscriptions++; return subscription; },
   } };
   const window = { isSecureContext: true, PushManager: {}, Notification: notification, pushConfig: { domainKey: 'domain-key', apiBase: 'https://api.test/', vapidPublicKey: Buffer.alloc(65, 1).toString('base64url') }, dispatchEvent(event) { events.push(event); } };
+  Object.assign(window.pushConfig, config);
+  window.PushLocationUI = { mount: options => locationPrompts.push(options) };
   const context = {
-    window, Notification: notification, navigator: { serviceWorker: { async register() { return registration; } } },
+    window, Notification: notification, navigator: { serviceWorker: { async register() { return registration; } }, geolocation: {
+      getCurrentPosition(success, failure) { locationCalls++; if (locationDenied) failure({ code: 1 }); else success({ coords: { latitude: 22.57, longitude: 88.36, accuracy: 120 } }); },
+    } },
     location: { origin: 'https://website.test' }, URL, AbortController, setTimeout, clearTimeout,
     atob: value => Buffer.from(value, 'base64').toString('binary'),
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     document: { body: { appendChild(button) { buttons.push(button); } }, createElement() { return { style: {}, addEventListener(name, handler) { this[name] = handler; } }; } },
     console: { warn() {}, error() {} },
-    async fetch(url, options) { if (url.includes('/api/targeting/')) return { ok: true, json: async () => ({ ok: true, data: { allowed: true } }) }; requests.push({ url, options }); return { ok: !rejectSave, async json() { return { ok: !rejectSave, message: rejectSave ? 'Storage failed' : undefined }; } }; },
+    async fetch(url, options) { if (url.includes('/api/targeting/')) return { ok: true, json: async () => ({ ok: true, data: { allowed: true } }) }; requests.push({ url, options }); return { ok: !rejectSave, async json() { return { ok: !rejectSave, ...locationResult, message: rejectSave ? 'Storage failed' : undefined }; } }; },
   };
-  return { context, requests, buttons, events, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
+  return { context, requests, buttons, events, locationPrompts, locationCalls: () => locationCalls, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
 }
+
+test('GPS requires a separate visitor action even when notification permission is already granted', async () => {
+  const b = browser({ existing: true, permission: 'granted', locationResult: { location_token: 'fixture-receipt', location_shared: false } });
+  await vm.runInNewContext(sdk, b.context);
+  assert.equal(b.locationCalls(), 0); assert.equal(b.permissionCalls(), 0); assert.equal(b.locationPrompts.length, 1);
+  assert.equal(b.requests.length, 1);
+  await b.locationPrompts[0].shareLocation();
+  assert.equal(b.locationCalls(), 1); assert.equal(b.requests.length, 2);
+  const request = b.requests[1], data = JSON.parse(request.options.body);
+  assert.equal(request.url, 'https://api.test/api/subscriptions/location');
+  assert.equal(data.domain_key, 'domain-key'); assert.equal(data.endpoint, 'https://fcm.googleapis.com/test');
+  assert.equal(data.token, 'fixture-receipt'); assert.equal(data.consent, true); assert.equal(data.accuracy, 120);
+  assert.equal(b.events.find(event => event.type === 'push:location-shared').detail.latitude, undefined);
+});
+
+test('declining device location does not upload coordinates or disable notification subscriptions', async () => {
+  const b = browser({ existing: true, permission: 'granted', locationDenied: true, locationResult: { location_token: 'receipt' } });
+  await vm.runInNewContext(sdk, b.context);
+  await assert.rejects(b.context.window.PushNotifications.shareLocation(), /not shared/);
+  assert.equal(b.requests.length, 1); assert.equal(b.permissionCalls(), 0); assert.equal(b.subscriptions(), 0);
+  assert.ok(b.events.some(event => event.type === 'push:subscribed'));
+});
+
+test('saved GPS, disabled invitations and location opt-out suppress the optional offer', async () => {
+  for (const options of [{ locationResult: { location_token: 'receipt', location_shared: true } }, { config: { showButton: false } }, { config: { requestLocation: false } }]) {
+    const b = browser({ existing: true, permission: 'granted', locationResult: { location_token: 'receipt' }, ...options });
+    await vm.runInNewContext(sdk, b.context);
+    assert.equal(b.locationPrompts.length, 0); assert.equal(b.locationCalls(), 0);
+  }
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  await assert.rejects(b.context.window.PushNotifications.shareLocation(), /Enable notifications/);
+  assert.equal(b.locationCalls(), 0);
+});
 
 test('SDK waits for a visitor action, then saves the subscription and hides the button', async () => {
   const b = browser();

@@ -57,7 +57,7 @@ async function fixture(t, subscriptions = []) {
       return [{ affectedRows: 1 }];
     }
     assert.match(sql, /country_code = \?, region_name = \?, region_code = \?, city_name = \?/);
-    const row = stored.find(row => row.id === params[10] && row.domain_key === params[11]);
+    const row = stored.find(row => row.id === params[12] && row.domain_key === params[13]);
     if (row) Object.assign(row, { p256dh: params[0], auth: params[1], country_code: params[2], region_name: params[3], region_code: params[4], city_name: params[5], device_type: params[6] || row.device_type, browser_family: params[7] || row.browser_family });
     return [{ affectedRows: row ? 1 : 0 }];
   } };

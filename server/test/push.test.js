@@ -53,7 +53,7 @@ async function fixture(t, { subscriptions = [], sendError, publicApiBase = 'http
     }
     if (sql.startsWith('UPDATE subscriptions')) {
       updates.push(params);
-      const subscription = stored.find(s => s.id === params[10] && s.domain_key === params[11]);
+      const subscription = stored.find(s => s.id === params[12] && s.domain_key === params[13]);
       if (subscription) Object.assign(subscription, { p256dh: params[0], auth: params[1], country_code: params[2], region_name: params[3], region_code: params[4], city_name: params[5], device_type: params[6] || subscription.device_type, browser_family: params[7] || subscription.browser_family });
       return [{ affectedRows: 1 }];
     }
@@ -290,7 +290,7 @@ test('resubscribing updates encryption keys only for the same domain', async t =
   const result = await f.request('/api/subscriptions', { domain_key: key, subscription: { endpoint, keys: browserKeys } }, { Origin: 'https://website.test' });
   assert.equal(result.status, 200);
   assert.equal(f.inserts.length, 0);
-  assert.deepEqual(f.updates[0], [browserKeys.p256dh, browserKeys.auth, null, null, null, null, null, null, null, null, 9, key]);
+  assert.deepEqual(f.updates[0], [browserKeys.p256dh, browserKeys.auth, null, null, null, null, null, null, null, null, null, null, 9, key]);
 });
 
 test('browser revisits capture device type without replacing subscriptions and preserve it on unknown clients', async t => {

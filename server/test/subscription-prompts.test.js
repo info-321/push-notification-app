@@ -54,7 +54,7 @@ async function fixture(t) {
     if (sql.startsWith('SELECT revision, template')) { assert.match(sql, /WHERE domain_key = \? AND created_at >= FROM_UNIXTIME\(\?\)/); assert.match(sql, /AND device_group = \?/); return [[...events.values()].filter(e => e.key === params[0] && e.device === params[3])]; }
     if (sql.startsWith('SELECT user_id, domain_name')) return [params[0] === 'one' ? [row] : []];
     if (sql.startsWith('SELECT id, domain_key') && sql.includes('FROM subscriptions')) return [subscriptions.filter(sub => sub.endpoint === params[0])];
-    if (sql.startsWith('INSERT INTO subscriptions')) { const id = subscriptions.length + 1; subscriptions.push({ id, domain_key: params[1], endpoint: params[2] }); return [{ insertId: id }]; }
+    if (sql.startsWith('INSERT INTO subscriptions')) { const id = subscriptions.length + 1; subscriptions.push({ id, domain_key: params[1], endpoint: params[2], p256dh: params[3], auth: params[4] }); return [{ insertId: id }]; }
     if (sql.startsWith('UPDATE subscriptions')) return [{ affectedRows: 1 }];
     throw new Error('Unexpected query: ' + sql);
   } };

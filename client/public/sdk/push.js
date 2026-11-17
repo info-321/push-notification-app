@@ -57,8 +57,37 @@
   let registration;
   let button;
   let promptController, promptToken;
+  let savedSubscription, locationToken;
   let busy = false;
   const report = (name, detail) => window.dispatchEvent(new CustomEvent(`push:${name}`, { detail }));
+  const shareLocation = () => {
+    if (!savedSubscription || !locationToken) return Promise.reject(new Error('Enable notifications before sharing your location.'));
+    if (!navigator.geolocation) return Promise.reject(new Error('Location sharing is unavailable in this browser.'));
+    // This function is called by a separate Share location button. Notification
+    // permission or a returning visit never triggers a geolocation request.
+    return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve,
+      () => reject(new Error('Location was not shared. You can keep using notifications without it.')),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 })).then(async position => {
+      const response = await request('/api/subscriptions/location', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain_key: cfg.domainKey, endpoint: savedSubscription.endpoint, token: locationToken,
+          consent: true, latitude: position.coords.latitude, longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy, client_context: clientContext }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || 'Could not save location.');
+      report('location-shared', {});
+    });
+  };
+  const offerLocation = async () => {
+    if (cfg.showButton === false || cfg.requestLocation === false || !navigator.geolocation) return;
+    if (!window.PushLocationUI) await new Promise((resolve, reject) => {
+      const script = document.createElement('script'), timeout = setTimeout(() => { script.remove(); reject(new Error('Location UI timeout')); }, 3000);
+      script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/location-ui.js`;
+      script.onload = () => { clearTimeout(timeout); resolve(); }; script.onerror = () => { clearTimeout(timeout); reject(new Error('Location UI unavailable')); };
+      document.head.appendChild(script);
+    });
+    if (!document.body) await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+    window.PushLocationUI.mount({ key: cfg.domainKey, shareLocation });
+  };
   const save = async subscription => {
     const response = await fetch(`${cfg.apiBase.replace(/\/$/, '')}/api/subscriptions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -66,9 +95,12 @@
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.message || 'Could not save the subscription.');
+    savedSubscription = subscription.toJSON();
+    locationToken = result.location_token;
     if (button) button.hidden = true;
     promptController?.hide();
     report('subscribed', {});
+    if (locationToken && !result.location_shared) offerLocation().catch(() => { /* Location is optional; notifications remain enabled. */ });
     return subscription;
   };
   const subscribe = async () => {
@@ -92,7 +124,7 @@
       if (button) button.disabled = false;
     }
   };
-  window.PushNotifications = { subscribe };
+  window.PushNotifications = { subscribe, shareLocation };
   const checkIdentity = subscription => {
     const existingKey = subscription?.options?.applicationServerKey;
     if (existingKey && Array.from(new Uint8Array(existingKey)).join(',') !== Array.from(toBytes(cfg.vapidPublicKey)).join(',')) throw new Error('An existing subscription uses another provider. It has not been changed.');

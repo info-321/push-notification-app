@@ -75,6 +75,19 @@ export async function ensureSubscriptionLocations(pool) {
   }
 }
 
+export async function ensureSubscriberVisitDetails(pool) {
+  for (const [column, type] of [
+    ['ip_address', 'VARCHAR(45)'], ['ip_recorded_at', 'DATETIME(3)'], ['last_seen_at', 'DATETIME(3)'],
+    ['latitude', 'DOUBLE'], ['longitude', 'DOUBLE'], ['location_accuracy_m', 'DOUBLE'],
+    ['location_consent_at', 'DATETIME(3)'], ['location_recorded_at', 'DATETIME(3)'],
+  ]) {
+    const [columns] = await pool.query(`SHOW COLUMNS FROM subscriptions LIKE '${column}'`);
+    if (columns.length) continue;
+    try { await pool.query(`ALTER TABLE subscriptions ADD COLUMN ${column} ${type} NULL`); }
+    catch (error) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+  }
+}
+
 export async function ensureSubscriptionDevice(pool) {
   const [columns] = await pool.query("SHOW COLUMNS FROM subscriptions LIKE 'device_type'");
   if (columns.length) return;

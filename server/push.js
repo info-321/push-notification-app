@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { createAdminToken } from './accounts.js';
-import { requestLocation, mergeLocation } from './audience.js';
+import { requestLocation, mergeLocation, requestVisitorIp } from './audience.js';
+import { locationReceipt } from './subscriber-location.js';
 import { requestDevice, requestBrowser, deviceCountSql, summarizeDevices } from './subscriber-device.js';
 import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
 import { validPushEndpoint, prepareNotification, deliverNotification } from './notification-delivery.js';
@@ -63,6 +64,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
   });
 
   app.post('/api/subscriptions', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
     const { domain_key: domainKey, subscription } = req.body || {};
     const keys = subscription?.keys;
     if (typeof domainKey !== 'string' || !validPushEndpoint(subscription?.endpoint) ||
@@ -81,26 +83,33 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       }
       const profile = requestTarget(req, req.body?.client_context);
       if (!targetAllowed(readTargeting(domains[0].targeting_policy), profile)) return res.status(403).json({ ok: false, message: 'Notifications are not enabled for this device and browser.' });
-      const [existing] = await pool.query('SELECT id, domain_key, country_code, region_name, region_code, city_name FROM subscriptions WHERE endpoint = ? LIMIT 1', [subscription.endpoint]);
+      const [existing] = await pool.query('SELECT id, domain_key, country_code, region_name, region_code, city_name, p256dh, auth, latitude, longitude, location_consent_at FROM subscriptions WHERE endpoint = ? LIMIT 1', [subscription.endpoint]);
       if (existing.length && existing[0].domain_key !== domainKey) {
         return res.status(409).json({ ok: false, message: 'This browser subscription belongs to a different domain.' });
+      }
+      if (existing.length && (!equal(existing[0].p256dh, keys.p256dh) || !equal(existing[0].auth, keys.auth))) {
+        return res.status(409).json({ ok: false, message: 'Existing subscription credentials do not match this browser.' });
       }
       const location = mergeLocation(existing[0], requestLocation(req));
       const device = requestDevice(req);
       const browser = requestBrowser(req);
+      const ip = requestVisitorIp(req);
       if (existing.length) {
-        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family), target_device = ?, target_browser = ? WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser, existing[0].id, domainKey]);
+        await pool.query('UPDATE subscriptions SET p256dh = ?, auth = ?, country_code = ?, region_name = ?, region_code = ?, city_name = ?, device_type = COALESCE(?, device_type), browser_family = COALESCE(?, browser_family), target_device = ?, target_browser = ?, ip_address = COALESCE(?, ip_address), ip_recorded_at = CASE WHEN ? IS NULL THEN ip_recorded_at ELSE UTC_TIMESTAMP(3) END, last_seen_at = UTC_TIMESTAMP(3) WHERE id = ? AND domain_key = ?', [keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser, ip, ip, existing[0].id, domainKey]);
       } else {
         const [inserted] = await pool.query(
-          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, browser_family, target_device, target_browser, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
-          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser],
+          'INSERT INTO subscriptions (user_id, domain_key, endpoint, p256dh, auth, country_code, region_name, region_code, city_name, device_type, browser_family, target_device, target_browser, ip_address, ip_recorded_at, last_seen_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE UTC_TIMESTAMP(3) END, UTC_TIMESTAMP(3), NOW())',
+          [domains[0].user_id, domainKey, subscription.endpoint, keys.p256dh, keys.auth, location.country_code, location.region_name, location.region_code, location.city_name, device, browser, profile.device, profile.browser, ip, ip],
         );
         if (req.body?.prompt_token) {
           try { await recordPromptSubscription(pool, secret, req.body.prompt_token, domainKey, inserted.insertId); }
           catch (error) { console.error('Prompt conversion tracking failed:', error.code || 'storage'); }
         }
       }
-      return res.json({ ok: true, created: !existing.length });
+      return res.json({ ok: true, created: !existing.length,
+        location_token: locationReceipt(secret, domainKey, subscription.endpoint),
+        location_shared: Boolean(existing[0]?.location_consent_at && existing[0]?.latitude != null && existing[0]?.longitude != null),
+      });
     } catch (error) {
       if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ ok: false, message: 'Subscription conflict. Please try enabling notifications again.' });
       console.error('Subscription storage failed:', error.code);

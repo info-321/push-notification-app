@@ -217,3 +217,24 @@ For browser tracking on WordPress, replace the installed plugin with **v1.3.0** 
 Each recipient gets an opaque random ID and an HMAC-signed event token valid for 90 days. No subscription endpoint, encryption keys, raw IP or administrator credential is exposed in reports, tokens or CSV. The public event endpoint checks the signature, expiry and matching HTTPS website origin. Updates deduplicate retries and concurrent event requests. Workers report acknowledgements only after notification creation succeeds (including rich-content fallback), and attempt a maximum of two event requests with a two-second timeout each. Navigation starts independently and remains usable if tracking is offline or blocked. Telemetry can undercount and is not a cross-browser guaranteed delivery receipt.
 
 Backend/worker tests mock providers. The disposable MySQL integration suite also checks full campaign persistence, event authentication/deduplication, historical imports, scheduled occurrence reports, filters, pagination and CSV export. Deployment probes only read reports; they do not create campaigns, send notifications, or submit telemetry.
+
+
+### Subscriber IP and optional device location
+
+Startup adds nullable visit fields to `subscriptions`: `ip_address`, `ip_recorded_at`, `last_seen_at`, `latitude`, `longitude`, `location_accuracy_m`, `location_consent_at` and `location_recorded_at`. Each record keeps its original `domain_key` and owner. These are the latest recorded values, not a movement or IP history. Existing rows remain NULL until an eligible browser revisits. Normal registration/revisit requests update the observed IP and last-seen time without touching previously shared coordinates. IP capture trusts `CF-Connecting-IP` only through the verified Cloudflare/proxy path; the Hostinger Caddy proxy must continue overwriting `X-Forwarded-For`. Arbitrary forwarding chains and body-supplied IPs are ignored. IPs can represent VPNs or shared networks.
+
+After successful registration, the hosted SDK offers a separate **Share location** / **Not now** card to subscribed browsers that have not shared coordinates. It calls geolocation only on the Share location action; notification permission alone never triggers it. The browser still controls its separate location permission. Not now suppresses the offer for 30 days in that browser for that domain. Denial, timeout, unsupported geolocation or a failed save leaves notifications enabled. `pushConfig.requestLocation = false` suppresses the optional card, and sites can call `window.PushNotifications.shareLocation()` from their own explicit location-sharing button. `showButton: false` also suppresses the card.
+
+The location endpoint accepts finite, bounded browser-reported coordinates and accuracy only with explicit consent, a short-lived signed receipt for the saved subscription, the matching website origin and allowed device/browser rules. It does not return stored IPs or coordinates. Coordinates may be approximate and are not proof of a street address; no reverse-geocoding provider is contacted. These fields are included in existing full MySQL backups. The WordPress plugin uses the hosted SDK, so this change does not require replacing the plugin or worker. IP/GPS values are not exposed in public audience aggregates.
+
+Read-only inspection from an authenticated MySQL session:
+
+```sql
+SELECT id, domain_key, country_code, region_name, city_name,
+       ip_address, ip_recorded_at, last_seen_at,
+       latitude, longitude, location_accuracy_m,
+       location_consent_at, location_recorded_at
+FROM subscriptions
+ORDER BY id DESC
+LIMIT 20;
+```

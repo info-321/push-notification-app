@@ -14,6 +14,20 @@ const normalizeIp = value => typeof value === 'string' ? value.replace(/^::ffff:
 const contains = (list, address) => Boolean(isIP(address) && list.check(address, isIP(address) === 6 ? 'ipv6' : 'ipv4'));
 const regions = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
 
+// The local reverse proxy must overwrite X-Forwarded-For with its connecting
+// peer. Do not trust arbitrary forwarding chains or visitor-supplied body data.
+export function requestVisitorIp(req) {
+  const peer = normalizeIp(req.socket.remoteAddress);
+  if (!isIP(peer)) return null;
+  const forwarded = normalizeIp((req.get('X-Forwarded-For') || '').trim());
+  if (contains(cloudflare, peer) || (contains(localProxy, peer) && contains(cloudflare, forwarded))) {
+    const visitor = normalizeIp((req.get('CF-Connecting-IP') || '').trim());
+    return isIP(visitor) && !contains(localProxy, visitor) ? visitor : null;
+  }
+  if (contains(localProxy, peer)) return isIP(forwarded) && !contains(localProxy, forwarded) ? forwarded : null;
+  return peer;
+}
+
 export function validCountryCode(value) {
   return typeof value === 'string' && /^[A-Z]{2}$/.test(value) && !['XX', 'ZZ', 'EU', 'UN'].includes(value) && Boolean(regions.of(value));
 }

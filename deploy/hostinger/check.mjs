@@ -201,6 +201,12 @@ const db = await mysql.createConnection({
   database: process.env.DB_NAME,
 });
 try {
+  const [visitColumns] = await db.query("SHOW COLUMNS FROM subscriptions WHERE Field IN ('ip_address','ip_recorded_at','last_seen_at','latitude','longitude','location_accuracy_m','location_consent_at','location_recorded_at')");
+  assert.equal(visitColumns.length, 8, 'Subscriber visit and consented location columns must be available');
+  assert.ok(visitColumns.every(column => column.Null === 'YES'));
+  assert.equal((await fetch(base + '/sdk/location-ui.js')).status, 200);
+  assert.equal((await fetch(base + '/api/subscriptions/location', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403, 'Location writes require a subscription receipt');
+  console.log('Subscriber IP and optional location storage: OK; nullable schema and protected endpoint verified');
   const [[counts]] = await db.query('SELECT (SELECT COUNT(*) FROM domains) AS domains, (SELECT COUNT(*) FROM subscriptions) AS subscriptions, (SELECT COUNT(*) FROM domains WHERE vapid_private_key IS NOT NULL AND vapid_private_key <> "") AS domains_with_private_keys');
   console.log('Database counts (compare with Cloudways):', counts);
 } finally {
