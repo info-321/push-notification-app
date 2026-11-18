@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
+import {senderKeyFor} from './platform-services.js';
 import { createSecurity } from './security.js';
 import { requestLocation, mergeLocation, requestVisitorIp } from './audience.js';
 import { locationReceipt } from './subscriber-location.js';
@@ -25,7 +26,7 @@ const hostMatches = (a, b) => a.replace(/^www\./, '') === b.replace(/^www\./, ''
 
 export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSubject, accounts, reporting, browser }) {
   const sign = (value) => crypto.createHmac('sha256', secret).update(value).digest('base64url');
-  const senderKey = (key) => sign(`send:${key}`);
+  const senderKey = key=>senderKeyFor(accounts,secret,key);
   const security = createSecurity({accounts,pool,secret,browser});
   const {createToken,requireAdmin,authenticate:isAdmin}=security;
   const apiBase = publicApiBase.replace(/\/$/, '');
@@ -44,7 +45,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
     try {
       const [rows] = await pool.query(`${selectPublicDomains} WHERE d.domain_key = ? AND d.user_id = 1 LIMIT 1`, [req.params.key]);
       if (!rows.length) return res.status(404).json({ ok: false, message: 'Domain not found.' });
-      return res.json({ ok: true, data: { ...publicDomain(rows[0]), api_base: apiBase, service_url: `${apiBase}/api/notifications`, sender_api_key: req.auth.role==='admin'?senderKey(req.params.key):null, live_ready: liveReady } });
+      return res.json({ ok: true, data: { ...publicDomain(rows[0]), api_base: apiBase, service_url: `${apiBase}/api/notifications`, sender_api_key: !req.auth.platform_enabled&&req.auth.global?await senderKey(req.params.key):null, live_ready: liveReady } });
     } catch (error) {
       console.error('Integration configuration failed:', error.code);
       return res.status(500).json({ ok: false, message: 'Could not load integration settings. Check the database connection.' });
@@ -136,7 +137,8 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
 
   app.post(['/api/notifications', '/api/notifications/compose'], async (req, res) => {
     const { domain_key: domainKey, title, body = '', url, icon = '' } = req.body || {};
-    const senderAuthorized = typeof domainKey === 'string' && equal(req.get('X-Api-Key'), senderKey(domainKey));
+    let senderAuthorized=false;
+    try{senderAuthorized=typeof domainKey==='string'&&domainKey.length<=64&&Boolean(req.get('X-Api-Key'))&&equal(req.get('X-Api-Key'),await senderKey(domainKey));}catch{return res.status(503).json({ok:false,message:'Sender verification is unavailable.'});}
     let authorized = senderAuthorized;
     if (!authorized) {
       try { authorized = await isAdmin(req); }
@@ -169,7 +171,7 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
       const result = await deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, domainKey, prepared, { source, isTest: source === 'test' || req.body?.is_test === true });
       return res.status(result.ok ? 200 : 502).json(result);
     } catch (error) {
-      if ([400, 409].includes(error.status)) return res.status(error.status).json({ ok: false, message: error.message });
+      if ([400, 409, 503].includes(error.status)) return res.status(error.status).json({ ok: false, message: error.message });
       console.error('Notification send failed:', error.code || error.message);
       return res.status(500).json({ ok: false, message: 'Could not send the notification. Check the database and VAPID configuration.' });
     }

@@ -4,6 +4,10 @@ import cors from 'cors';
 import {browserAuth} from './browser-auth.js';
 import {installRecoveryRoutes} from './recovery.js';
 import crypto from 'node:crypto';
+import {installPlatformAuth,mfaRequired} from './platform-auth.js';
+import {installPlatformUsers} from './platform-users.js';
+import {managedMailer} from './platform-services.js';
+import {installPlatformRoutes} from './platform-routes.js';
 import { installPush } from './push.js';
 import { selectPublicDomains, publicDomain } from './domain-configuration.js';
 import { deleteOwnedDomain } from './domain-management.js';
@@ -25,6 +29,9 @@ import { installSubscriberLocation } from './subscriber-location.js';
 export function createApp({ pool, webpush, adminUsername, adminPassword, secret, publicApiBase, vapidSubject, accountRepository, reporting, dashboardOrigins=process.env.DASHBOARD_ORIGINS||'', mailer, dashboardBase=publicApiBase }) {
   const app = express();
   const accounts = accountRepository || memoryAccountRepository(adminUsername, adminPassword);
+  mailer=managedMailer({accounts,secret,fallback:mailer});
+  pool.notizoPlatformStatus=()=>accounts.platformStatus();
+  pool.notizoPlatformConfig=name=>accounts.platformConfig(name);
   const browser=browserAuth({secret,publicApiBase,dashboardOrigins});
   app.use(cors((req,done)=>done(null,browser.origins.has(req.get('Origin'))?{origin:req.get('Origin'),credentials:true}:{origin:'*'})));
   app.use('/api',(req,res,next)=>{res.set('Cache-Control','no-store');next();});
@@ -39,6 +46,9 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   installSubscriptionPrompts(app, { pool, secret, requireAdmin });
   installSchedules(app, { pool, requireAdmin });
   installAccountRoutes(app, { accounts, requireAdmin, createToken, browser });
+  installPlatformAuth(app,{accounts,security,secret});
+  installPlatformUsers(app,{accounts,pool,security});
+  installPlatformRoutes(app,{accounts,pool,security,mailer,secret});
   installSecurityRoutes(app, {accounts,pool,security});
   installDrafts(app, {pool,requireAdmin,security});
   installUnsubscribe(app,{pool,requireAdmin});
@@ -57,7 +67,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
   // POST /api/login - basic admin auth.
   const dummyPassword = hashPassword(crypto.randomBytes(32).toString('hex'));
-  app.get('/api/auth/session',async(req,res)=>{try{const authenticated=await security.authenticate(req);res.json({ok:true,authenticated,csrfToken:browser.bootstrap(req,res)});}catch{res.status(503).json({ok:false,message:'Session check unavailable.'});}});
+  app.get('/api/auth/session',async(req,res)=>{try{const authenticated=await security.authenticate(req);res.json({ok:true,authenticated:Boolean(authenticated&&req.auth.full_access),mfa_required:Boolean(authenticated&&!req.auth.full_access),mfa_enrollment_required:Boolean(authenticated&&req.auth.mfa_required&&!req.auth.mfa_enabled),csrfToken:browser.bootstrap(req,res)});}catch{res.status(503).json({ok:false,message:'Session check unavailable.'});}});
   installRecoveryRoutes(app,{accounts,requireAdmin,browser,mailer,secret,dashboardBase});
   app.post('/api/login', browser.guard, async (req, res) => {
     res.set('Cache-Control','no-store');
@@ -72,13 +82,14 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
       if(!valid||!row?.is_active) return res.status(401).json({ok:false,message:'Invalid credentials'});
       if(!await accounts.recordLogin(row.password_hash,new Date(),metadata.ip_address,row.id)) return res.status(401).json({ok:false,message:'Credentials changed. Please sign in again.'});
       const old=browser.session(req);if(old){await security.authenticate(req);if(req.auth?.sid)await accounts.endSession(req.auth.sid,req.auth.id,'replaced');}
-      const token=await createToken(row.session_version,row.id,req);
-      return res.json({ok:true,csrfToken:browser.issue(res,token)});
+      const state=await accounts.platformStatus(row.id),required=mfaRequired(state,row);
+      const token=await createToken(row.session_version,row.id,req,{mfa_verified:false});
+      return res.json({ok:true,csrfToken:browser.issue(res,token),mfa_required:required,mfa_enrollment_required:required&&!state.mfa_enabled});
     } catch(error) {console.error('Login failed:',error.code);return res.status(503).json({ok:false,message:'Sign in is temporarily unavailable. Please try again.'});}
   });
 
   // POST /api/domains - create a domain record after frontend validation.
-  app.use('/api/domains', requireAdmin);
+  app.use('/api/domains', requireAdmin,(req,res,next)=>{if(req.auth.platform_enabled&&req.method==='DELETE'){if(!req.params.id&&new URL(req.originalUrl,'http://internal').pathname==='/api/domains')return res.status(400).json({ok:false,message:'Delete using the website ID.'});return security.requireFresh(req,res,next);}next();});
   installDomainSettings(app, pool);
   installPwa(app, pool);
   installAudience(app, pool);
@@ -87,7 +98,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   app.post('/api/domains', async (req, res) => {
     const { name, domain, domain_name } = req.body || {};
 
-    if(req.auth.role!=='admin') return res.status(403).json({ok:false,message:'Only administrators can add websites.'});
+    if(!req.auth.global) return res.status(403).json({ok:false,message:'Only administrators can add websites.'});
     const userId = 1;
     const rawDomain = domain_name || domain;
     const domainName = typeof rawDomain === 'string' ? rawDomain.trim().toLowerCase() : '';
@@ -207,7 +218,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
   // DELETE /api/domains/:id - delete a domain by numeric id for the given user.
   app.delete('/api/domains/:id', async (req, res) => {
-    if(req.auth.role!=='admin') return res.status(403).json({ok:false,message:'Only administrators can delete websites.'});
+    if(!req.auth.global) return res.status(403).json({ok:false,message:'Only administrators can delete websites.'});
     const userId = 1;
     const id = Number(req.params.id);
 
@@ -229,7 +240,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
 
   // DELETE /api/domains?userId=1&domain_key=XXX - delete by domain_key (fallback for clients using keys).
   app.delete('/api/domains', async (req, res) => {
-    if(req.auth.role!=='admin') return res.status(403).json({ok:false,message:'Only administrators can delete websites.'});
+    if(!req.auth.global) return res.status(403).json({ok:false,message:'Only administrators can delete websites.'});
     const userId = 1;
     const domainKey = req.query.domain_key;
     if (typeof domainKey !== 'string' || !domainKey) {

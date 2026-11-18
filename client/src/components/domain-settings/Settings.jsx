@@ -1,3 +1,4 @@
+import WebsiteSendingControl from '../platform/WebsiteSendingControl';
 import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import './domain-list.css';
@@ -123,7 +124,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
       {domainsLoading && !activeKey && <p role="status" className="settings-page-note">Loading websites…</p>}
       {!domainsLoading && !domainsError && !domains.length && <p role="status" className="settings-page-note">Add a website in <button onClick={onBack}>Domains</button> to configure its settings.</p>}
 
-      <div className="settings-grid">
+      <div className="settings-grid"><WebsiteSendingControl domainKey={activeKey}/>
         <section className="settings-panel" aria-labelledby="general-settings-heading">
           <h1 id="general-settings-heading"><SettingsIcon type="general" />General Setting</h1>
           <form onSubmit={updateGeneral}>
@@ -145,7 +146,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
         <section className="settings-panel" aria-labelledby="push-settings-heading">
           <h2 id="push-settings-heading"><SettingsIcon type="push" />Push Sending Settings</h2>
           <TextField id="settings-project" label="Domain / Project Key" value={push?.domain_key || ''} placeholder="Select a configured website" readOnly />
-          <div className="settings-field"><label htmlFor="settings-sender-key">Sender API Key</label><div className="settings-secret-field"><input id="settings-sender-key" type={showSender ? 'text' : 'password'} value={push?.sender_api_key || ''} readOnly autoComplete="off" /><button type="button" disabled={!push?.sender_api_key} onClick={() => setShowSender(value => !value)} aria-pressed={showSender}>{showSender ? 'Hide' : 'Show'}</button></div></div>
+          <div className="settings-field"><label htmlFor="settings-sender-key">Sender API Key</label><div className="settings-secret-field"><input id="settings-sender-key" type={showSender ? 'text' : 'password'} placeholder="Managed by your Superadmin" value={push?.sender_api_key || ''} readOnly autoComplete="off" /><button type="button" disabled={!push?.sender_api_key} onClick={() => setShowSender(value => !value)} aria-pressed={showSender}>{showSender ? 'Hide' : 'Show'}</button></div></div>
           <TextField id="settings-public-key" label="Public Key" value={push?.vapid_public_key || ''} readOnly />
           <TextField id="settings-private-key" label="Private Key" value={push ? 'Managed securely on the server' : ''} readOnly />
           <p className="settings-help">Web-push keys are managed automatically. Installation details are available in Configuration.</p>

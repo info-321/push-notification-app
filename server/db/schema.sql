@@ -47,3 +47,12 @@ CREATE TABLE IF NOT EXISTS account_recovery_limits (
  key_hash CHAR(64) PRIMARY KEY, start_ms BIGINT NOT NULL, attempts INT NOT NULL,
  KEY recovery_limit_expiry(start_ms)
 );
+
+-- Platform administration: activated explicitly by the trusted bootstrap CLI.
+CREATE TABLE IF NOT EXISTS platform_state (id TINYINT PRIMARY KEY, enabled BOOLEAN NOT NULL DEFAULT FALSE,owner_id BIGINT UNSIGNED NULL,sends_paused BOOLEAN NOT NULL DEFAULT FALSE,policy JSON NOT NULL);
+CREATE TABLE IF NOT EXISTS platform_mfa (user_id BIGINT UNSIGNED PRIMARY KEY, enabled BOOLEAN NOT NULL DEFAULT FALSE,secret_cipher TEXT NULL,pending_cipher TEXT NULL,pending_expires_ms BIGINT NULL,last_counter BIGINT NOT NULL DEFAULT -1,recovery JSON NOT NULL);
+CREATE TABLE IF NOT EXISTS platform_team (user_id BIGINT UNSIGNED PRIMARY KEY,admin_id BIGINT UNSIGNED NOT NULL,KEY team_admin(admin_id));
+CREATE TABLE IF NOT EXISTS platform_config (name VARCHAR(128) PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS platform_approvals (token_hash CHAR(64) PRIMARY KEY,user_id BIGINT UNSIGNED NOT NULL,session_id CHAR(36) NOT NULL,session_version VARCHAR(64) NOT NULL,request_hash CHAR(64) NOT NULL,expires_ms BIGINT NOT NULL,used_ms BIGINT NULL,KEY approval_expiry(expires_ms));
+CREATE TABLE IF NOT EXISTS platform_operations (id CHAR(36) PRIMARY KEY,kind VARCHAR(24) NOT NULL,status VARCHAR(24) NOT NULL,actor_id BIGINT UNSIGNED NOT NULL,created_ms BIGINT NOT NULL,details JSON NOT NULL,KEY operation_time(created_ms));
+INSERT IGNORE INTO platform_state (id,policy) VALUES (1,JSON_OBJECT('session_hours',12,'require_admin_mfa',FALSE,'subscriber_exports',FALSE));

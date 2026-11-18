@@ -1,0 +1,8 @@
+import React,{useEffect,useState} from 'react';
+import {API_BASE,apiFetch,protectedFetch} from '../../api';
+export default function WebsiteSendingControl({domainKey}){
+  const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  useEffect(()=>{setData(null);if(!domainKey)return;let active=true;apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/sending-control`).then(r=>r.json()).then(d=>{if(active&&d.ok)setData(d.data);}).catch(()=>{});return()=>{active=false;};},[domainKey]);
+  if(!data?.enabled||!data.may_pause)return null;
+  return <section className="settings-card"><h2>Website sending control</h2><p>{data.global_paused?'A Superadmin has paused sending across all websites.':data.paused?'Sending is paused for this website.':'Sending is enabled for this website.'}</p><p>Pause dashboard, WordPress and scheduled sends without deleting subscribers. Review Reports before retrying interrupted campaigns.</p>{error&&<p role="alert">{error}</p>}<button className="settings-update" disabled={busy} onClick={async()=>{setBusy(true);setError('');try{const r=await protectedFetch(`${API_BASE}/api/domains/${encodeURIComponent(domainKey)}/sending-control`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({paused:!data.paused})},data.paused?'Resume website sending':'Pause website sending'),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Could not change sending.');setData({...data,paused:!data.paused});}catch(e){setError(e.message);}finally{setBusy(false);}}}>{data.paused?'Resume this website':'Pause this website'}</button></section>;
+}

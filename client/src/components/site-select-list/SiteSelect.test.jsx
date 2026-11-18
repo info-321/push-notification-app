@@ -5,7 +5,7 @@ import { apiFetch } from '../../api';
 
 jest.mock('../../api', () => ({
   API_BASE: 'https://api.example.test',
-  apiFetch: jest.fn(),
+  apiFetch: jest.fn(),protectedFetch:(...args)=>require('../../api').apiFetch(...args),
 }));
 
 function mockDomain(status, configured) {

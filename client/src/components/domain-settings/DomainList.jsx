@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { API_BASE, apiFetch } from '../../api';
+import { API_BASE, apiFetch, protectedFetch } from '../../api';
 import './domain-list.css';
 
 const labelFor = domain => domain.display_name || domain.domain_name;
 
-export default function DomainList({ selectedDomainKey, onNew, onConfiguration, onDashboard, onSettings, onPwa = () => {}, onAccount, onLogout, onDeleted }) {
+export default function DomainList({ access, selectedDomainKey, onNew, onConfiguration, onDashboard, onSettings, onPwa = () => {}, onAccount, onLogout, onDeleted }) {
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -69,7 +69,7 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
     const removed = [], failures = [];
     for (const domain of targets) {
       try {
-        const response = await apiFetch(`${API_BASE}/api/domains/${encodeURIComponent(domain.id)}`, { method: 'DELETE' });
+        const response = await protectedFetch(`${API_BASE}/api/domains/${encodeURIComponent(domain.id)}`, { method: 'DELETE' }, `Permanently delete ${domain.domain_name} and its saved audience`);
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.message || 'Could not delete domain.');
         removed.push(domain);
@@ -140,7 +140,7 @@ export default function DomainList({ selectedDomainKey, onNew, onConfiguration, 
       <section className="domain-list-panel" aria-label="Domains">
         <div className="domain-list-toolbar">
           <span role="status">{selected.size > 0 ? `${selected.size} selected` : ''}</span>
-          <div><button type="button" className="domain-list-new" onClick={onNew} disabled={deleting}>New</button><button type="button" className="domain-list-delete" onClick={removeSelected} disabled={!selected.size || deleting}>{deleting ? 'Deleting…' : 'Delete'}</button></div>
+          {(access===undefined||access?.role==='superadmin'||(access&&!access.platform_enabled&&access.role==='admin'))&&<div><button type="button" className="domain-list-new" onClick={onNew} disabled={deleting}>New</button><button type="button" className="domain-list-delete" onClick={removeSelected} disabled={!selected.size || deleting}>{deleting ? 'Deleting…' : 'Delete'}</button></div>}
         </div>
         {notice && <p className="domain-list-notice" role="status">{notice}</p>}
         {error && <div className="domain-list-error" role="alert">{error}{!domains.length && <button onClick={() => setReload(value => value + 1)}>Try again</button>}</div>}

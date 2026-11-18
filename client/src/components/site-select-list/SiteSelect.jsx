@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import '../domain-settings/domain-list.css';
 import './siteselect.css';
 
-import { API_BASE, apiFetch } from '../../api';
+import { API_BASE, apiFetch, protectedFetch } from '../../api';
 
 // Site selection list, fetched from backend domains endpoint.
 // Enhancements: per-card 3-dot menu (Edit/Delete), domain dropdown with "Add Domain", and profile dropdown.
 const SiteSelect = ({
+  access,
   onAddDomain,
   onSettings,
   onAccount,
@@ -15,6 +16,7 @@ const SiteSelect = ({
   onSelectDomain,
   onEditDomain = () => {},
 }) => {
+  const canOwn=access===undefined||access?.role==='superadmin'||(access&&!access.platform_enabled&&access.role==='admin');
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -79,7 +81,7 @@ const SiteSelect = ({
         ? `${API_BASE}/api/domains/${encodeURIComponent(domain.id)}?userId=1`
         : `${API_BASE}/api/domains?userId=1&domain_key=${encodeURIComponent(domain.key)}`;
 
-      const res = await apiFetch(url, {
+      const res = await protectedFetch(url, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -107,7 +109,7 @@ const SiteSelect = ({
           <div className="domain-list-logo"><img src="/images/TTWLogo.jpg" alt="TTW" /></div>
           <select value={selectedDomain} onChange={handleDomainSelect} aria-label="Select domain or add a domain">
             {!selectedDomain && <option value="" disabled>Select a domain</option>}
-            <option value="add">Add Domain +</option>
+            {canOwn&&<option value="add">Add Domain +</option>}
             {domains.map(item => <option key={item.key || item.name} value={item.name}>{item.name}</option>)}
           </select>
         </div>
@@ -177,7 +179,7 @@ const SiteSelect = ({
                     type="button"
                     className="card-menu-item"
                     onClick={() => handleDeleteDomain(item)}
-                    disabled={deletingKey === item.key}
+                    disabled={!canOwn||deletingKey === item.key}
                   >
                     {deletingKey === item.key ? 'Deleting...' : 'Delete'}
                   </button>
@@ -197,7 +199,7 @@ const SiteSelect = ({
             {domains.length === 0 && (
               <div className="empty">
                 <p>No domains yet. Add one to get started.</p>
-                <button type="button" className="primary-btn" onClick={onAddDomain}>
+                <button type="button" className="primary-btn" disabled={!canOwn} onClick={onAddDomain}>
                   Add Domain
                 </button>
               </div>

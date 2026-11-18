@@ -1,7 +1,7 @@
 export const API_BASE = (process.env.REACT_APP_API_BASE || 'http://localhost:5000').replace(/\/$/, '');
 let csrfToken='';
 export const authEpoch=()=>localStorage.getItem('notizo.authChange')||'';
-export function authChanged(){localStorage.removeItem('sessionToken');localStorage.setItem('notizo.authChange',String(Date.now())+Math.random().toString(36));}
+export function authChanged(){localStorage.removeItem('sessionToken');localStorage.setItem('notizo.authChange',String(Date.now())+Math.random().toString(36));window.dispatchEvent(new Event('notizo-auth-changed'));}
 export function acceptSession(data){if(typeof data.csrfToken==='string')csrfToken=data.csrfToken;localStorage.removeItem('sessionToken');}
 export async function browserSession({signal}={}){
   localStorage.removeItem('sessionToken');
@@ -23,8 +23,19 @@ export async function apiFetch(url,options={}){
   if(response.status===403&&csrfRetry&&(await response.clone().json().catch(()=>({}))).code==='CSRF'){
     await browserSession({signal:init.signal});return apiFetch(url,{...options,csrfRetry:false});
   }
+  if(response.status===403&&authFailure&&(await response.clone().json().catch(()=>({}))).code==='MFA_REQUIRED')window.dispatchEvent(new Event('mfa-required'));
   if(response.status===401&&authFailure&&authEpoch()===epoch){
     csrfToken='';localStorage.removeItem('auth');authChanged();window.dispatchEvent(new Event('auth-expired'));
   }
   return response;
+}
+
+// Confirm only after the server identifies an action as protected. No credentials
+// or approvals are persisted in browser storage.
+export async function protectedFetch(url,options={},label){
+  const response=await apiFetch(url,options);
+  if(response.status!==403||(await response.clone().json().catch(()=>({}))).code!=='STEP_UP_REQUIRED')return response;
+  const request={method:(options.method||'POST').toUpperCase(),path:new URL(url,window.location.origin).pathname,body:options.body?JSON.parse(options.body):{}};
+  const approval=await new Promise((resolve,reject)=>window.dispatchEvent(new CustomEvent('notizo-confirm',{detail:{request,label,resolve,reject}})));
+  return apiFetch(url,{...options,headers:{...options.headers,'X-Notizo-Approval':approval}});
 }

@@ -1,3 +1,4 @@
+import MfaSettings from '../platform/SecurityControls';
 import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch, acceptSession, authChanged } from '../../api';
 import './domain-list.css';
@@ -119,7 +120,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
           </form>
         </section>
       </div>
-      {profile && <><RecoverySettings/><AccountSecurity/></>}
+      {profile && <><MfaSettings/><RecoverySettings/><AccountSecurity/></>}
     </main>
   </div>;
 }

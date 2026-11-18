@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from './App';
 import { apiFetch,browserSession } from './api';
 
-jest.mock('./api', () => ({ API_BASE: 'https://api.example.test', apiFetch: jest.fn(),browserSession:jest.fn(),authEpoch:()=>globalThis.localStorage.getItem('notizo.authChange')||'',authChanged:()=>{globalThis.localStorage.removeItem('sessionToken');},acceptSession:jest.fn() }));
+jest.mock('./api', () => ({ API_BASE: 'https://api.example.test', apiFetch: jest.fn(),protectedFetch:(...args)=>require('./api').apiFetch(...args),browserSession:jest.fn(),authEpoch:()=>globalThis.localStorage.getItem('notizo.authChange')||'',authChanged:()=>{globalThis.localStorage.removeItem('sessionToken');},acceptSession:jest.fn() }));
 jest.mock('./components/domain-settings/Domain', () => function MockConfiguration(props) {
   return <div><h1>Configuration screen</h1><span>{props.selectedDomainKey}</span><button onClick={props.onDashboard}>Return to dashboard</button></div>;
 });

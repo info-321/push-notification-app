@@ -50,3 +50,9 @@ if [[ -f "$script_dir/offsite-backup.py" ]]; then
 else
     printf 'Copy completed backup folders to separate storage for protection against VPS loss.\n'
 fi
+
+# Catalog only safe metadata; old application images may not include this CLI yet.
+if "${compose[@]}" exec -T api test -f platform-ops.js </dev/null >/dev/null 2>&1; then
+    manifest_hash="$(sha256sum "$final/SHA256SUMS")"
+    "${compose[@]}" exec -T api node platform-ops.js record-backup "${final##*/}" "${manifest_hash%% *}" </dev/null
+fi

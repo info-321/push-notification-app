@@ -23,7 +23,7 @@ export function browserAuth({secret,publicApiBase,dashboardOrigins=''}) {
     return Boolean(value&&safe(req.get('X-CSRF-Token'),csrf(value)));
   };
   return {name,secure,session,csrf,origins,originAllowed,validCsrf,
-    issue(res,token){res.cookie(name,token,{...options,maxAge:12*3600000});res.clearCookie(preauth,options);return csrf(token);},
+    issue(res,token){const expiry=JSON.parse(Buffer.from(token.split('.')[0],'base64url')).exp;if(!Number.isFinite(expiry)||expiry<=Date.now())throw new Error('Invalid session expiry.');res.cookie(name,token,{...options,maxAge:Math.min(24*3600000,expiry-Date.now())});res.clearCookie(preauth,options);return csrf(token);},
     clear(res){res.clearCookie(name,options);res.clearCookie(preauth,options);},
     bootstrap(req,res){const value=session(req)||crypto.randomBytes(32).toString('base64url');if(!session(req))res.cookie(preauth,value,{...options,maxAge:3600000});return csrf(value);},
     guard(req,res,next){if(!validCsrf(req))return res.status(403).json({ok:false,code:'CSRF',message:'Reload this page before trying again.'});next();},

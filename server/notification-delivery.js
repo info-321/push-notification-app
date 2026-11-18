@@ -1,3 +1,4 @@
+import {platformSendingPaused} from './platform-services.js';
 import { removeSubscription } from './subscription-history.js';
 import { parsePushAudience, pushAudienceWhere } from './push-audience.js';
 import { normalizeBanner, validImageUrl } from './push-content.js';
@@ -32,6 +33,7 @@ export function prepareNotification(input, domain, now = new Date()) {
 }
 
 export async function deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, domainKey, prepared, { beforeBatch = async () => {}, onProgress = async () => {}, source = 'api', isTest = false, scheduleRunId = null } = {}) {
+  if(await platformSendingPaused(pool,domainKey))throw Object.assign(new Error('Platform sending is paused by a Superadmin.'),{status:503});
   const policy = readTargeting(domain.targeting_policy);
   const where = pushAudienceWhere(domainKey, prepared.audience, true, policy);
   const [subscriptions] = await pool.query(`SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE ${where.sql}`, where.params);
@@ -39,6 +41,7 @@ export async function deliverNotification({ pool, webpush, vapidSubject, reporti
   const campaign = await reporting?.begin({ domainKey, content: { ...prepared.content, website_targeting: readTargeting(domain.targeting_policy) }, total: subscriptions.length, source, isTest, scheduleRunId });
   try {
   for (let offset = 0; offset < subscriptions.length; offset += 10) {
+    if(await platformSendingPaused(pool,domainKey))throw Object.assign(new Error('Platform sending paused. Review Reports before retrying.'),{status:503});
     await beforeBatch();
     if (offset > 0) {
       const [latest] = await pool.query('SELECT targeting_policy FROM domains WHERE domain_key = ? AND user_id = 1 LIMIT 1', [domainKey]);

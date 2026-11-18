@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {API_BASE,apiFetch,acceptSession,authEpoch,authChanged} from '../../api';
 import Recovery from './Recovery';
+import MfaSettings from '../platform/SecurityControls';
 import AccessHelp from './AccessHelp';
 import './login.css';
 
@@ -14,7 +15,9 @@ function FeatureIcon({type}) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{type==='send'?<path d="m3 10 18-7-7 18-3-8-8-3Zm8 3L21 3"/>:type==='chart'?<><path d="M4 4v16h16M8 15v-4m5 4V7m5 8v-6"/></>:<><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v16m4-7h5m-5 3h3"/></>}</svg>;
 }
 
-export default function Login({onLoginSuccess,notice=''}) {
+export default function Login({onLoginSuccess,notice='',initialMfa=false}) {
+  const [mfa,setMfa]=useState(initialMfa);
+  useEffect(()=>setMfa(initialMfa),[initialMfa]);
   const [recovery,setRecovery]=useState(recoveryFromUrl);
   useEffect(()=>{const changed=()=>{const link=recoveryFromUrl();if(link){window.history.replaceState({},'','/login');setRecovery(link);}};changed();window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed);},[]);
   const [username,setUsername]=useState(rememberedUsername),[password,setPassword]=useState('');
@@ -58,6 +61,7 @@ export default function Login({onLoginSuccess,notice=''}) {
       acceptSession(data);localStorage.setItem('auth','true');authChanged();
       try{if(remember)localStorage.setItem(rememberedKey,name);else localStorage.removeItem(rememberedKey);}
       catch{throw Object.assign(new Error('Allow site storage in your browser settings to sign in.'),{handled:true});}
+      if(data.mfa_required){setMfa(true);setPassword('');return;}
       await onLoginSuccess?.({signal:controller.signal});
       if(active.current)setPassword('');
     }catch(err){
@@ -74,7 +78,7 @@ export default function Login({onLoginSuccess,notice=''}) {
       <p className="login-story-footer">Your websites. Your audience. Your workspace.</p>
     </aside>
     <section className="login-form-panel" aria-labelledby="login-title">
-      {recovery?<Recovery key={recovery.kind+recovery.token} {...recovery} onBack={()=>setRecovery(null)}/>:<><header><span className="login-eyebrow">WORKSPACE SIGN IN</span><h1 id="login-title">Welcome back <br/>to Notizo</h1><p>Sign in to manage your websites and notifications.</p></header>
+      {mfa?<MfaSettings login onDone={async()=>{authChanged();await onLoginSuccess?.();}} onCancel={async()=>{await apiFetch(`${API_BASE}/api/logout`,{method:'POST'});setMfa(false);}}/>:recovery?<Recovery key={recovery.kind+recovery.token} {...recovery} onBack={()=>setRecovery(null)}/>:<><header><span className="login-eyebrow">WORKSPACE SIGN IN</span><h1 id="login-title">Welcome back <br/>to Notizo</h1><p>Sign in to manage your websites and notifications.</p></header>
       {notice&&<div className="login-notice" role="status">{notice}</div>}
       {error&&<div ref={errorRef} tabIndex={-1} className="login-error" id="login-error" role="alert">{error}</div>}
       <form className="login-form" onSubmit={submit} noValidate aria-busy={loading}>

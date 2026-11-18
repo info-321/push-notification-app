@@ -294,3 +294,7 @@ and reset now live in index.css.
 ### Cookie sessions and recovery email
 
 Dashboard authentication now uses HttpOnly cookies with CSRF checks instead of a browser-stored bearer token. Sign in again after upgrading. See [Hostinger SMTP and recovery setup](deploy/hostinger/AUTH-EMAIL.md) to configure email delivery and verify each account's recovery address. Email remains disabled until SMTP is configured. Access help links to the two administrator mailboxes; it does not send messages automatically.
+
+## Platform roles and two-factor authentication
+
+See [Hostinger Superadmin activation](deploy/hostinger/SUPERADMIN.md) for the coordinated upgrade, first owner setup, role permissions and recovery procedure.

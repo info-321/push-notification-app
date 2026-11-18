@@ -88,7 +88,7 @@ export function memoryIdentityStore(read) {
   return {
     async readUser(id) { return Number(id)===1 ? read() : extra.get(Number(id)); },
     async find(username) { return (await all()).find(row=>row.username===username); },
-    async permissions(id) { return permissions.get(Number(id)) || []; }, async users(){ return all(); },
+    async permissions(id) { return permissions.get(Number(id)) || []; }, async setPermissions(id,keys){permissions.set(Number(id),keys);}, async users(){ return all(); },
     async createUser(input) { if((await all()).some(row=>row.username===input.username)) throw Object.assign(new Error('Username already exists.'),{status:409}); const id=extra.size+2; extra.set(id,{...input,id,is_active:1,access_version:1,session_version:crypto.randomUUID(),legacy_deadline_ms:0}); permissions.set(id,input.domains); return id; },
     async updateUser(id,input) { const row=extra.get(Number(id)); if(!row||row.access_version!==input.version)return false; Object.assign(row,{role:input.role,is_active:input.is_active,access_version:row.access_version+1,session_version:crypto.randomUUID()}); permissions.set(Number(id),input.domains); for(const s of sessions.values())if(s.user_id===Number(id)&&!s.ended_ms&&s.expires_ms>Date.now())Object.assign(s,{ended_ms:Date.now(),end_reason:'access_changed'});return true; },
     async startSession(row){sessions.set(row.id,{...row,last_seen_ms:row.login_ms});}, async session(id){return sessions.get(id);}, async touch(id){if(sessions.has(id))sessions.get(id).last_seen_ms=Date.now();},

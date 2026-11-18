@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
+import PlatformAdmin from './components/platform/PlatformAdmin';
+import {ConfirmAction} from './components/platform/SecurityControls';
 import {API_BASE,apiFetch,browserSession,authEpoch,authChanged} from './api';
 import {saveLoginReturn,readLoginReturn,clearLoginReturn,permittedLoginDestination} from './login-routing';
 import UserManagement from './components/domain-settings/UserManagement';
@@ -19,12 +21,14 @@ import Account from './components/domain-settings/Account';
 import PwaSettings from './components/domain-settings/PwaSettings';
 // Note: Configuration content now lives inside Domain tabs; no separate view.
 
-const Workspace = ({onLogoutError}) => {
+const Workspace = ({onLogoutError,onProfile}) => {
   // Restore persisted auth/view state so reloads stay on the same page.
   const initialAuth = false; // The server cookie is the authority; localStorage never authenticates.
   const recoveryLink=/^#(?:reset|verify)=/.test(window.location.hash);
   const [booting,setBooting]=useState(!recoveryLink);
   const [bootError,setBootError]=useState('');
+  const [access,setAccess]=useState(null);
+  const [initialMfa,setInitialMfa]=useState(false);
   const params = new URLSearchParams(window.location.search);
   const routeKey = params.get('domain') || '';
   const routeView = window.location.pathname === '/push/reports' ? 'reports' : window.location.pathname === '/push/schedules' ? 'schedules' : window.location.pathname === '/push/settings' ? 'prompt-settings' : window.location.pathname === '/push' ? 'push' : window.location.pathname === '/analytics' ? 'analytics'
@@ -57,18 +61,22 @@ const Workspace = ({onLogoutError}) => {
 
   useEffect(() => {
     const expire = () => {
+      onProfile(null);setInitialMfa(false);
       const next=saveLoginReturn(window.location.pathname+window.location.search+window.location.hash)||readLoginReturn();
       setReturnPath(next);setLoginNotice('Your session has ended. Sign in again to continue.');
       setIsAuthenticated(false);setView('login');
     };
+    const mfa=()=>{setReturnPath(saveLoginReturn(window.location.pathname+window.location.search));onProfile(null);setInitialMfa(true);setIsAuthenticated(false);setView('login');};
+    window.addEventListener('mfa-required',mfa);
     window.addEventListener('auth-expired', expire);
-    return () => window.removeEventListener('auth-expired', expire);
-  }, []);
+    return () => {window.removeEventListener('auth-expired', expire);window.removeEventListener('mfa-required',mfa);};
+  }, [onProfile]);
 
   // Helper to sync view/tab from the current URL (supports /dashboard, /settings/domain, /settings/config?domain=KEY).
   const syncViewFromUrl = useCallback(() => {
     if (!isAuthenticated) return;
     const path = window.location.pathname;
+    if(path==='/platform'){setView('platform');return;}
     if (path === '/push/reports' || path === '/push/schedules' || path === '/push' || path === '/analytics' || path === '/push/settings') {
       const key = new URLSearchParams(window.location.search).get('domain');
       if (key) setSelectedDomainKey(key);
@@ -199,7 +207,7 @@ const Workspace = ({onLogoutError}) => {
     try {const response=await apiFetch(`${API_BASE}/api/logout`,{method:'POST',signal:controller.signal});if(!response.ok&&response.status!==401)throw new Error();}
     catch{onLogoutError('Could not complete sign-out. Check your connection and try Log out again.');return;}
     finally{clearTimeout(timeout);}
-    clearLoginReturn();setReturnPath(null);setLoginNotice('You have signed out.');
+    clearLoginReturn();setReturnPath(null);setLoginNotice('You have signed out.');onProfile(null);setInitialMfa(false);
     setSelectedDomainKey(''); setSelectedDomainName('');
     setIsAuthenticated(false);
     setView('login');
@@ -220,11 +228,13 @@ const Workspace = ({onLogoutError}) => {
       const responses=await Promise.all([apiFetch(`${API_BASE}/api/account`,{signal}),apiFetch(`${API_BASE}/api/domains`,{signal})]);
       rejected=responses.some(response=>response.status===401);
       const results=await Promise.all(responses.map(response=>response.json()));
+      if(results.some(data=>data.code==='MFA_REQUIRED')){onProfile(null);setIsAuthenticated(false);setInitialMfa(true);setView('login');return;}
       if(responses[0].ok&&results[0].ok)profile=results[0].data;
       if(responses[1].ok&&results[1].ok&&Array.isArray(results[1].data))domains=results[1].data;
       target=permittedLoginDestination(returnPath||readLoginReturn(),profile,domains);
     }catch{/* A failed permission lookup falls back to website selection, never the requested restricted page. */}
     if(rejected||signal?.aborted||authEpoch()!==epoch)throw Object.assign(new Error('Your session could not be verified. Please sign in again.'),{handled:true});
+    onProfile(profile);setAccess(profile);setInitialMfa(false);
     const hadReturn=Boolean(returnPath||readLoginReturn());
     clearLoginReturn();setReturnPath(null);setLoginNotice('');
     setSelectedDomainKey('');setSelectedDomainName('');
@@ -234,7 +244,7 @@ const Workspace = ({onLogoutError}) => {
       const url=new URL(target,window.location.origin),key=url.searchParams.get('domain')||'';
       setSelectedDomainKey(key);setSelectedDomainName(domains.find(site=>site.domain_key===key)?.domain_name||'');
       setDomainTab(url.pathname==='/settings/config'?'config':'domain');
-      const destinations={'/push':'push','/push/reports':'reports','/push/schedules':'schedules','/push/settings':'prompt-settings','/analytics':'analytics','/settings':'settings','/settings/general':'settings','/settings/account':'account','/settings/users':'users','/settings/domains':'domains','/settings/pwa':'pwa','/settings/config':'domain','/settings/domain':'domain'};
+      const destinations={'/platform':'platform','/push':'push','/push/reports':'reports','/push/schedules':'schedules','/push/settings':'prompt-settings','/analytics':'analytics','/settings':'settings','/settings/general':'settings','/settings/account':'account','/settings/users':'users','/settings/domains':'domains','/settings/pwa':'pwa','/settings/config':'domain','/settings/domain':'domain'};
       window.history.replaceState({},'',target);
       setView(url.pathname==='/dashboard'?(key?'overview':'sites'):destinations[url.pathname]);
       if(domains.length)setDomainSetupComplete(true);
@@ -251,7 +261,7 @@ const Workspace = ({onLogoutError}) => {
     if(recoveryLink)return;
     const controller=new AbortController();let disposed=false,timedOut=false;
     const timeout=setTimeout(()=>{timedOut=true;controller.abort();},15000);
-    browserSession({signal:controller.signal}).then(async data=>{if(data.authenticated)await handleLoginSuccess({signal:controller.signal});}).catch(error=>{if(!disposed)setBootError(timedOut?'Session check timed out. Check your connection and try again.':error.message);}).finally(()=>{clearTimeout(timeout);if(!disposed)setBooting(false);});
+    browserSession({signal:controller.signal}).then(async data=>{if(data.mfa_required)setInitialMfa(true);else if(data.authenticated)await handleLoginSuccess({signal:controller.signal});}).catch(error=>{if(!disposed)setBootError(timedOut?'Session check timed out. Check your connection and try again.':error.message);}).finally(()=>{clearTimeout(timeout);if(!disposed)setBooting(false);});
     return()=>{disposed=true;clearTimeout(timeout);controller.abort();};
     // Restore once on mount; subsequent sign-ins use the current route state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,12 +292,14 @@ const Workspace = ({onLogoutError}) => {
   if(booting||bootError)return <main className="login-page"><section className="login-help"><h1>Notizo</h1>{bootError?<><p role="alert">{bootError}</p><button className="login-submit" onClick={()=>window.location.reload()}>Try again</button></>:<p role="status">Checking your session...</p>}</section></main>;
 
   if (!isAuthenticated) {
-    return <Login onLoginSuccess={handleLoginSuccess} notice={loginNotice || (returnPath?'Sign in to continue to your workspace.':'')} />;
+    return <Login initialMfa={initialMfa} onLoginSuccess={handleLoginSuccess} notice={loginNotice || (returnPath?'Sign in to continue to your workspace.':'')} />;
   }
 
   if (view === 'splash' && remainingSplashViews > 0) {
     return <Splash onDone={handleSplashDone} />;
   }
+
+  if(view==='platform')return <PlatformAdmin onDashboard={()=>setView('sites')} onLogout={handleLogout}/>;
 
   if(view === 'users') return <UserManagement onDashboard={()=>setView('sites')} onLogout={handleLogout}/>;
 
@@ -333,7 +345,7 @@ const Workspace = ({onLogoutError}) => {
   }
 
   if (view === 'domains') {
-    return <DomainList
+    return <DomainList access={access}
       onPwa={() => setView('pwa')}
       onAccount={() => setView('account')}
       selectedDomainKey={selectedDomainKey}
@@ -393,7 +405,7 @@ const Workspace = ({onLogoutError}) => {
     />;
   }
   if ((view === 'analytics' || view === 'push' || view === 'prompt-settings' || view === 'schedules' || view === 'reports') && !selectedDomainKey) {
-    return <SiteSelect onAccount={() => setView('account')} onAddDomain={() => { setDomainTab('domain'); setView('domain'); }} onSettings={() => setView('settings')} onManageDomains={() => setView('domains')} onLogout={handleLogout} onSelectDomain={openOverview} />;
+    return <SiteSelect access={access} onAccount={() => setView('account')} onAddDomain={() => { setDomainTab('domain'); setView('domain'); }} onSettings={() => setView('settings')} onManageDomains={() => setView('domains')} onLogout={handleLogout} onSelectDomain={openOverview} />;
   }
 
   if (view === 'overview' && selectedDomainKey) {
@@ -411,7 +423,7 @@ const Workspace = ({onLogoutError}) => {
 
   if (view === 'sites') {
     return (
-      <SiteSelect
+      <SiteSelect access={access}
         onAccount={() => setView('account')}
         onAddDomain={() => {
           setDomainTab('domain');
@@ -457,6 +469,6 @@ const Workspace = ({onLogoutError}) => {
 };
 
 export default function App(){
-  const [logoutError,setLogoutError]=useState('');
-  return <><Workspace onLogoutError={setLogoutError}/>{logoutError&&<div className="logout-error" role="alert"><span>{logoutError}</span><button type="button" aria-label="Dismiss sign-out message" onClick={()=>setLogoutError('')}>Dismiss</button></div>}</>;
+  const [logoutError,setLogoutError]=useState(''),[profile,setProfile]=useState(null);
+  return <>{profile?.role==='superadmin'&&<nav className="platform-entry" aria-label="Platform owner"><a href="/platform">Platform Administration</a></nav>}<Workspace onProfile={setProfile} onLogoutError={setLogoutError}/><ConfirmAction/>{logoutError&&<div className="logout-error" role="alert"><span>{logoutError}</span><button type="button" aria-label="Dismiss sign-out message" onClick={()=>setLogoutError('')}>Dismiss</button></div>}</>;
 }

@@ -46,7 +46,7 @@ jobs:
         run: npm test
         working-directory: server
       - name: Test scheduler against disposable MySQL
-        run: node --test test/scheduler-mysql.test.js
+        run: node --test test/scheduler-mysql.test.js test/platform-mysql.test.js
         working-directory: server
         env:
           SCHEDULE_TEST_MYSQL: '1'

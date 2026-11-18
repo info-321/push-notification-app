@@ -1,7 +1,7 @@
 // Only known internal destinations and non-sensitive route parameters survive a
 // sign-in. Never store credentials or trust an arbitrary external next URL.
 const key='notizo.signInReturn';
-const paths=new Set(['/dashboard','/push','/push/reports','/push/schedules','/push/settings','/analytics','/settings','/settings/general','/settings/account','/settings/users','/settings/domains','/settings/domain','/settings/config','/settings/pwa']);
+const paths=new Set(['/platform','/dashboard','/push','/push/reports','/push/schedules','/push/settings','/analytics','/settings','/settings/general','/settings/account','/settings/users','/settings/domains','/settings/domain','/settings/config','/settings/pwa']);
 export function safeLoginDestination(value) {
   if(typeof value!=='string'||!value.startsWith('/')||value.startsWith('//')||value.length>600||Array.from(value).some(char=>char.charCodeAt(0)<=32||char==='\\'))return null;
   try {
@@ -22,10 +22,12 @@ export function saveLoginReturn(value){const path=safeLoginDestination(value);tr
 export function clearLoginReturn(){try{sessionStorage.removeItem(key);}catch{}}
 export function permittedLoginDestination(value,profile,domains) {
   const path=safeLoginDestination(value);
-  if(!path||!profile||!Array.isArray(domains)||!['admin','editor','viewer'].includes(profile.role))return null;
+  if(!path||!profile||!Array.isArray(domains)||!['superadmin','admin','editor','viewer'].includes(profile.role))return null;
   const url=new URL(path,'https://notizo.internal'),domain=url.searchParams.get('domain');
+  if(url.pathname==='/platform'&&profile.role!=='superadmin')return null;
+  if(url.pathname==='/settings/domain'&&profile.platform_enabled&&profile.role!=='superadmin')return null;
   if(domain&&!domains.some(site=>site.domain_key===domain))return null;
-  if(['/settings/users','/settings/domain'].includes(url.pathname)&&profile.role!=='admin')return null;
+  if(['/settings/users','/settings/domain'].includes(url.pathname)&&!['admin','superadmin'].includes(profile.role))return null;
   if(['/push','/push/settings','/settings/config'].includes(url.pathname)&&profile.role==='viewer')return null;
   if(['/push','/push/reports','/push/schedules','/push/settings','/analytics','/settings/config'].includes(url.pathname)&&!domain)return null;
   return path;

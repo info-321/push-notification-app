@@ -20,13 +20,14 @@ const authDb = await mysql.createConnection({
 const probeId = crypto.randomUUID();
 let session;
 try {
-  const [[account]] = await authDb.query('SELECT session_version FROM admin_accounts WHERE id=1 AND is_active=TRUE');
+  const [[platform]]=await authDb.query('SELECT enabled FROM platform_state WHERE id=1');
+  const [[account]] = await authDb.query(platform.enabled?"SELECT id,session_version FROM admin_accounts WHERE role='superadmin' AND is_active=TRUE ORDER BY id LIMIT 1":'SELECT id,session_version FROM admin_accounts WHERE id=1 AND is_active=TRUE');
   assert.ok(account?.session_version,'Persistent administrator account must exist');
   const expires=Date.now()+120000;
-  const payload=Buffer.from(JSON.stringify({exp:expires,v:account.session_version,uid:1,sid:probeId})).toString('base64url');
+  const payload=Buffer.from(JSON.stringify({exp:expires,v:account.session_version,uid:Number(account.id),sid:probeId})).toString('base64url');
   const signature=crypto.createHmac('sha256',process.env.PUSH_API_SECRET).update(`session:${payload}`).digest('base64url');
   session={token:`${payload}.${signature}`};
-  await authDb.query("INSERT INTO dashboard_sessions (id,user_id,token_hash,login_ms,last_seen_ms,expires_ms,source) VALUES (?,1,?,?,?,?,'deployment')",[probeId,crypto.createHash('sha256').update(session.token).digest('hex'),Date.now(),Date.now(),expires]);
+  await authDb.query("INSERT INTO dashboard_sessions (id,user_id,token_hash,login_ms,last_seen_ms,expires_ms,source) VALUES (?,?,?,?,?,?,'deployment')",[probeId,account.id,crypto.createHash('sha256').update(session.token).digest('hex'),Date.now(),Date.now(),expires]);
 } finally {await authDb.end();}
 try {
 assert.equal((await fetch(base + '/api/account')).status, 401, 'Account must require login');
@@ -229,7 +230,7 @@ try {
   assert.equal((await fetch(base+'/api/users')).status,401);
   const [tables]=await db.query("SHOW TABLES");
   const names=tables.map(row=>Object.values(row)[0]);
-  for(const name of ['dashboard_sessions','login_attempts','activity_log','notification_drafts','user_domain_access','subscription_events'])assert.ok(names.includes(name));
+  for(const name of ['platform_state','platform_mfa','platform_team','platform_config','platform_approvals','platform_operations','dashboard_sessions','login_attempts','activity_log','notification_drafts','user_domain_access','subscription_events'])assert.ok(names.includes(name));
   console.log('Accounts, session history, activity, drafts and subscription history: OK');
   for(const name of ['prompt_daily_totals','maintenance_runs'])assert.ok(names.includes(name));
   const [endpointIndex]=await db.query("SHOW INDEX FROM subscriptions WHERE Key_name='uniq_endpoint_sha256'");

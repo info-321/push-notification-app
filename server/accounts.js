@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {ensurePlatform,mysqlPlatformStore,memoryPlatformStore} from './platform-store.js';
 import {ensureRecovery,mysqlRecoveryStore,memoryRecoveryStore} from './recovery-store.js';
 import { promisify } from 'node:util';
 import { ensureIdentity, mysqlIdentityStore, memoryIdentityStore } from './identity-store.js';
@@ -28,6 +29,7 @@ export function mysqlAccountRepository(pool) {
   return {
     ...mysqlIdentityStore(pool),
     ...mysqlRecoveryStore(pool),
+    ...mysqlPlatformStore(pool),
     async initialize(username, password) {
       await pool.query(`CREATE TABLE IF NOT EXISTS admin_accounts (
         id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -40,6 +42,7 @@ export function mysqlAccountRepository(pool) {
       )`);
       await ensureIdentity(pool);
       await ensureRecovery(pool);
+      await ensurePlatform(pool);
       if (await this.read()) return;
       await pool.query('INSERT IGNORE INTO admin_accounts (id, username, password_hash, session_version) VALUES (1, ?, ?, ?)', [username, await hashPassword(password), crypto.randomBytes(24).toString('hex')]);
     },
@@ -66,6 +69,7 @@ export function memoryAccountRepository(username, password) {
   const identity = memoryIdentityStore(async () => { await api.read(); return record; });
   const api = {
     ...identity,
+    ...memoryPlatformStore(identity),
     ...memoryRecoveryStore(async id=>Number(id)===1?(await api.read(),record):identity.readUser(id),identity),
     async read(id = 1) {
       if (Number(id) !== 1) return identity.readUser(id);
@@ -97,7 +101,7 @@ export function installAccountRoutes(app, { accounts, requireAdmin, createToken,
     try {
       const row = await accounts.read(req.auth.id);
       return res.json({ ok: true, data: {
-        id: row.id, role: row.role, username: row.username, email: row.username.includes('@') ? row.username : null,
+        id: row.id, role: row.role, platform_enabled:req.auth.platform_enabled,mfa_enabled:req.auth.mfa_enabled,mfa_required:req.auth.mfa_required, username: row.username, email: row.username.includes('@') ? row.username : null,
         last_login_at: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
         last_login_ip: row.last_login_ip, status: 'Active',
       } });
@@ -129,7 +133,7 @@ export function installAccountRoutes(app, { accounts, requireAdmin, createToken,
       }
       failedChanges.delete(req.auth.id);
       await accounts.endOthers(req.auth.id, null, 'password_changed');
-      const token = await createToken(version, req.auth.id, req);
+      const token = await createToken(version, req.auth.id, req,{mfa_verified:req.auth.mfa_verified,factor_ms:req.auth.factor_ms});
       return res.json({ ok: true, csrfToken: browser.issue(res,token), message: 'Password changed. Other dashboard sessions have been signed out.' });
     } catch (error) {
       console.error('Password change failed:', error.code);

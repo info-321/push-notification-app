@@ -33,6 +33,7 @@ printf '%s\\n' "$*" >> "$TEST_LOG"
 case "$1" in
   compose)
     if [[ "$*" == *'config --quiet' ]]; then exit 0; fi
+    if [[ "$*" == *'api test -f platform-ops.js' ]]; then exit 1; fi
     printf 'CREATE TABLE \x60domains\x60 (id INT, vapid_private_key TEXT);\\n'
     if [[ "\u0024{TEST_DUMP_MODE:-}" == fail ]]; then exit 29; fi
     if [[ "\u0024{TEST_DUMP_MODE:-}" == missing-table ]]; then exit 0; fi

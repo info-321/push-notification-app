@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import DomainList from './DomainList';
 import { apiFetch } from '../../api';
 
-jest.mock('../../api', () => ({ API_BASE: 'https://api.example.test', apiFetch: jest.fn() }));
+jest.mock('../../api', () => ({ API_BASE: 'https://api.example.test', apiFetch: jest.fn(),protectedFetch:(...args)=>require('../../api').apiFetch(...args), }));
 
 const domains = [
   { id: 1, domain_key: 'mice', display_name: 'MICE Travel Advisor', domain_name: 'micetraveladvisor.com' },

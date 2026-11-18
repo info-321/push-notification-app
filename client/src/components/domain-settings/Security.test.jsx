@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import UserManagement from './UserManagement';
 import AccountSecurity from './AccountSecurity';
 import {apiFetch} from '../../api';
-jest.mock('../../api',()=>({API_BASE:'https://api.test',apiFetch:jest.fn()}));
+jest.mock('../../api',()=>({API_BASE:'https://api.test',apiFetch:jest.fn(),protectedFetch:(...args)=>require('../../api').apiFetch(...args),}));
 const response=data=>({ok:true,json:async()=>({ok:true,data})});
 beforeEach(()=>jest.resetAllMocks());
 test('administrator creates a named editor with selected website access and clears the temporary password',async()=>{
@@ -48,4 +48,15 @@ test('session history distinguishes explicit logout, expiry and the current sess
   await waitFor(()=>expect(apiFetch.mock.calls.some(([url,options])=>url.endsWith('/other')&&options?.method==='DELETE')).toBe(true));
   await screen.findByText('revoked');
   expect(screen.queryByText('raw-token')).not.toBeInTheDocument();
+});
+
+test('activated Admins see assigned website grants and cannot select administrator roles',async()=>{
+  apiFetch.mockImplementation(async url=>{
+    if(url.endsWith('/api/account'))return response({id:2,username:'team-admin',role:'admin',platform_enabled:true});
+    if(url.endsWith('/api/users'))return response([{id:2,username:'team-admin',role:'admin',domains:['one'],is_active:true}]);
+    if(url.endsWith('/api/domains'))return response([{domain_key:'one',domain_name:'one.test'}]);
+    return response([]);
+  });
+  render(<UserManagement/>);await screen.findByText('team-admin');
+  expect(screen.queryByRole('option',{name:'Administrator'})).not.toBeInTheDocument();expect(screen.queryByRole('option',{name:/Superadmin/})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'Editor'})).toBeInTheDocument();expect(screen.getByLabelText('one.test')).toBeInTheDocument();
 });

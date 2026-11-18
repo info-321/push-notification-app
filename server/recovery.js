@@ -15,9 +15,9 @@ export function installRecoveryRoutes(app,{accounts,requireAdmin,browser,mailer=
     const url=new URL('/login',base);url.hash=new URLSearchParams({[purpose==='verify'?'verify':'reset']:token}).toString();
     try{await mailer.send({to:email,purpose,url:url.href});}catch{await accounts.discardRecovery(hash);throw new Error('Email delivery failed.');}
   };
-  app.get('/api/account/recovery',requireAdmin,async(req,res)=>{try{res.json({ok:true,data:{...await accounts.recovery(req.auth.id),mail_enabled:mailer.enabled}});}catch{res.status(503).json({ok:false,message:'Could not load recovery settings.'});}});
+  app.get('/api/account/recovery',requireAdmin,async(req,res)=>{try{res.json({ok:true,data:{...await accounts.recovery(req.auth.id),mail_enabled:mailer.available?await mailer.available():mailer.enabled}});}catch{res.status(503).json({ok:false,message:'Could not load recovery settings.'});}});
   app.post('/api/account/recovery',requireAdmin,rate,async(req,res)=>{
-    if(!mailer.enabled)return res.status(503).json({ok:false,message:'Email delivery is not configured. Ask your administrator to finish SMTP setup.'});
+    if(!(mailer.available?await mailer.available():mailer.enabled))return res.status(503).json({ok:false,message:'Email delivery is not configured. Ask your administrator to finish SMTP setup.'});
     const {email,password}=req.body||{};
     if(!validMailbox(email))return res.status(400).json({ok:false,message:'Enter a valid recovery email address.'});
     try{
@@ -31,7 +31,7 @@ export function installRecoveryRoutes(app,{accounts,requireAdmin,browser,mailer=
     try{const ok=validToken(req.body?.token)&&await accounts.redeemRecovery(digest(req.body.token),'verify');res.status(ok?200:400).json({ok:Boolean(ok),message:ok?'Recovery email verified. You can now use Forgot password.':'This verification link is invalid, expired or already used.'});}catch{res.status(503).json({ok:false,message:'Verification is temporarily unavailable.'});}
   });
   app.post('/api/auth/forgot-password',browser.guard,rate,async(req,res)=>{
-    if(!mailer.enabled)return res.status(503).json({ok:false,message:'Password-reset email is not configured yet. Contact your administrator for help.'});
+    if(!(mailer.available?await mailer.available():mailer.enabled))return res.status(503).json({ok:false,message:'Password-reset email is not configured yet. Contact your administrator for help.'});
     const username=req.body?.username;
     if(typeof username!=='string'||!username.trim()||username.length>255)return res.status(400).json({ok:false,message:'Enter your username.'});
     // Respond independently of account existence and SMTP latency. Work remains

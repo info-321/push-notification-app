@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {mfaRequired} from './platform-auth.js';
 import { createAdminToken, hashPassword } from './accounts.js';
 import { tokenHash } from './identity-store.js';
 import { requestVisitorIp } from './audience.js';
@@ -10,9 +11,10 @@ export function loginMetadata(req) {
     os: /iPhone|iPod/i.test(ua) ? 'iOS' : /iPad/i.test(ua) ? 'iPadOS' : /Windows/i.test(ua) ? 'Windows' : /Android/i.test(ua) ? 'Android' : /Macintosh/i.test(ua) ? 'macOS' : /Linux|X11/i.test(ua) ? 'Linux' : null };
 }
 export function createSecurity({ accounts, pool, secret, browser }) {
-  const createToken = async (version, userId = 1, req) => {
-    const id = crypto.randomUUID(), lifetime = 12 * 3600000;
-    const token = createAdminToken(secret, version, lifetime, { uid: Number(userId), sid: id });
+  const createToken = async (version, userId = 1, req, assurance={}) => {
+    const state=await accounts.platformStatus(userId);
+    const id = crypto.randomUUID(), lifetime = Math.max(1,Math.min(24,state.policy.session_hours||12))*3600000;
+    const token = createAdminToken(secret, version, lifetime, { uid: Number(userId), sid: id, mfa:Boolean(assurance.mfa_verified), factor_ms:assurance.factor_ms||null });
     await accounts.startSession({ id, auth_transport:'cookie', user_id: Number(userId), token_hash: tokenHash(token), login_ms: Date.now(), expires_ms: Date.now()+lifetime, ...(req ? loginMetadata(req) : { ip_address:null,device:null,browser:null,os:null }) });
     return token;
   };
@@ -38,21 +40,30 @@ export function createSecurity({ accounts, pool, secret, browser }) {
       await accounts.touch(session.sid);
     } else return false; // Interactive browser sessions must be tracked and cookie-based.
     if(cookieToken && !['GET','HEAD','OPTIONS'].includes(req.method) && !browser.validCsrf(req)) return false;
-    req.auth = { id:Number(account.id), username:account.username, role:account.role, sid:session.sid || null,
-      domains: account.role==='admin' ? null : await accounts.permissions(account.id) };
+    const state=await accounts.platformStatus(account.id);
+    if(Date.now()-Number((await accounts.session(session.sid)).login_ms)>(state.policy.session_hours||12)*3600000)return false;
+    const savedSession=await accounts.session(session.sid),probe=savedSession.source==='deployment'&&!req.get('Origin')&&session.exp-Date.now()<=120000;
+    const required=mfaRequired(state,account),full=probe||!required||Boolean(state.mfa_enabled&&session.mfa);
+    const global=account.role==='superadmin'&&state.enabled||account.role==='admin'&&!state.enabled;
+    req.auth = { probe,global,platform_enabled:state.enabled,policy:state.policy,version:account.session_version,mfa_required:required,mfa_enabled:state.mfa_enabled,mfa_verified:Boolean(session.mfa),factor_ms:session.factor_ms,full_access:full,id:Number(account.id), username:account.username, role:account.role, sid:session.sid || null,
+      domains: global ? null : await accounts.permissions(account.id) };
     return true;
   };
-  const domainAllowed = (req, key, write=false) => req.auth?.role==='admin' ||
-    Boolean(req.auth && (!write || req.auth.role==='editor') && req.auth.domains.includes(key));
+  const domainAllowed = (req, key, write=false) => Boolean(req.auth?.full_access&&(!write||!req.auth.probe)&&(req.auth.global||(!write||['admin','editor'].includes(req.auth.role))&&req.auth.domains.includes(key)));
   const authorizeRequest = async req => {
     const pathname = new URL(req.originalUrl,'http://internal').pathname;
     const domainPath=pathname.match(/^\/api\/domains\/([^/]+)\//);
     if(domainPath)req.auditDomain=decodeURIComponent(domainPath[1]);
-    if (req.auth.role==='admin') return true;
+    if(!req.auth.full_access)return ['/api/account/mfa','/api/account/mfa/start','/api/account/mfa/enable','/api/auth/mfa/verify','/api/logout'].includes(pathname);
+    if(req.auth.probe&&!['GET','HEAD','OPTIONS'].includes(req.method)&&pathname!=='/api/account/heartbeat')return false;
+    if(req.auth.global)return true;
     const write = !['GET','HEAD','OPTIONS'].includes(req.method);
     if (pathname==='/api/logout' || pathname.startsWith('/api/account/')) return true;
     if (pathname==='/api/account') return true;
     if (pathname==='/api/domains' && req.method==='GET') return true;
+    if(pathname.startsWith('/api/users')&&req.auth.role==='admin')return true;
+    if(pathname.startsWith('/api/platform'))return false;
+    if(pathname==='/api/domains'||req.method==='DELETE'&&/^\/api\/domains\/[^/]+$/.test(pathname))return false;
     let key;
     const match=pathname.match(/^\/api\/domains\/([^/]+)(.*)$/);
     if (match) {
@@ -61,7 +72,7 @@ export function createSecurity({ accounts, pool, secret, browser }) {
       if (match[2]==='/integration' && req.auth.role==='viewer') return false;
     } else if (pathname.startsWith('/api/schedules/')) {
       if (pathname==='/api/schedules/status') return !write;
-      if (pathname==='/api/schedules/preview') return req.auth.role==='editor';
+      if (pathname==='/api/schedules/preview') return ['admin','editor'].includes(req.auth.role);
       const id=pathname.split('/')[3]; key=(await pool.query('SELECT domain_key FROM notification_schedules WHERE id=? AND user_id=1',[id]))[0][0]?.domain_key;
     } else if (pathname==='/api/schedules') key=req.body?.domain_key;
     if (!key) return false;
@@ -83,6 +94,7 @@ export function createSecurity({ accounts, pool, secret, browser }) {
       if (!await authenticate(req)) return res.status(401).json({ok:false,message:'Please sign in again.'});
       const allowed=await authorizeRequest(req);
       await auditMutation(req);
+      if(!allowed&&!req.auth.full_access)return res.status(403).json({ok:false,code:'MFA_REQUIRED',message:'Complete two-factor authentication to continue.'});
       if (!allowed) return res.status(403).json({ok:false,message:'Your account does not have permission for this website or action.'});
       return next();
     } catch(error) { console.error('Session/access check failed:',error.code); return res.status(503).json({ok:false,message:'Sign in is temporarily unavailable.'}); }
@@ -107,8 +119,8 @@ export function installSecurityRoutes(app,{accounts,pool,security}) {
   app.get('/api/account/sessions',requireAdmin,async(req,res)=>{try{res.set('Cache-Control','no-store').json({ok:true,data:(await accounts.sessions(req.auth.id,offset(req))).map(row=>publicSession(row,req.auth.sid))});}catch{res.status(503).json({ok:false,message:'Could not load sessions.'});}});
   app.delete('/api/account/sessions/:id',requireAdmin,async(req,res)=>{try{const ended=await accounts.endSession(req.params.id,req.auth.id,'revoked');res.status(ended?200:404).json({ok:ended,message:ended?'Session revoked.':'Session not found.'});}catch{res.status(503).json({ok:false,message:'Could not revoke session.'});}});
   app.post('/api/account/sessions/revoke-others',requireAdmin,async(req,res)=>{try{await accounts.endOthers(req.auth.id,req.auth.sid);res.json({ok:true});}catch{res.status(503).json({ok:false,message:'Could not revoke sessions.'});}});
-  app.get('/api/account/activity',requireAdmin,async(req,res)=>{try{res.set('Cache-Control','no-store').json({ok:true,data:await accounts.activity(req.auth.role==='admin'?null:req.auth.id,offset(req))});}catch{res.status(503).json({ok:false,message:'Could not load activity.'});}});
-  app.use('/api/users',requireAdmin,(req,res,next)=>req.auth.role==='admin'?next():res.status(403).json({ok:false,message:'Administrator access is required.'}));
+  app.get('/api/account/activity',requireAdmin,async(req,res)=>{try{res.set('Cache-Control','no-store').json({ok:true,data:req.auth.platform_enabled?await accounts.platformActivity(req.auth,offset(req)):await accounts.activity(req.auth.role==='admin'?null:req.auth.id,offset(req))});}catch{res.status(503).json({ok:false,message:'Could not load activity.'});}});
+  app.use('/api/users',requireAdmin,(req,res,next)=>req.auth.platform_enabled?res.status(404).json({ok:false,message:'User action unavailable.'}):next(),(req,res,next)=>req.auth.role==='admin'?next():res.status(403).json({ok:false,message:'Administrator access is required.'}));
   app.get('/api/users',async(req,res)=>{try{res.set('Cache-Control','no-store').json({ok:true,data:await Promise.all((await accounts.users()).map(async row=>({...publicUser(row),domains:await accounts.permissions(row.id)})))});}catch{res.status(503).json({ok:false,message:'Could not load users.'});}});
   const validate=async input=>{
     if(!['admin','editor','viewer'].includes(input.role)||!Array.isArray(input.domains)||input.domains.length>100||new Set(input.domains).size!==input.domains.length||input.domains.some(key=>typeof key!=='string'||key.length>64))throw Object.assign(new Error('Choose a role and valid websites.'),{status:400});

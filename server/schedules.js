@@ -1,3 +1,4 @@
+import {platformSendingPaused} from './platform-services.js';
 import crypto from 'node:crypto';
 import { prepareNotification, deliverNotification } from './notification-delivery.js';
 import { validateSchedule, scheduleSlot, nextScheduleSlot } from './schedule-time.js';
@@ -127,6 +128,7 @@ export function createScheduleWorker({ pool, webpush, vapidSubject, reporting, n
       const heartbeat = () => connection.query('INSERT INTO notification_scheduler_state (id, heartbeat_ms) VALUES (1, ?) ON DUPLICATE KEY UPDATE heartbeat_ms = VALUES(heartbeat_ms)', [now()]);
       await heartbeat();
       await reporting?.recover();
+      if(await platformSendingPaused(pool))return;
       // A prior process held the lock while sending. Its disappearance leaves an
       // uncertain occurrence: retain it for review, never automatically resend.
       await connection.query("UPDATE notification_schedule_runs r JOIN notification_schedules j ON j.id = r.schedule_id SET r.status = 'interrupted', r.finished_ms = ?, r.message = 'Send interrupted; some notifications may have been accepted. No automatic retry.' WHERE j.user_id = 1 AND j.status = 'running' AND r.status = 'sending'", [now()]);
