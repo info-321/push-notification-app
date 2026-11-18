@@ -143,3 +143,32 @@ test('unavailable SMTP settings fail safely without an unhandled recovery reques
   assert.equal((await f.owner.call('/api/auth/forgot-password',{username:'Superadmin'})).status,503);
   assert.equal((await f.owner.call('/api/auth/session')).status,200);
 });
+
+test('non-owners cannot enumerate current or former Superadmin identities, sessions or history',async t=>{
+  const f=await fixture(t);await f.enroll();const hiddenName='private-owner@example.test';
+  const former=await f.accounts.createUser({username:hiddenName,password_hash:await hashPassword(password),role:'editor',domains:['one']});
+  await f.accounts.platformAtomic(d=>{d.users[former].role='superadmin';});
+  await f.accounts.platformAtomic(d=>{d.users[former].role='editor';d.teams[former]=f.admin;});
+  const privateSession=crypto.randomUUID();await f.accounts.startSession({id:privateSession,user_id:former,token_hash:'fixture-hash',login_ms:Date.now(),expires_ms:Date.now()+60000,ip_address:'198.51.100.199'});
+  for(let i=0;i<65;i++){
+    await f.accounts.audit({actor_id:i%2?former:1,actor_name:i%2?hiddenName:'Superadmin',domain_key:'one',action:'/api/domains/one/settings',method:'PATCH'});
+    await f.accounts.attempt({user_id:i%2?former:1,username:i%2?hiddenName:'Superadmin',succeeded:true,ip_address:'198.51.100.199'});
+  }
+  await f.accounts.audit({actor_id:f.admin,actor_name:'Admin',domain_key:null,action:`/api/users (${hiddenName})`,method:'POST'});
+  await f.accounts.attempt({user_id:f.admin,username:'Admin',succeeded:true,ip_address:'203.0.113.3'});
+  const c=f.client();await c.login('Admin');
+  const users=await c.call('/api/users');assert.equal(users.status,200);assert.ok(!users.data.data.some(u=>[1,former].includes(u.id)));
+  const history=await c.call('/api/account/activity');assert.equal(history.status,200);assert.ok(history.data.data.some(r=>r.action==='Account management'));
+  const attempts=await c.call('/api/users/login-attempts');assert.equal(attempts.status,200);assert.ok(attempts.data.data.some(r=>r.username==='Admin'));
+  for(const result of [users,history,attempts])for(const value of [hiddenName,'Superadmin','198.51.100.199'])assert.ok(!JSON.stringify(result.data).includes(value));
+  for(const id of [1,former,99999]){const result=await c.call(`/api/users/${id}/sessions`);assert.equal(result.status,404);assert.equal(result.data.message,'User is unavailable.');}
+  const ownerUsers=await f.owner.call('/api/users');assert.ok(ownerUsers.data.data.some(u=>u.id===former));assert.ok(ownerUsers.data.data.some(u=>u.id===1));
+  const ownerHistory=await f.owner.call('/api/account/activity');assert.ok(ownerHistory.data.data.some(r=>r.actor_id===former));
+  for(const username of ['Editor','Viewer']){const member=f.client();await member.login(username);assert.equal((await member.call('/api/users')).status,403);assert.equal((await member.call('/api/platform')).status,403);const own=await member.call('/api/account/activity');assert.equal(own.status,200);assert.ok(!JSON.stringify(own.data).includes(hiddenName));}
+  // Even the compatibility routes used before role activation filter private identities.
+  await f.accounts.platformAtomic(d=>{d.state.enabled=false;});
+  const legacy=f.client();await legacy.login('Admin');
+  await f.accounts.attempt({user_id:null,username:' '+hiddenName.toUpperCase()+' ',succeeded:false,ip_address:'198.51.100.199'});
+  for(const path of ['/api/users','/api/users/login-attempts','/api/account/activity']){const result=await legacy.call(path);assert.equal(result.status,200);assert.ok(!JSON.stringify(result.data).toLowerCase().includes(hiddenName));assert.ok(!JSON.stringify(result.data).includes('198.51.100.199'));}
+  assert.equal((await legacy.call(`/api/users/${former}/sessions`)).status,404);
+});

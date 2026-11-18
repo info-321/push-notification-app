@@ -58,5 +58,5 @@ test('activated Admins see assigned website grants and cannot select administrat
     return response([]);
   });
   render(<UserManagement/>);await screen.findByText('team-admin');
-  expect(screen.queryByRole('option',{name:'Administrator'})).not.toBeInTheDocument();expect(screen.queryByRole('option',{name:/Superadmin/})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'Editor'})).toBeInTheDocument();expect(screen.getByLabelText('one.test')).toBeInTheDocument();
+  expect(screen.queryByRole('option',{name:'Administrator'})).not.toBeInTheDocument();expect(screen.queryByRole('option',{name:/Superadmin/})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'Editor'})).toBeInTheDocument();expect(screen.getByLabelText('one.test')).toBeInTheDocument();expect(screen.queryByText(/Superadmin/i)).not.toBeInTheDocument();
 });

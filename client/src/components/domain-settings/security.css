@@ -3,3 +3,5 @@
 .security-panels{min-width:0;grid-template-columns:minmax(0,1fr)}.security-panel{min-width:0}.security-user-form fieldset{min-width:0}.security-user-form>fieldset>label{display:grid}.security-user-form fieldset fieldset label{display:flex}
 
 .security-users-page .domain-list-account button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:4px 0}.security-users-page .domain-list-account{gap:24px}
+
+.security-activity-only{grid-template-columns:minmax(0,1fr)}

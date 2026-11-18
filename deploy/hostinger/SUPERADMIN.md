@@ -44,7 +44,7 @@ Review the selections and type `ACTIVATE`. The command commits the role changes 
 3. Scan the QR code using a trusted authenticator app, then enter its current six-digit code.
 4. Save all ten recovery codes privately in a password manager. Check the acknowledgement and continue.
 5. Open **Platform Administration**, then **Users & website access**. Review Admin grants and Editor/Viewer team assignments. Removing an Admin website also removes that website from their managed team grants and revokes affected sessions.
-6. Set and verify a recovery email in Account. Email password resets preserve MFA; they do not bypass it.
+6. Existing verified recovery addresses and password-reset links remain supported. Recovery email and Login sessions are not displayed in Settings ? Account. Password resets preserve MFA; they do not bypass it.
 
 The setup secret/QR and recovery codes are never stored in localStorage. Seeds and SMTP overrides are encrypted in MySQL using a key derived from `PUSH_API_SECRET`; recovery codes are stored only as keyed hashes. Back up the database **and** the protected deployment `.env`. Do not change `PUSH_API_SECRET` casually: it is needed to recover encrypted settings and preserve existing sending credentials.
 
@@ -105,3 +105,7 @@ Enter an operator recovery reason and explicitly confirm. This records the recov
 ## Verify before relying on the new roles
 
 Check that the owner can access Platform Administration; each Admin sees only assigned websites; Editors/Viewers cannot manage users; and a protected action requests the password plus a fresh authenticator code. Confirm the existing WordPress integration and password-reset flow still work. Take and verify a new backup after setup.
+
+## Account visibility
+
+Admin, Editor and Viewer responses exclude Superadmin account identities, login attempts, sessions and activity. A private account registry preserves that protection after later role changes. Filtering happens before pagination, and direct user/session requests for hidden accounts return the same unavailable response as unknown accounts. Superadmins retain access to the full audit history. Audit and recovery records are preserved in MySQL; the Account screen hides Recovery email and Login sessions while retaining password changes, two-factor settings and permitted activity history.

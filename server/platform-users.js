@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
+import {accountVisible} from './account-visibility.js';
 import {hashPassword} from './accounts.js';
 import {managedUsers,assertActor,rotateAccess} from './platform-store.js';
 import {appError} from './platform-crypto.js';
-const publicUser=(d,u)=>({id:u.id,username:u.username,role:u.role,is_active:Boolean(u.is_active),version:u.access_version,domains:d.grants[u.id]||[],manager_id:d.teams[u.id]||null,mfa_enabled:Boolean(d.mfa[u.id]?.enabled),last_login_at:u.last_login_at||null});
+const publicUser=(d,u,actor)=>({id:u.id,username:u.username,role:u.role,is_active:Boolean(u.is_active),version:u.access_version,domains:d.grants[u.id]||[],manager_id:accountVisible(d,actor,d.users[d.teams[u.id]])?d.teams[u.id]:null,mfa_enabled:Boolean(d.mfa[u.id]?.enabled),last_login_at:u.last_login_at||null});
 export function changeManagedUser(d,auth,input,id,passwordHash,domainKeys){
   const actor=assertActor(d,auth),owner=actor.role==='superadmin';
   if(!owner&&actor.role!=='admin')throw appError('Administrator access is required.',403);
@@ -38,7 +39,7 @@ export function installPlatformUsers(app,{accounts,pool,security}){
   const admin=(req,res,next)=>['admin','superadmin'].includes(req.auth.role)?next():res.status(403).json({ok:false,message:'Administrator access is required.'});
   const wrap=fn=>async(req,res)=>{try{await fn(req,res);}catch(e){res.status(e.status||503).json({ok:false,message:e.status?e.message:'User management is temporarily unavailable.'});}};
   const offset=req=>Math.max(0,Math.min(100000,Number.parseInt(req.query.offset,10)||0));
-  app.get('/api/users',requireAdmin,active,admin,wrap(async(req,res)=>{const d=await accounts.platformRead();res.json({ok:true,data:managedUsers(d,req.auth).map(u=>publicUser(d,u))});}));
+  app.get('/api/users',requireAdmin,active,admin,wrap(async(req,res)=>{const d=await accounts.platformRead();res.json({ok:true,data:managedUsers(d,req.auth).map(u=>publicUser(d,u,req.auth))});}));
   for(const [method,path]of [['post','/api/users'],['patch','/api/users/:id']])app[method](path,requireAdmin,active,admin,(req,res,next)=>security.requireFresh(req,res,next),wrap(async(req,res)=>{
     const input=req.body||{};let passwordHash;
     if(method==='post'){if(typeof input.password!=='string'||input.password.length<12||input.password.length>128)throw appError('Use a password of 12-128 characters.');passwordHash=await hashPassword(input.password);}
@@ -46,7 +47,7 @@ export function installPlatformUsers(app,{accounts,pool,security}){
     const id=await accounts.platformAtomic(d=>changeManagedUser(d,req.auth,input,method==='patch'?Number(req.params.id):null,passwordHash,domains.map(d=>d.domain_key)));
     res.status(method==='post'?201:200).json({ok:true,data:{id},message:'Access saved. Previous sessions for the changed user were revoked.'});
   }));
-  app.get('/api/users/login-attempts',requireAdmin,active,admin,wrap(async(req,res)=>{const d=await accounts.platformRead(),ids=managedUsers(d,req.auth).map(u=>u.id);res.json({ok:true,data:await accounts.platformAttempts(req.auth.role==='superadmin'?null:ids,offset(req))});}));
+  app.get('/api/users/login-attempts',requireAdmin,active,admin,wrap(async(req,res)=>{const d=await accounts.platformRead(),ids=managedUsers(d,req.auth).map(u=>u.id);res.json({ok:true,data:await accounts.platformAttempts(req.auth.role==='superadmin'?null:ids,offset(req),req.auth)});}));
   const canView=async req=>{const d=await accounts.platformRead();if(!managedUsers(d,req.auth).some(u=>u.id===Number(req.params.id)))throw appError('User is unavailable.',404);};
   app.get('/api/users/:id/sessions',requireAdmin,active,admin,wrap(async(req,res)=>{await canView(req);const rows=await accounts.sessions(Number(req.params.id),offset(req));res.json({ok:true,data:rows.map(r=>({id:r.id,current:r.id===req.auth.sid,login_ms:Number(r.login_ms),last_seen_ms:Number(r.last_seen_ms),expires_ms:Number(r.expires_ms),ended_ms:r.ended_ms?Number(r.ended_ms):null,status:r.ended_ms?'ended':r.expires_ms<=Date.now()?'expired':'active',end_reason:r.end_reason,ip_address:r.ip_address,device:r.device,browser:r.browser,os:r.os}))});}));
   app.delete('/api/users/:id/sessions/:session',requireAdmin,active,admin,(req,res,next)=>security.requireFresh(req,res,next),wrap(async(req,res)=>{await canView(req);const ended=await accounts.endSession(req.params.session,Number(req.params.id),'admin_revoked');res.status(ended?200:404).json({ok:ended,message:ended?'Session revoked.':'Session unavailable.'});}));

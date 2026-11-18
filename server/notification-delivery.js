@@ -33,7 +33,7 @@ export function prepareNotification(input, domain, now = new Date()) {
 }
 
 export async function deliverNotification({ pool, webpush, vapidSubject, reporting }, domain, domainKey, prepared, { beforeBatch = async () => {}, onProgress = async () => {}, source = 'api', isTest = false, scheduleRunId = null } = {}) {
-  if(await platformSendingPaused(pool,domainKey))throw Object.assign(new Error('Platform sending is paused by a Superadmin.'),{status:503});
+  if(await platformSendingPaused(pool,domainKey))throw Object.assign(new Error('Sending is temporarily paused.'),{status:503});
   const policy = readTargeting(domain.targeting_policy);
   const where = pushAudienceWhere(domainKey, prepared.audience, true, policy);
   const [subscriptions] = await pool.query(`SELECT id, endpoint, p256dh, auth FROM subscriptions WHERE ${where.sql}`, where.params);

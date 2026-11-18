@@ -31,6 +31,26 @@ test('MySQL platform migration, durable encrypted secrets, single-use factors an
     const data=await accounts.platformRead(),auth=id=>({id,role:'superadmin',version:data.users[id].session_version});
     const results=await Promise.allSettled([[owner.id,second],[second,owner.id]].map(([actor,target])=>accounts.platformAtomic(d=>changeManagedUser(d,auth(actor),{role:'viewer',domains:[],is_active:true,version:data.users[target].access_version},target,null,['one']))));
     assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(Object.values((await accounts.platformRead()).users).filter(u=>u.role==='superadmin'&&u.is_active).length,1);
+    // Visibility is applied in SQL before pagination and survives role changes/restart.
+    const ordinary={id:1,role:'admin'},ownerAuth={id:Object.values((await accounts.platformRead()).users).find(u=>u.role==='superadmin').id,role:'superadmin'};
+    const privateIds=[owner.id,second];
+    for(let i=0;i<3;i++){
+      await accounts.attempt({username:'Original',user_id:1,succeeded:true,ip_address:'203.0.113.5',device:null,browser:null,os:null});
+      await accounts.audit({actor_id:1,actor_name:'Original',domain_key:'one',action:'/api/domains/one/settings',method:'PATCH'});
+    }
+    for(let i=0;i<60;i++){
+      const user=await accounts.read(privateIds[i%2]);
+      await accounts.attempt({username:user.username,user_id:user.id,succeeded:true,ip_address:'198.51.100.199',device:null,browser:null,os:null});
+      await accounts.audit({actor_id:user.id,actor_name:user.username,domain_key:'one',action:'/api/domains/one/settings',method:'PATCH'});
+    }
+    await accounts.attempt({username:' '+owner.username.toUpperCase()+' ',user_id:null,succeeded:false,ip_address:'198.51.100.199',device:null,browser:null,os:null});
+    const again=mysqlAccountRepository(pool);await again.initialize('Ignored','Ignored');
+    const visibleAttempts=await again.platformAttempts([1,...privateIds],0,ordinary),visibleActivity=await again.platformActivity(ordinary);
+    assert.equal(visibleAttempts.length,3);assert.ok(visibleAttempts.every(r=>r.user_id===1));
+    assert.equal(visibleActivity.length,3);assert.ok(visibleActivity.every(r=>r.actor_id===1));
+    assert.equal((await again.platformAttempts(null,0,ordinary)).length,3);
+    assert.equal((await again.platformAttempts(null,0,ownerAuth)).length,50);assert.equal((await again.platformActivity(ownerAuth)).length,50);
+    assert.equal((await again.platformAttempts([1,...privateIds],50,ordinary)).length,0);
     await accounts.platformAtomic(d=>{d.state.sends_paused=true;});assert.equal(await platformSendingPaused(pool),true);
     assert.deepEqual((await pool.query('SELECT * FROM domains'))[0],before);assert.deepEqual((await pool.query('SELECT * FROM subscriptions'))[0],subscriptions);
     assert.equal(crypt.decrypt(await accounts.platformConfig('smtp'),'platform:smtp').password,'fixture-mail-password');

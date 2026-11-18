@@ -53,3 +53,18 @@ test('incorrect current-password errors keep the form available for correction',
   await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
   expect(localStorage.getItem('sessionToken')).toBeNull();
 });
+
+test.each(['superadmin','admin','editor','viewer'])('Account hides recovery and session sections for %s without fetching them',async role=>{
+  apiFetch.mockImplementation(async url=>response(url.endsWith('/api/account')?{...profile,role}:url.endsWith('/api/account/mfa')?{enabled:false,required:false}:[]));
+  render(<Account/>);await screen.findByText('owner@example.test');await screen.findByRole('heading',{name:'Activity history'});
+  expect(screen.queryByRole('heading',{name:'Recovery email'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading',{name:'Login sessions'})).not.toBeInTheDocument();
+  expect(screen.getByRole('heading',{name:'Two-factor authentication'})).toBeInTheDocument();
+  expect(apiFetch.mock.calls.some(([url])=>/\/api\/account\/(recovery|sessions)/.test(url))).toBe(false);
+});
+
+test('activity loading errors remain visible after the sessions section is removed',async()=>{
+  apiFetch.mockImplementation(async url=>url.includes('/activity')?response(null,false):response(url.endsWith('/api/account')?profile:[]));
+  render(<Account/>);expect(await screen.findByRole('alert')).toHaveTextContent('Could not load security history.');
+  expect(screen.queryByRole('heading',{name:'Login sessions'})).not.toBeInTheDocument();
+});

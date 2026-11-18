@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {accountVisible,privateAccountIds,privateAccountNames,rememberPrivateAccounts,historyVisible,publicActivity} from './account-visibility.js';
 import {defaultPlatform,stable,appError} from './platform-crypto.js';
 const parse=(value,fallback)=>typeof value==='string'?JSON.parse(value):value??fallback;
 const keyed=(rows,key)=>Object.fromEntries(rows.map(r=>[String(r[key]),r]));
@@ -11,6 +12,7 @@ export async function ensurePlatform(pool){
   await pool.query(`CREATE TABLE IF NOT EXISTS platform_approvals (token_hash CHAR(64) PRIMARY KEY,user_id BIGINT UNSIGNED NOT NULL,session_id CHAR(36) NOT NULL,session_version VARCHAR(64) NOT NULL,request_hash CHAR(64) NOT NULL,expires_ms BIGINT NOT NULL,used_ms BIGINT NULL,KEY approval_expiry(expires_ms))`);
   await pool.query(`CREATE TABLE IF NOT EXISTS platform_operations (id CHAR(36) PRIMARY KEY,kind VARCHAR(24) NOT NULL,status VARCHAR(24) NOT NULL,actor_id BIGINT UNSIGNED NOT NULL,created_ms BIGINT NOT NULL,details JSON NOT NULL,KEY operation_time(created_ms))`);
   pool.notizoPlatform=true;
+  await mysqlPlatformStore(pool).platformAtomic(()=>{});
 }
 async function snapshot(c,locked=false){
   const [[row]]=await c.query('SELECT * FROM platform_state WHERE id=1'+(locked?' FOR UPDATE':''));
@@ -44,20 +46,38 @@ export function mysqlPlatformStore(pool){return {
   async platformStatus(id){const [[s]]=await pool.query('SELECT * FROM platform_state WHERE id=1');if(!s)throw new Error('Platform state unavailable.');const m=id?(await pool.query('SELECT enabled FROM platform_mfa WHERE user_id=?',[id]))[0][0]:null;return {...s,enabled:Boolean(s.enabled),sends_paused:Boolean(s.sends_paused),policy:parse(s.policy,{}),mfa_enabled:Boolean(m?.enabled)};},
   async platformRead(){return snapshot(pool);},
   async platformConfig(name){return (await pool.query('SELECT value FROM platform_config WHERE name=?',[name]))[0][0]?.value||null;},
-  async platformAttempts(ids,offset=0){return (await pool.query(`SELECT * FROM login_attempts ${ids?'WHERE user_id IN ('+ids.map(()=>'?').join(',')+')':''} ORDER BY id DESC LIMIT 50 OFFSET ?`,ids?[...ids,offset]:[offset]))[0];},
-  async platformActivity(auth,offset=0){const d=await this.platformRead(),ids=auth.role==='superadmin'?null:managedUsers(d,auth).map(u=>u.id);return (await pool.query(`SELECT * FROM activity_log ${ids?'WHERE actor_id IN ('+ids.map(()=>'?').join(',')+')':''} ORDER BY occurred_ms DESC LIMIT 50 OFFSET ?`,ids?[...ids,offset]:[offset]))[0];},
-  async platformAtomic(fn){const c=await pool.getConnection();try{await c.beginTransaction();const data=await snapshot(c,true),before=structuredClone(data);const result=await fn(data);await persist(c,before,data);await c.query('DELETE FROM platform_approvals WHERE expires_ms<?',[Date.now()-86400000]);await c.commit();return result;}catch(e){await c.rollback();throw e;}finally{c.release();}},
+  async platformAttempts(ids,offset=0,actor){
+    const d=await this.platformRead(),where=[],params=[];
+    if(ids){where.push(ids.length?'user_id IN ('+ids.map(()=>'?').join(',')+')':'FALSE');params.push(...ids);}
+    if(actor?.role!=='superadmin'){
+      const hidden=[...privateAccountIds(d)],names=privateAccountNames(d);
+      if(hidden.length){where.push('(user_id IS NULL OR user_id NOT IN ('+hidden.map(()=>'?').join(',')+'))');params.push(...hidden);}
+      if(names.length){where.push('LOWER(TRIM(username)) NOT IN ('+names.map(()=>'?').join(',')+')');params.push(...names);}
+    }
+    return (await pool.query(`SELECT * FROM login_attempts ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY id DESC LIMIT 50 OFFSET ?`,[...params,offset]))[0];
+  },
+  async platformActivity(auth,offset=0){
+    const d=await this.platformRead(),ids=auth.role==='superadmin'||!d.state.enabled&&auth.role==='admin'?null:managedUsers(d,auth).map(u=>u.id),where=[],params=[];
+    if(ids){where.push(ids.length?'actor_id IN ('+ids.map(()=>'?').join(',')+')':'FALSE');params.push(...ids);}
+    if(auth.role!=='superadmin'){
+      const hidden=[...privateAccountIds(d)],names=privateAccountNames(d);
+      if(hidden.length){where.push('actor_id NOT IN ('+hidden.map(()=>'?').join(',')+')');params.push(...hidden);}
+      if(names.length){where.push('LOWER(actor_name) NOT IN ('+names.map(()=>'?').join(',')+')');params.push(...names);}
+    }
+    return (await pool.query(`SELECT * FROM activity_log ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY occurred_ms DESC LIMIT 50 OFFSET ?`,[...params,offset]))[0].map(row=>publicActivity(row,auth));
+  },
+  async platformAtomic(fn){const c=await pool.getConnection();try{await c.beginTransaction();const data=await snapshot(c,true),before=structuredClone(data);const result=await fn(data);rememberPrivateAccounts(data,before);await persist(c,before,data);await c.query('DELETE FROM platform_approvals WHERE expires_ms<?',[Date.now()-86400000]);await c.commit();return result;}catch(e){await c.rollback();throw e;}finally{c.release();}},
 };}
 export function memoryPlatformStore(identity){let data={state:defaultPlatform(),mfa:{},teams:{},config:{},approvals:{},operations:{}},queue=Promise.resolve();return {
   async platformStatus(id){return {...structuredClone(data.state),mfa_enabled:Boolean(data.mfa[id]?.enabled)};},
   async platformConfig(name){return data.config[name]||null;},
-  async platformAttempts(ids,offset=0){return (await identity.attempts(0)).filter(r=>!ids||ids.includes(r.user_id)).slice(offset,offset+50);},
-  async platformActivity(auth,offset=0){const d=await this.platformRead(),ids=auth.role==='superadmin'?null:managedUsers(d,auth).map(u=>u.id);return (await identity.activity(null,0)).filter(r=>!ids||ids.includes(r.actor_id)).slice(offset,offset+50);},
+  async platformAttempts(ids,offset=0,actor={}){const d=await this.platformRead();return (await identity.attempts(0,Infinity)).filter(r=>(!ids||ids.includes(r.user_id))&&historyVisible(d,actor,r,'login')).slice(offset,offset+50);},
+  async platformActivity(auth,offset=0){const d=await this.platformRead(),ids=auth.role==='superadmin'||!d.state.enabled&&auth.role==='admin'?null:managedUsers(d,auth).map(u=>u.id);return (await identity.activity(null,0,Infinity)).filter(r=>(!ids||ids.includes(r.actor_id))&&historyVisible(d,auth,r,'activity')).slice(offset,offset+50).map(r=>publicActivity(r,auth));},
   async platformRead(){return structuredClone({...data,users:keyed(await identity.users(),'id'),grants:Object.fromEntries(await Promise.all((await identity.users()).map(async u=>[u.id,await identity.permissions(u.id)])))});},
-  async platformAtomic(fn){const run=queue.then(async()=>{const current=await this.platformRead(),before=structuredClone(current),result=await fn(current);
+  async platformAtomic(fn){const run=queue.then(async()=>{const current=await this.platformRead(),before=structuredClone(current),result=await fn(current);rememberPrivateAccounts(current,before);
     for(const [id,u]of Object.entries(current.users)){const row=(await identity.users()).find(r=>Number(r.id)===Number(id));if(row)Object.assign(row,u);else{const made=await identity.createUser({...u,domains:current.grants[id]||[]});if(made!==Number(id))throw new Error('Fixture ID mismatch');Object.assign(await identity.readUser(made),u);}if(before.users[id]?.session_version!==u.session_version)await identity.endOthers(Number(id),null,'access_changed');await identity.setPermissions(Number(id),current.grants[id]||[]);}
     data={...current};delete data.users;delete data.grants;return result;});queue=run.catch(()=>{});return run;},
 };}
 export const rotateAccess=user=>{user.access_version=Number(user.access_version||1)+1;user.session_version=crypto.randomBytes(24).toString('hex');};
-export const managedUsers=(data,actor)=>Object.values(data.users).filter(u=>actor.role==='superadmin'||Number(u.id)===actor.id||(['editor','viewer'].includes(u.role)&&data.teams[u.id]===actor.id&&(data.grants[u.id]||[]).every(k=>(data.grants[actor.id]||[]).includes(k))));
+export const managedUsers=(data,actor)=>Object.values(data.users).filter(u=>accountVisible(data,actor,u)&&(actor.role==='superadmin'||Number(u.id)===actor.id||(['editor','viewer'].includes(u.role)&&data.teams[u.id]===actor.id&&(data.grants[u.id]||[]).every(k=>(data.grants[actor.id]||[]).includes(k)))));
 export function assertActor(data,auth){const user=data.users[auth.id];if(!user?.is_active||user.session_version!==auth.version||user.role!==auth.role)throw appError('Your access changed. Sign in again.',401);return user;}
