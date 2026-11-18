@@ -73,5 +73,16 @@ test('MySQL platform migration, durable encrypted secrets, single-use factors an
     await pool.query('DROP TRIGGER reject_fixture_event');
     const {accountEvent,addAccountEvent}=await import('../account-events.js');await accounts.platformAtomic(d=>{for(let i=0;i<55;i++)addAccountEvent(d,accountEvent('account_access_changed',d.users[activeOwner.id],d.users[1]));});
     const firstPage=await restarted.accountHistory({userId:1}),secondPage=await restarted.accountHistory({userId:1,offset:50});assert.equal(firstPage.rows.length,50);assert.equal(firstPage.has_more,true);assert.ok(secondPage.rows.length>0);assert.ok(!secondPage.rows.some(e=>firstPage.rows.some(a=>a.id===e.id)));assert.ok((await restarted.platformRead()).operations[id]);
+    // A username, credential and website update survives repository restart together.
+    const oldUser=await accounts.read(1),nextHash=await hashPassword('Managed-SQL-password-123');
+    await accounts.platformAtomic(d=>changeManagedUser(d,actor,{username:'OriginalRenamed',role:'admin',domains:['one'],is_active:true,version:oldUser.access_version},1,nextHash,['one']));
+    assert.equal(await restarted.find('Original'),undefined);assert.equal((await restarted.find('OriginalRenamed')).id,1);assert.equal((await restarted.read(1)).password_hash,nextHash);assert.deepEqual(await restarted.permissions(1),['one']);
+    const renamedHistory=await restarted.accountHistory({userId:1});assert.ok(renamedHistory.rows.some(e=>e.kind==='account_access_changed'&&e.changes?.previous_username==='Original'));assert.ok(renamedHistory.rows.some(e=>e.kind==='password_changed'&&e.source==='user_management'));
+    const adminState=await accounts.read(1),adminAuth={id:1,role:'admin',version:adminState.session_version};
+    const peer=await accounts.platformAtomic(d=>changeManagedUser(d,adminAuth,{username:'DelegatedAdmin',role:'admin',domains:['one']},null,nextHash,['one']));
+    assert.equal((await restarted.read(peer)).role,'admin');assert.equal(await restarted.platformConfig(`admin-created-by:${peer}`),'1');
+    const current=await accounts.read(1),beforeDuplicate=structuredClone(current);await assert.rejects(accounts.platformAtomic(d=>changeManagedUser(d,actor,{username:'DelegatedAdmin',role:'admin',domains:['one'],is_active:true,version:current.access_version},1,'bad-hash',['one'])));assert.deepEqual(await restarted.read(1),beforeDuplicate);
+    const legacyTarget=await accounts.createUser({username:'LegacyTarget',password_hash:nextHash,role:'editor',domains:['one']});
+    assert.equal(await accounts.updateUser(legacyTarget,{username:'LegacyRenamed',password_hash:nextHash,role:'editor',domains:['one'],is_active:true,version:1},actor),true);assert.equal((await restarted.find('LegacyRenamed')).id,legacyTarget);assert.ok((await restarted.accountHistory({userId:legacyTarget})).rows.some(e=>e.kind==='password_changed'));
   }finally{await pool.end();await root.query(`DROP DATABASE ${name}`);await root.end();}
 });

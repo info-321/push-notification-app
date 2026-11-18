@@ -8,13 +8,16 @@ export function privateAccountIds(data){
 }
 export function rememberPrivateAccounts(data,before=data){
   data.config[registry]=JSON.stringify([...new Set([...privateAccountIds(before),...privateAccountIds(data)])].sort((a,b)=>a-b));
+  data.config.private_account_names=JSON.stringify([...new Set([...privateAccountNames(before),...privateAccountNames(data)])]);
 }
 export function accountVisible(data,actor,user){
   return Boolean(user&&(actor.role==='superadmin'||!privateAccountIds(data).has(Number(user.id))));
 }
 export function privateAccountNames(data){
   const ids=privateAccountIds(data);
-  return Object.values(data.users).filter(u=>ids.has(Number(u.id))).map(u=>u.username.toLowerCase());
+  const aliases=JSON.parse(data.config.private_account_names||'[]');
+  if(!Array.isArray(aliases)||aliases.some(name=>typeof name!=='string'))throw new Error('Invalid account visibility settings.');
+  return [...new Set([...aliases,...Object.values(data.users).filter(u=>ids.has(Number(u.id))).map(u=>u.username.toLowerCase())])];
 }
 export function historyVisible(data,actor,row,type){
   if(actor.role==='superadmin')return true;

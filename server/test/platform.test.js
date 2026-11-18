@@ -211,3 +211,42 @@ test('managed reset rejects expired links, superseded versions and inactive targ
   const second=await issue(),third=await issue();assert.equal(await f.accounts.redeemManagedReset(second,'replacement'),false);assert.ok(await f.accounts.redeemManagedReset(third,'replacement'));
   await f.accounts.platformAtomic(d=>{d.users[f.editor].is_active=false;});await assert.rejects(issue(),/active account/);
 });
+
+
+test('Superadmin edits credentials and websites atomically, revokes sessions, retains factors and records actor and prior username',async t=>{
+  const f=await fixture(t),{codes}=await f.enroll(),admin=f.client();await admin.login('Admin');await f.enroll(admin);const factors=structuredClone((await f.accounts.platformRead()).mfa[f.admin]);
+  const input={username:'RenamedAdmin',password:'New-admin-password-123',role:'admin',domains:['one','two'],is_active:true,version:(await f.accounts.read(f.admin)).access_version},path=`/api/users/${f.admin}`;
+  assert.equal((await f.owner.call(path,input,'PATCH')).data.code,'STEP_UP_REQUIRED');const proof=await f.approval(f.owner,path,input,codes[0],'PATCH');assert.equal((await f.owner.call(path,input,'PATCH',{'X-Notizo-Approval':proof})).status,200);
+  assert.equal(await f.accounts.find('Admin'),undefined);assert.equal((await f.accounts.find('RenamedAdmin')).id,f.admin);assert.deepEqual(await f.accounts.permissions(f.admin),['one','two']);assert.deepEqual((await f.accounts.platformRead()).mfa[f.admin],factors);assert.equal((await admin.call('/api/account')).status,401);
+  const visitor=f.client();await visitor.call('/api/auth/session');assert.equal((await visitor.call('/api/login',{username:'RenamedAdmin',password})).status,401);assert.equal((await visitor.call('/api/login',{username:'RenamedAdmin',password:input.password})).status,200);
+  const history=await f.accounts.accountHistory({userId:f.admin});assert.equal(history.rows.find(e=>e.kind==='password_changed').actor_name,'Superadmin');assert.equal(history.rows.find(e=>e.kind==='account_access_changed').changes.previous_username,'Admin');assert.ok(!JSON.stringify(history).includes(input.password));
+  const stale=await f.approval(f.owner,path,input,codes[1],'PATCH');assert.equal((await f.owner.call(path,input,'PATCH',{'X-Notizo-Approval':stale})).status,409);
+});
+
+test('Admin edits only its own Editors and Viewers; passwords and resets stay scoped on the server',async t=>{
+  const f=await fixture(t),admin=f.client(),editor=f.client();await admin.login('Admin');await editor.login('Editor');const path=`/api/users/${f.editor}`,body={username:'TeamEditor',password:'Edited-team-password-123',role:'editor',domains:['one'],is_active:true,version:(await f.accounts.read(f.editor)).access_version};
+  let proof=await f.approval(admin,path,body,undefined,'PATCH');assert.equal((await admin.call(path,body,'PATCH',{'X-Notizo-Approval':proof})).status,200);assert.equal((await editor.call('/api/account')).status,401);
+  const {verifyPassword}=await import('../accounts.js');assert.ok(await verifyPassword(body.password,(await f.accounts.read(f.editor)).password_hash));
+  for(const id of [1,f.viewer]){const target=await f.accounts.read(id),input={username:'Forbidden',password:'Forbidden-password-123',role:target.role==='superadmin'?'viewer':target.role,domains:['one'],is_active:true,version:target.access_version},targetPath=`/api/users/${id}`;proof=await f.approval(admin,targetPath,input,undefined,'PATCH');assert.equal((await admin.call(targetPath,input,'PATCH',{'X-Notizo-Approval':proof})).status,404);}
+  const before=await f.accounts.read(f.editor),oldHash=before.password_hash;
+  const duplicate={...body,username:'Admin',password:undefined,version:before.access_version};delete duplicate.password;proof=await f.approval(admin,path,duplicate,undefined,'PATCH');assert.equal((await admin.call(path,duplicate,'PATCH',{'X-Notizo-Approval':proof})).status,409);assert.equal((await f.accounts.read(f.editor)).password_hash,oldHash);
+  const resetPath=`/api/users/${f.editor}/reset-password`,reason={reason:'Verified member requested reset'};assert.equal((await admin.call(resetPath,reason)).data.code,'STEP_UP_REQUIRED');proof=await f.approval(admin,resetPath,reason);const reset=await admin.call(resetPath,reason,'POST',{'X-Notizo-Approval':proof});assert.equal(reset.status,200);assert.equal(await verifyPassword(body.password,(await f.accounts.read(f.editor)).password_hash),false);
+  const raw=new URLSearchParams(new URL(reset.data.data.reset_url).hash.slice(1)).get('reset');assert.ok(await f.accounts.redeemManagedReset(tokenHash(raw),await hashPassword('Recovered-member-password-123')));assert.equal(await f.accounts.redeemManagedReset(tokenHash(raw),'ignored'),false);assert.equal((await f.accounts.accountHistory({userId:f.editor})).rows.find(e=>e.kind==='password_reset_requested').source,'team_reset');
+  for(const id of [1,f.viewer,999]){const p=`/api/users/${id}/reset-password`,approval=await f.approval(admin,p,reason);assert.equal((await admin.call(p,reason,'POST',{'X-Notizo-Approval':approval})).status,404);}
+});
+
+test('Admin creates independent scoped Admins without acquiring edit/reset/session privileges over peers',async t=>{
+  const f=await fixture(t),admin=f.client();await admin.login('Admin');const body={username:'NewAdmin',password,role:'admin',domains:['one']},proof=await f.approval(admin,'/api/users',body);
+  const made=await admin.call('/api/users',body,'POST',{'X-Notizo-Approval':proof});assert.equal(made.status,201);const id=made.data.data.id,listed=(await admin.call('/api/users')).data.data.find(u=>u.id===id);assert.equal(listed.can_edit,false);assert.equal(listed.can_reset,false);assert.equal(listed.can_view_sessions,false);assert.ok(!JSON.stringify((await admin.call('/api/users')).data).includes('Superadmin'));
+  const peer=f.client();assert.equal((await peer.login('NewAdmin')).status,200);assert.deepEqual((await peer.call('/api/domains')).data.data.map(d=>d.domain_key),['one']);assert.equal((await admin.call(`/api/users/${id}/sessions`)).status,404);
+  const reason={reason:'Denied peer takeover request'},p=`/api/users/${id}/reset-password`,approval=await f.approval(admin,p,reason);assert.equal((await admin.call(p,reason,'POST',{'X-Notizo-Approval':approval})).status,404);
+  const wide={...body,username:'TooWide',domains:['two']},wideProof=await f.approval(admin,'/api/users',wide);assert.equal((await admin.call('/api/users',wide,'POST',{'X-Notizo-Approval':wideProof})).status,403);assert.equal(await f.accounts.find('TooWide'),undefined);
+  const edit={role:'editor',domains:['one'],is_active:true,version:listed.version},editPath=`/api/users/${id}`,editProof=await f.approval(admin,editPath,edit,undefined,'PATCH');assert.equal((await admin.call(editPath,edit,'PATCH',{'X-Notizo-Approval':editProof})).status,404);
+});
+
+test('renamed privileged accounts retain private aliases and anonymous old-name attempts stay hidden',async t=>{
+  const f=await fixture(t),{codes}=await f.enroll(),id=await f.accounts.createUser({username:'PrivateOwner',password_hash:await hashPassword(password),role:'superadmin',domains:[]});
+  await f.accounts.attempt({username:'PrivateOwner',user_id:null,succeeded:false});const body={username:'RenamedOwner',role:'superadmin',domains:[],is_active:true,version:(await f.accounts.read(id)).access_version},path=`/api/users/${id}`,proof=await f.approval(f.owner,path,body,codes[0],'PATCH');assert.equal((await f.owner.call(path,body,'PATCH',{'X-Notizo-Approval':proof})).status,200);
+  assert.ok((await f.accounts.platformAttempts(null,0,{role:'admin'})).every(a=>!a.username.includes('PrivateOwner')));
+  const admin=f.client();await admin.login('Admin');const creation={username:'PrivateOwner',password,role:'editor',domains:['one']},approval=await f.approval(admin,'/api/users',creation);assert.equal((await admin.call('/api/users',creation,'POST',{'X-Notizo-Approval':approval})).status,409);
+});

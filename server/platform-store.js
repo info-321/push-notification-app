@@ -31,7 +31,7 @@ async function persist(c,before,after){
   for(const [id,u]of Object.entries(after.users)){
     const old=before.users[id];
     if(!old)await c.query('INSERT INTO admin_accounts (id,username,password_hash,session_version,role,is_active,access_version,legacy_deadline_ms) VALUES (?,?,?,?,?,?,?,0)',[id,u.username,u.password_hash,u.session_version,u.role,u.is_active,u.access_version]);
-    else if(stable(old)!==stable(u))await c.query('UPDATE admin_accounts SET role=?,is_active=?,access_version=?,session_version=?,password_hash=?,password_changed_at=?,legacy_deadline_ms=0 WHERE id=?',[u.role,u.is_active,u.access_version,u.session_version,u.password_hash,u.password_changed_at||null,id]);
+    else if(stable(old)!==stable(u))await c.query('UPDATE admin_accounts SET username=?,role=?,is_active=?,access_version=?,session_version=?,password_hash=?,password_changed_at=?,legacy_deadline_ms=0 WHERE id=?',[u.username,u.role,u.is_active,u.access_version,u.session_version,u.password_hash,u.password_changed_at||null,id]);
     if(old&&old.session_version!==u.session_version)await c.query("UPDATE dashboard_sessions SET ended_ms=?,end_reason=? WHERE user_id=? AND ended_ms IS NULL",[Date.now(),after.sessionReasons?.[id]||'access_changed',id]);
     if(stable(before.grants[id]||[])!==stable(after.grants[id]||[])){
       await c.query('DELETE FROM user_domain_access WHERE user_id=?',[id]);for(const key of after.grants[id]||[])await c.query('INSERT INTO user_domain_access (user_id,domain_key) VALUES (?,?)',[id,key]);
@@ -89,4 +89,5 @@ export function memoryPlatformStore(identity){let data={state:defaultPlatform(),
 };}
 export const rotateAccess=user=>{user.access_version=Number(user.access_version||1)+1;user.session_version=crypto.randomBytes(24).toString('hex');};
 export const managedUsers=(data,actor)=>Object.values(data.users).filter(u=>accountVisible(data,actor,u)&&(actor.role==='superadmin'||Number(u.id)===actor.id||(['editor','viewer'].includes(u.role)&&data.teams[u.id]===actor.id&&(data.grants[u.id]||[]).every(k=>(data.grants[actor.id]||[]).includes(k)))));
+export const canManageUser=(data,actor,user)=>Boolean(user&&user.id!==actor.id&&managedUsers(data,actor).some(u=>u.id===user.id));
 export function assertActor(data,auth){const user=data.users[auth.id];if(!user?.is_active||user.session_version!==auth.version||user.role!==auth.role)throw appError('Your access changed. Sign in again.',401);return user;}

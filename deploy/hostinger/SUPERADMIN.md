@@ -57,7 +57,9 @@ A TOTP code can be used only once. Wait for the next code before confirming anot
 | View websites/reports | All | Assigned | Assigned | Assigned |
 | Send/configure campaigns | All | Assigned | Assigned | No |
 | Add/delete websites | Yes; deletion needs confirmation | No | No | No |
-| Manage Admin/Superadmin roles and website assignments | Yes, with confirmation | No | No | No |
+| Edit existing Admin/Superadmin roles and website assignments | Yes, with confirmation | No | No | No |
+| Create additional Admins | Any website | Subset of own assigned websites | No | No |
+| Edit username/password or reset another account | All other accounts | Own team Editors/Viewers | No | No |
 | Manage Editors/Viewers | All | Own team, within assigned websites | No | No |
 | View login/session/activity records | Platform-wide | Own account and managed team | Own | Own |
 | Global SMTP, security policy, exports and restore approvals | Yes, with confirmation | No | No | No |
@@ -120,3 +122,12 @@ To reset another active account, choose **Reset password**, give a reason and co
 An account cannot use this action to reset itself; use Account ? Change Password or the verified email recovery flow. Reset completion is attributed to a **Reset-link holder**, with the requesting Superadmin recorded separately, rather than claiming the link proves a person's identity. Forgotten MFA is a separate recovery operation. A password reset never disables it. An owner can reset another owner, but cannot change its own permissions or bypass last-owner safeguards.
 
 Role help beside the user Role selector and in Account explains the current scope. Ordinary roles do not receive private Superadmin history or controls.
+
+
+## Username/password editing and scoped Admin creation
+
+Settings ? User ? **Edit user** lets a Superadmin edit another account's username, role, password and website grants. An Admin can edit these fields only for their managed Editors/Viewers. Leave **New password (optional)** blank to retain the current hash. Credential and access changes revoke existing sessions and pending reset links; 2FA, verified recovery email, user ID, campaign ownership and audit history are retained. Duplicate or reserved former privileged usernames are rejected. Privileged username aliases remain hidden from ordinary account and login-history responses after renaming. Use My account for your own password; self role/access changes remain protected.
+
+**Reset password** is available in the same user table for active manageable accounts. Admin resets are checked against team membership and website grants again inside the database transaction. The private reset link expires after 15 minutes, works once, and is returned only to the initiating operator. Share it privately and verify the recipient. Passwords are never returned from MySQL or included in activity logs. The Superadmin-only account history records the operator, changed username/access and password changes/reset requests.
+
+Admins may now **create** additional Admins with an explicit subset of their currently assigned websites. These are independent peers, not subordinate team members: the creator cannot edit, disable, reset or inspect the peer's sessions. A creator can see their directly created Admins while all of the peer's website assignments remain inside the creator's current scope; only a Superadmin can manage their account. A later reduction of the creator's own assignments does not change an independent peer's already assigned websites. Editors/Viewers retain the existing team grant cascade. Admins cannot promote an existing Editor/Viewer to Admin or grant platform privileges. Fresh password confirmation and an enabled second factor protect all these mutations.

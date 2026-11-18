@@ -50,7 +50,7 @@ test('session history distinguishes explicit logout, expiry and the current sess
   expect(screen.queryByText('raw-token')).not.toBeInTheDocument();
 });
 
-test('activated Admins see assigned website grants and cannot select administrator roles',async()=>{
+test('activated Admins can create scoped Admins without seeing private owner roles',async()=>{
   apiFetch.mockImplementation(async url=>{
     if(url.endsWith('/api/account'))return response({id:2,username:'team-admin',role:'admin',platform_enabled:true});
     if(url.endsWith('/api/users'))return response([{id:2,username:'team-admin',role:'admin',domains:['one'],is_active:true}]);
@@ -58,5 +58,23 @@ test('activated Admins see assigned website grants and cannot select administrat
     return response([]);
   });
   render(<UserManagement/>);await screen.findByText('team-admin');
-  expect(screen.queryByRole('option',{name:'Administrator'})).not.toBeInTheDocument();expect(screen.queryByRole('option',{name:/Superadmin/})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'Editor'})).toBeInTheDocument();expect(screen.getByLabelText('one.test')).toBeInTheDocument();expect(screen.queryByText(/Superadmin/i)).not.toBeInTheDocument();
+  expect(screen.getByRole('option',{name:'Administrator'})).toBeInTheDocument();expect(screen.queryByRole('option',{name:/Superadmin/})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'Editor'})).toBeInTheDocument();expect(screen.getByLabelText('one.test')).toBeInTheDocument();expect(screen.queryByText(/Superadmin/i)).not.toBeInTheDocument();
+});
+
+
+test('Admin edits a team member username and password, with no option to promote the member to Admin',async()=>{
+  let saved;const member={id:3,username:'Editor',role:'editor',domains:['one'],is_active:true,version:2,can_edit:true,can_reset:true};
+  apiFetch.mockImplementation(async(url,options)=>{if(options?.method==='PATCH'){saved=JSON.parse(options.body);return response({id:3});}if(url.endsWith('/api/account'))return response({id:2,username:'Admin',role:'admin',platform_enabled:true});if(url.endsWith('/api/users'))return response([member]);if(url.endsWith('/api/domains'))return response([{domain_key:'one',domain_name:'one.test'}]);return response([]);});
+  render(<UserManagement/>);fireEvent.click(await screen.findByRole('button',{name:'Edit user'}));fireEvent.change(screen.getByLabelText('Username'),{target:{value:'Renamed'}});fireEvent.change(screen.getByLabelText('New password (optional)'),{target:{value:'Changed-fixture-password-123'}});expect(screen.queryByRole('option',{name:'Administrator'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'Save user'}));await screen.findByText(/User updated/);expect(saved).toMatchObject({username:'Renamed',password:'Changed-fixture-password-123',domains:['one'],version:2});expect(screen.queryByLabelText('New password (optional)')).not.toBeInTheDocument();
+});
+
+test('blank edit password is omitted and an independent Admin has no edit, reset or session actions',async()=>{
+  let saved;const users=[{id:3,username:'Editor',role:'editor',domains:['one'],is_active:true,version:2,can_edit:true,can_reset:true},{id:4,username:'Peer',role:'admin',domains:['one'],is_active:true,can_edit:false,can_reset:false,can_view_sessions:false}];
+  apiFetch.mockImplementation(async(url,options)=>{if(options?.method==='PATCH'){saved=JSON.parse(options.body);return response({id:3});}if(url.endsWith('/api/account'))return response({id:2,username:'Admin',role:'admin',platform_enabled:true});if(url.endsWith('/api/users'))return response(users);if(url.endsWith('/api/domains'))return response([{domain_key:'one',domain_name:'one.test'}]);return response([]);});
+  render(<UserManagement/>);await screen.findByText('Peer');expect(screen.getAllByRole('button',{name:'Edit user'})).toHaveLength(1);expect(screen.queryByRole('button',{name:'Reset password for Peer'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'Edit user'}));fireEvent.click(screen.getByRole('button',{name:'Save user'}));await screen.findByText(/User updated/);expect(saved).not.toHaveProperty('password');
+});
+
+test('team reset creates and dismisses a private link without putting it into browser storage',async()=>{
+  apiFetch.mockImplementation(async(url,options)=>{if(url.endsWith('/reset-password'))return response({username:'Editor',reset_url:'https://api.test/login#reset=fixture-private-token',expires_ms:Date.now()+900000});if(url.endsWith('/api/account'))return response({id:2,username:'Admin',role:'admin',platform_enabled:true});if(url.endsWith('/api/users'))return response([{id:3,username:'Editor',role:'editor',domains:['one'],is_active:true,version:2,can_edit:true,can_reset:true}]);if(url.endsWith('/api/domains'))return response([{domain_key:'one',domain_name:'one.test'}]);return response([]);});
+  render(<UserManagement/>);fireEvent.click(await screen.findByRole('button',{name:'Reset password for Editor'}));fireEvent.change(screen.getByLabelText('Reset reason'),{target:{value:'Verified account holder request'}});fireEvent.click(screen.getByRole('button',{name:'Create private reset link'}));await screen.findByLabelText('Private reset link');expect(screen.getByLabelText('Private reset link')).toHaveAttribute('type','password');expect(JSON.stringify(localStorage)).not.toContain('fixture-private-token');fireEvent.click(screen.getByRole('button',{name:'Dismiss private link'}));expect(screen.queryByLabelText('Private reset link')).not.toBeInTheDocument();
 });

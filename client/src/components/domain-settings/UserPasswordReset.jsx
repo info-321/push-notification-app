@@ -1,0 +1,12 @@
+import React,{useState} from 'react';
+import {API_BASE,protectedFetch} from '../../api';
+
+export default function UserPasswordReset({user,onClose,onSaved,setWorking}){
+  const [reason,setReason]=useState(''),[receipt,setReceipt]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[copied,setCopied]=useState(false);
+  const reset=async e=>{e.preventDefault();if(busy)return;setBusy(true);setWorking(true);setError('');
+    try{const r=await protectedFetch(`${API_BASE}/api/users/${user.id}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})},`Reset ${user.username}'s password and revoke existing sessions`),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'Could not reset the password.');setReceipt(d.data);setReason('');onSaved();}catch(e){setError(e.message);}finally{setBusy(false);setWorking(false);}
+  };
+  return <section className="account-panel security-panel" aria-label={`Password reset for ${user.username}`}><h2>Reset password: {user.username}</h2>{error&&<p role="alert" className="security-error">{error}</p>}
+    {receipt?<div role="status"><p>The old password and sessions have been revoked. Share this single-use link privately with {receipt.username}. It expires at {new Date(receipt.expires_ms).toLocaleString()}. Two-factor authentication is unchanged.</p><label className="security-reset-link">Private reset link<input type="password" readOnly autoComplete="off" value={receipt.reset_url}/></label><div className="security-form-actions"><button onClick={async()=>{try{await navigator.clipboard.writeText(receipt.reset_url);setCopied(true);}catch{setError('Could not copy the link. Select and copy the private reset link field.');}}}>{copied?'Copied':'Copy reset link'}</button><button onClick={onClose}>Dismiss private link</button></div></div>:<form className="security-user-form" onSubmit={reset}><p>This immediately revokes the old password and all sessions. The user chooses a new password using a private link valid for 15 minutes. You will confirm your own password and, when enabled, your two-factor code.</p><label>Reset reason<textarea required minLength={10} maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} disabled={busy}/></label><div className="security-form-actions"><button className="security-primary" disabled={busy}>{busy?'Creating reset link…':'Create private reset link'}</button><button type="button" disabled={busy} onClick={onClose}>Cancel reset</button></div></form>}
+  </section>;
+}

@@ -5,3 +5,5 @@
 .security-users-page .domain-list-account button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:4px 0}.security-users-page .domain-list-account{gap:24px}
 
 .security-activity-only{grid-template-columns:minmax(0,1fr)}
+
+.security-user-form textarea,.security-reset-link input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd8e2;border-radius:5px;color:#273457;background:#fff;font:inherit}.security-reset-link{display:grid;gap:8px;font-size:13px}.security-panel .security-form-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}.security-user-form>fieldset>p{margin:0}

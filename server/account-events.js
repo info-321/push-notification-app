@@ -9,7 +9,7 @@ export function accountEvent(kind,actor,target,{source='dashboard',reason,change
   const details={target_id:Number(target.id),target_username:target.username,actor_name:actor.username,source};
   if(reason)details.reason=reason;
   if(requestedBy)details.requested_by={id:Number(requestedBy.id),username:requestedBy.username};
-  if(changes)details.changes={role:changes.role,is_active:changes.is_active,domains:changes.domains,manager_id:changes.manager_id};
+  if(changes)details.changes={role:changes.role,is_active:changes.is_active,domains:changes.domains,manager_id:changes.manager_id,...(changes.previous_username?{previous_username:changes.previous_username,username:target.username}:{})};
   return {id:crypto.randomUUID(),kind,status:'completed',actor_id:Number(actor.id)||0,created_ms:Date.now(),details};
 }
 function summaryInfo(event){return {time_ms:event.created_ms,actor_id:event.actor_id,actor_name:event.details.actor_name,source:event.details.source,kind:event.kind};}

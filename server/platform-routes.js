@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import {hashPassword} from './accounts.js';
+import {userResetHandler} from './user-reset-route.js';
 import {isAccountEvent} from './account-events.js';
 import {assertActor} from './platform-store.js';
 import {appError} from './platform-crypto.js';
@@ -28,14 +28,7 @@ export function installPlatformRoutes(app,{accounts,pool,security,mailer,secret,
     if(!Number.isSafeInteger(offset)||offset<0||offset>1000000||(userId!==null&&(!Number.isSafeInteger(userId)||userId<1)))throw appError('Choose a valid account and history page.');
     res.json({ok:true,data:{...await accounts.accountHistory({offset,userId}),current_user_id:req.auth.id}});
   }));
-  app.post('/api/platform/accounts/:id/reset-password',fresh,wrap(async(req,res)=>{
-    const id=Number(req.params.id),{reason}=req.body||{};
-    if(!Number.isSafeInteger(id)||id<1||Object.keys(req.body||{}).some(k=>k!=='reason')||typeof reason!=='string'||reason.trim().length<10||reason.length>500)throw appError('Choose an account and enter a reason of 10-500 characters.');
-    const token=crypto.randomBytes(32).toString('base64url'),hash=crypto.createHash('sha256').update(token).digest('hex');
-    const result=await accounts.startManagedReset(req.auth,id,hash,await hashPassword(crypto.randomBytes(48).toString('base64url')),reason.trim());
-    const url=new URL('/login',dashboardBase);url.hash=new URLSearchParams({reset:token}).toString();
-    res.json({ok:true,data:{...result,reset_url:url.href},message:'Old password and sessions revoked. Share this single-use link privately; it expires in 15 minutes. Two-factor authentication is unchanged.'});
-  }));
+  app.post('/api/platform/accounts/:id/reset-password',fresh,wrap(userResetHandler({accounts,dashboardBase})));
   app.get('/api/platform',wrap(async(req,res)=>{
     const d=await accounts.platformRead();const [domains]=await pool.query(`SELECT d.id,d.domain_key,d.domain_name,d.display_name,
       (SELECT COUNT(*) FROM subscriptions s WHERE s.domain_key=d.domain_key AND s.user_id=1) AS subscribers FROM domains d WHERE d.user_id=1 ORDER BY d.domain_name`);

@@ -85,7 +85,7 @@ export function memoryAccountRepository(username, password) {
     },
     async updateUser(id,input,actor){
       if(!actor)return identity.updateUser(id,input);
-      return api.platformAtomic(d=>{const user=d.users[id];if(!user||Number(id)===1||user.access_version!==input.version)return false;Object.assign(user,{role:input.role,is_active:input.is_active,access_version:user.access_version+1,session_version:crypto.randomUUID()});d.grants[id]=input.domains;addAccountEvent(d,accountEvent('account_access_changed',actor,user,{source:'user_management',changes:input}));return true;});
+      return api.platformAtomic(d=>{const user=d.users[id];if(!user||Number(id)===1||user.access_version!==input.version)return false;const previous=user.username;if(input.username&&Object.values(d.users).some(u=>u.id!==Number(id)&&u.username.toLowerCase()===input.username.toLowerCase()))throw Object.assign(new Error('Username is unavailable.'),{status:409});Object.assign(user,{username:input.username??user.username,role:input.role,is_active:input.is_active,access_version:user.access_version+1,session_version:crypto.randomUUID(),...(input.password_hash?{password_hash:input.password_hash,password_changed_at:new Date()}: {})});d.grants[id]=input.domains;addAccountEvent(d,accountEvent('account_access_changed',actor,user,{source:'user_management',changes:{...input,previous_username:previous!==user.username?previous:undefined}}));if(input.password_hash)addAccountEvent(d,accountEvent('password_changed',actor,user,{source:'user_management'}));return true;});
     },
     async read(id = 1) {
       if (Number(id) !== 1) return identity.readUser(id);

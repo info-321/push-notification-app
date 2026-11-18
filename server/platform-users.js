@@ -1,21 +1,29 @@
 import crypto from 'node:crypto';
 import {accountEvent,addAccountEvent} from './account-events.js';
-import {accountVisible} from './account-visibility.js';
+import {accountVisible,privateAccountIds,privateAccountNames} from './account-visibility.js';
+import {userResetHandler} from './user-reset-route.js';
 import {hashPassword} from './accounts.js';
-import {managedUsers,assertActor,rotateAccess} from './platform-store.js';
+import {managedUsers,assertActor,rotateAccess,canManageUser} from './platform-store.js';
 import {appError} from './platform-crypto.js';
-const publicUser=(d,u,actor)=>({id:u.id,username:u.username,role:u.role,is_active:Boolean(u.is_active),version:u.access_version,domains:d.grants[u.id]||[],manager_id:accountVisible(d,actor,d.users[d.teams[u.id]])?d.teams[u.id]:null,mfa_enabled:Boolean(d.mfa[u.id]?.enabled),last_login_at:u.last_login_at||null});
+const publicUser=(d,u,actor)=>({id:u.id,username:u.username,role:u.role,is_active:Boolean(u.is_active),version:u.access_version,domains:d.grants[u.id]||[],manager_id:accountVisible(d,actor,d.users[d.teams[u.id]])?d.teams[u.id]:null,mfa_enabled:Boolean(d.mfa[u.id]?.enabled),last_login_at:u.last_login_at||null,can_edit:canManageUser(d,actor,u),can_reset:canManageUser(d,actor,u)&&Boolean(u.is_active),can_view_sessions:managedUsers(d,actor).some(v=>v.id===u.id)});
 export function changeManagedUser(d,auth,input,id,passwordHash,domainKeys){
   const actor=assertActor(d,auth),owner=actor.role==='superadmin';
   if(!owner&&actor.role!=='admin')throw appError('Administrator access is required.',403);
   if(Object.keys(input).some(k=>!['username','password','role','domains','is_active','version','manager_id'].includes(k)))throw appError('Unexpected user setting.');
   if(!['superadmin','admin','editor','viewer'].includes(input.role)||!Array.isArray(input.domains)||input.domains.length>100||new Set(input.domains).size!==input.domains.length||input.domains.some(k=>!domainKeys.includes(k)))throw appError('Choose a valid role and websites.');
-  if(!owner&&(!['editor','viewer'].includes(input.role)||input.domains.some(k=>!(d.grants[actor.id]||[]).includes(k))))throw appError('You can manage Editors and Viewers only within your assigned websites.',403);
-  let user;const creating=id===null;
+  if(!owner&&(!(id===null?['admin','editor','viewer']:['editor','viewer']).includes(input.role)||input.domains.some(k=>!(d.grants[actor.id]||[]).includes(k))))throw appError('You can create Admins and manage your Editors and Viewers only within your assigned websites.',403);
+  let user;const creating=id===null;let previousUsername;
   if(id!==null&&(!Number.isSafeInteger(id)||id<1))throw appError('Invalid user.');
   if(id){user=d.users[id];if(!user||!managedUsers(d,actor).some(u=>u.id===id))throw appError('User is unavailable.',404);if(id===actor.id)throw appError('Change another account here; your own access is protected.');if(!owner&&!['editor','viewer'].includes(user.role))throw appError('You cannot change this role.',403);if(input.version!==user.access_version)throw appError('User changed. Reload before saving.',409);if(typeof input.is_active!=='boolean')throw appError('Choose an account status.');}
   else {if(typeof input.username!=='string'||!input.username.trim()||input.username.length>255||!passwordHash)throw appError('Enter a username and a password of 12-128 characters.');if(Object.values(d.users).some(u=>u.username.toLowerCase()===input.username.trim().toLowerCase()))throw appError('Username already exists.',409);id=Math.max(0,...Object.keys(d.users).map(Number))+1;user={id,username:input.username.trim(),password_hash:passwordHash,session_version:crypto.randomUUID(),access_version:1,is_active:1};d.users[id]=user;}
-  const manager=owner?(input.manager_id?Number(input.manager_id):null):actor.id;
+  if(!creating&&input.username!==undefined){
+    if(typeof input.username!=='string'||!input.username.trim()||input.username.length>255)throw appError('Enter a username of 1-255 characters.');
+    const name=input.username.trim();if(name!==user.username){previousUsername=user.username;user.username=name;}
+  }
+  if(Object.values(d.users).some(u=>u.id!==id&&u.username.toLowerCase()===user.username.toLowerCase())||!privateAccountIds(d).has(id)&&privateAccountNames(d).includes(user.username.toLowerCase()))throw appError('Username is unavailable.',409);
+  if(!creating&&passwordHash){user.password_hash=passwordHash;user.password_changed_at=new Date();d.sessionReasons={[id]:'password_changed'};}
+  const manager=['editor','viewer'].includes(input.role)?(owner?(input.manager_id?Number(input.manager_id):null):actor.id):null;
+  if(creating&&!owner&&input.role==='admin')d.config[`admin-created-by:${id}`]=String(actor.id);
   if(manager!==null&&(!Number.isSafeInteger(manager)||manager<1))throw appError('Choose a valid team administrator.');
   if(manager){const admin=d.users[manager];if(!admin?.is_active||admin.role!=='admin'||!['editor','viewer'].includes(input.role)||input.domains.some(k=>!(d.grants[manager]||[]).includes(k)))throw appError('The team manager must be an active Admin assigned to every selected website.');}
   const activeOwner=user.role==='superadmin'&&Boolean(user.is_active);
@@ -32,23 +40,25 @@ export function changeManagedUser(d,auth,input,id,passwordHash,domainKeys){
     if(next.length!==previous.length){d.grants[member]=next;rotateAccess(d.users[member]);}
     if(user.role!=='admin'||!user.is_active)d.teams[member]=null;
   }
-  addAccountEvent(d,accountEvent(creating?'account_created':'account_access_changed',actor,user,{changes:{role:user.role,is_active:Boolean(user.is_active),domains:d.grants[id],manager_id:d.teams[id]||null}}));
+  addAccountEvent(d,accountEvent(creating?'account_created':'account_access_changed',actor,user,{changes:{role:user.role,is_active:Boolean(user.is_active),domains:d.grants[id],manager_id:d.teams[id]||null,previous_username:previousUsername}}));
+  if(!creating&&passwordHash)addAccountEvent(d,accountEvent('password_changed',actor,user,{source:'user_management'}));
   return id;
 }
-export function installPlatformUsers(app,{accounts,pool,security}){
+export function installPlatformUsers(app,{accounts,pool,security,dashboardBase}){
   const {requireAdmin}=security;
   const active=(req,res,next)=>req.auth.platform_enabled?next():next('route');
   const admin=(req,res,next)=>['admin','superadmin'].includes(req.auth.role)?next():res.status(403).json({ok:false,message:'Administrator access is required.'});
   const wrap=fn=>async(req,res)=>{try{await fn(req,res);}catch(e){res.status(e.status||503).json({ok:false,message:e.status?e.message:'User management is temporarily unavailable.'});}};
   const offset=req=>Math.max(0,Math.min(100000,Number.parseInt(req.query.offset,10)||0));
-  app.get('/api/users',requireAdmin,active,admin,wrap(async(req,res)=>{const d=await accounts.platformRead();res.json({ok:true,data:managedUsers(d,req.auth).map(u=>publicUser(d,u,req.auth))});}));
+  app.get('/api/users',requireAdmin,active,admin,wrap(async(req,res)=>{const d=await accounts.platformRead();res.json({ok:true,data:Object.values(d.users).filter(u=>managedUsers(d,req.auth).some(v=>v.id===u.id)||(u.role==='admin'&&d.config[`admin-created-by:${u.id}`]===String(req.auth.id)&&accountVisible(d,req.auth,u)&&(d.grants[u.id]||[]).every(k=>(d.grants[req.auth.id]||[]).includes(k)))).map(u=>publicUser(d,u,req.auth))});}));
   for(const [method,path]of [['post','/api/users'],['patch','/api/users/:id']])app[method](path,requireAdmin,active,admin,(req,res,next)=>security.requireFresh(req,res,next),wrap(async(req,res)=>{
     const input=req.body||{};let passwordHash;
-    if(method==='post'){if(typeof input.password!=='string'||input.password.length<12||input.password.length>128)throw appError('Use a password of 12-128 characters.');passwordHash=await hashPassword(input.password);}
+    if(method==='post'||input.password!==undefined){if(typeof input.password!=='string'||input.password.length<12||input.password.length>128)throw appError('Use a password of 12-128 characters.');passwordHash=await hashPassword(input.password);}
     const [domains]=await pool.query('SELECT domain_key FROM domains WHERE user_id=1');
     const id=await accounts.platformAtomic(d=>changeManagedUser(d,req.auth,input,method==='patch'?Number(req.params.id):null,passwordHash,domains.map(d=>d.domain_key)));
-    res.status(method==='post'?201:200).json({ok:true,data:{id},message:'Access saved. Previous sessions for the changed user were revoked.'});
+    res.status(method==='post'?201:200).json({ok:true,data:{id},message:'User saved. Previous sessions for the changed user were revoked.'});
   }));
+  app.post('/api/users/:id/reset-password',requireAdmin,active,admin,(req,res,next)=>security.requireFresh(req,res,next),wrap(userResetHandler({accounts,dashboardBase})));
   app.get('/api/users/login-attempts',requireAdmin,active,admin,wrap(async(req,res)=>{const d=await accounts.platformRead(),ids=managedUsers(d,req.auth).map(u=>u.id);res.json({ok:true,data:await accounts.platformAttempts(req.auth.role==='superadmin'?null:ids,offset(req),req.auth)});}));
   const canView=async req=>{const d=await accounts.platformRead();if(!managedUsers(d,req.auth).some(u=>u.id===Number(req.params.id)))throw appError('User is unavailable.',404);};
   app.get('/api/users/:id/sessions',requireAdmin,active,admin,wrap(async(req,res)=>{await canView(req);const rows=await accounts.sessions(Number(req.params.id),offset(req));res.json({ok:true,data:rows.map(r=>({id:r.id,current:r.id===req.auth.sid,login_ms:Number(r.login_ms),last_seen_ms:Number(r.last_seen_ms),expires_ms:Number(r.expires_ms),ended_ms:r.ended_ms?Number(r.ended_ms):null,status:r.ended_ms?'ended':r.expires_ms<=Date.now()?'expired':'active',end_reason:r.end_reason,ip_address:r.ip_address,device:r.device,browser:r.browser,os:r.os}))});}));

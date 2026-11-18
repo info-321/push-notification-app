@@ -57,12 +57,13 @@ export function mysqlIdentityStore(pool) {
     async updateUser(id, input,actor) {
       const c = await pool.getConnection();
       try { await c.beginTransaction();
-        const [r] = await c.query('UPDATE admin_accounts SET role=?,is_active=?,access_version=access_version+1,session_version=? WHERE id=? AND access_version=? AND id<>1', [input.role,input.is_active,crypto.randomBytes(24).toString('hex'),id,input.version]);
+        const [[previous]]=await c.query('SELECT id,username,password_hash,password_changed_at FROM admin_accounts WHERE id=? FOR UPDATE',[id]);
+        const [r] = await c.query('UPDATE admin_accounts SET username=?,password_hash=?,password_changed_at=?,role=?,is_active=?,access_version=access_version+1,session_version=? WHERE id=? AND access_version=? AND id<>1', [input.username??previous?.username,input.password_hash??previous?.password_hash,input.password_hash?new Date():previous?.password_changed_at||null,input.role,input.is_active,crypto.randomBytes(24).toString('hex'),id,input.version]);
         if (!r.affectedRows) { await c.rollback(); return false; }
         await c.query('DELETE FROM user_domain_access WHERE user_id=?', [id]);
         for (const key of input.domains) await c.query('INSERT INTO user_domain_access (user_id,domain_key) VALUES (?,?)', [id,key]);
         await c.query("UPDATE dashboard_sessions SET ended_ms=?,end_reason='access_changed' WHERE user_id=? AND ended_ms IS NULL AND expires_ms>?", [Date.now(),id,Date.now()]);
-        if(actor){const [[target]]=await c.query('SELECT id,username FROM admin_accounts WHERE id=?',[id]);await insertAccountEvent(c,accountEvent('account_access_changed',actor,target,{source:'user_management',changes:input}));}
+        if(actor){const [[target]]=await c.query('SELECT id,username FROM admin_accounts WHERE id=?',[id]);await insertAccountEvent(c,accountEvent('account_access_changed',actor,target,{source:'user_management',changes:{...input,previous_username:previous.username!==target.username?previous.username:undefined}}));if(input.password_hash)await insertAccountEvent(c,accountEvent('password_changed',actor,target,{source:'user_management'}));}
         await c.commit(); return true;
       } catch (error) { await c.rollback(); throw error; } finally { c.release(); }
     },
