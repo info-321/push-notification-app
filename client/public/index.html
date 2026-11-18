@@ -6,7 +6,8 @@
     <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/notizo-icon.svg?v=1" />
     <meta name="referrer" content="no-referrer" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#1d3979" />
+    <link rel="stylesheet" href="%PUBLIC_URL%/preloader.css" />
     <meta
       name="description"
       content="Notizo helps you manage web push notifications, subscribers, and campaigns across your websites."
@@ -31,8 +32,18 @@
     <title>Notizo — Push Notification Dashboard</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript><style>#notizo-preloader { display: none; }</style>You need to enable JavaScript to run this app.</noscript>
+    <div id="notizo-preloader" role="status" aria-live="polite" aria-label="Loading Notizo">
+      <p class="pword">Loading Notizo</p>
+      <div class="pnum" aria-hidden="true"><span>0</span><b>0</b></div>
+      <div class="pline" aria-hidden="true"><i></i></div>
+      <div class="preloader-help" hidden>
+        <p>Loading is taking longer than expected. Check your connection or try again.</p>
+        <button type="button">Reload Notizo</button>
+      </div>
+    </div>
     <div id="root"></div>
+    <script src="%PUBLIC_URL%/preloader.js"></script>
     <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.

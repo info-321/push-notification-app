@@ -27,6 +27,9 @@ const Workspace = ({onLogoutError,onProfile}) => {
   const recoveryLink=/^#(?:reset|verify)=/.test(window.location.hash);
   const [booting,setBooting]=useState(!recoveryLink);
   const [bootError,setBootError]=useState('');
+  useEffect(()=>{
+    if(!booting)document.dispatchEvent(new Event('notizo:ready'));
+  },[booting]);
   const [access,setAccess]=useState(null);
   const [initialMfa,setInitialMfa]=useState(false);
   const params = new URLSearchParams(window.location.search);

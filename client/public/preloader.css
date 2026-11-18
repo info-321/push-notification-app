@@ -1,0 +1,80 @@
+#notizo-preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  padding: 24px;
+  background: linear-gradient(110deg, #1d3979, #207f96);
+  color: #e5faf6;
+  font-family: 'Poppins', Arial, sans-serif;
+}
+#notizo-preloader .pword {
+  margin: 0;
+  color: #c3e9ed;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .6em;
+  text-align: center;
+  text-transform: uppercase;
+}
+#notizo-preloader .pnum {
+  position: relative;
+  font-size: clamp(72px, 14vw, 190px);
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(159, 231, 221, .65);
+}
+#notizo-preloader .pnum b {
+  position: absolute;
+  inset: 0;
+  color: #b5f2e7;
+  font-weight: inherit;
+  -webkit-text-stroke: 0;
+  clip-path: inset(100% 0 0 0);
+}
+#notizo-preloader .pline {
+  position: relative;
+  width: min(300px, 70vw);
+  height: 2px;
+  overflow: hidden;
+  background: #c3e9ed30;
+}
+#notizo-preloader .pline i {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #12ac8c, #b5f2e7);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+#notizo-preloader.exit {
+  animation: notizo-preloader-out .65s cubic-bezier(.76, 0, .24, 1) forwards;
+  pointer-events: none;
+}
+#notizo-preloader .preloader-help {
+  max-width: 360px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.7;
+}
+#notizo-preloader .preloader-help[hidden] { display: none; }
+#notizo-preloader button {
+  margin-top: 16px;
+  padding: 10px 24px;
+  border: 1px solid #c3e9ed;
+  border-radius: 6px;
+  color: #fff;
+  background: #12ac8c;
+  font: inherit;
+  cursor: pointer;
+}
+#notizo-preloader button:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+@keyframes notizo-preloader-out { to { clip-path: inset(0 0 100% 0); visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  #notizo-preloader.exit { animation: none; visibility: hidden; }
+}
