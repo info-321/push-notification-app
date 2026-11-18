@@ -1,5 +1,6 @@
 // Trusted interactive host operation. Never use through the restricted CI key.
 import mysql from 'mysql2/promise';
+import {accountEvent,addAccountEvent} from './account-events.js';
 import crypto from 'node:crypto';
 import readline from 'node:readline/promises';
 import {Writable} from 'node:stream';
@@ -15,11 +16,13 @@ export function activatePlatform(d,{username,passwordHash,assignments,domainKeys
   const admins=Object.values(d.users).filter(u=>u.role==='admin'&&u.id!==owner?.id);
   if(admins.some(u=>!Object.hasOwn(assignments,u.id)))throw appError('Explicit website assignments are required for every existing Admin.');
   for(const keys of Object.values(assignments))if(!Array.isArray(keys)||keys.some(k=>!domainKeys.includes(k)))throw appError('Invalid website assignment.');
+  const creating=!owner;
   if(!owner){if(!passwordHash)throw appError('A private password is required for the new owner.');const id=Math.max(0,...Object.keys(d.users).map(Number))+1;owner={id,username,password_hash:passwordHash,is_active:1,access_version:1,session_version:crypto.randomUUID()};d.users[id]=owner;}
   owner.role='superadmin';d.grants[owner.id]=[];rotateAccess(owner);
   for(const u of admins){d.grants[u.id]=assignments[u.id];rotateAccess(u);}
   d.state.enabled=true;d.state.owner_id=owner.id;
   const id=crypto.randomUUID();d.operations[id]={id,kind:'bootstrap',status:'completed',actor_id:owner.id,created_ms:Date.now(),details:{username,assigned_admins:admins.map(u=>u.id)}};
+  addAccountEvent(d,accountEvent(creating?'account_created':'account_access_changed',{id:0,username:'Host operator'},owner,{source:'host_setup'}));
   return owner.id;
 }
 export async function platformDb(){return mysql.createPool({host:process.env.DB_HOST,port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:process.env.DB_NAME,connectionLimit:2});}

@@ -1,3 +1,4 @@
+import RoleDescription from './RoleDescription';
 import MfaSettings from '../platform/SecurityControls';
 import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch, acceptSession, authChanged } from '../../api';
@@ -97,6 +98,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
             <div className="account-avatar" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="47" fill="#dceef0" /><path d="M20 87c0-34 60-34 60 0" fill="#1e8398" /><circle cx="50" cy="37" r="20" fill="#388aa2" /></svg></div>
             <dl className="account-details">
               <div><dt>{profile.email ? 'Email' : 'Username'}</dt><dd>{profile.email || profile.username}</dd></div>
+              <div><dt>Role</dt><dd>{profile.role}<RoleDescription role={profile.role} platformEnabled={Boolean(profile.platform_enabled)}/></dd></div>
               <div><dt>Password</dt><dd aria-label="Password hidden">••••••••</dd></div>
               <div><dt>Last Login</dt><dd>{lastLogin}</dd></div>
               <div><dt>Last login IP</dt><dd>{profile.last_login_ip || 'Not recorded yet'}</dd></div>

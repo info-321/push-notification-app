@@ -172,3 +172,42 @@ test('non-owners cannot enumerate current or former Superadmin identities, sessi
   for(const path of ['/api/users','/api/users/login-attempts','/api/account/activity']){const result=await legacy.call(path);assert.equal(result.status,200);assert.ok(!JSON.stringify(result.data).toLowerCase().includes(hiddenName));assert.ok(!JSON.stringify(result.data).includes('198.51.100.199'));}
   assert.equal((await legacy.call(`/api/users/${former}/sessions`)).status,404);
 });
+
+
+test('owner-only account history captures creators and changes, paginates, and never exposes credentials',async t=>{
+  const f=await fixture(t),{codes}=await f.enroll();
+  for(const name of ['Admin','Editor','Viewer']){const c=f.client();await c.login(name);assert.equal((await c.call('/api/platform/account-history')).status,403);assert.equal((await c.call(`/api/platform/accounts/${f.editor}/reset-password`,{reason:'Authorized fixture reset'})).status,403);}
+  const input={username:'Recorded-editor',password,role:'editor',domains:['one']},proof=await f.approval(f.owner,'/api/users',input,codes[0]);
+  const made=await f.owner.call('/api/users',input,'POST',{'X-Notizo-Approval':proof});assert.equal(made.status,201);const id=made.data.data.id;
+  let history=await f.owner.call('/api/platform/account-history');assert.equal(history.status,200);
+  const entry=history.data.data.accounts.find(u=>u.id===id);assert.equal(entry.created.actor_name,'Superadmin');assert.ok(entry.created.time_ms);assert.equal(history.data.data.accounts.find(u=>u.id===f.viewer).created,null);
+  const editor=f.client();await editor.login('Recorded-editor');assert.equal((await editor.call('/api/account/password',{current_password:password,new_password:'Replacement-fixture-password-123'})).status,200);
+  history=await f.owner.call(`/api/platform/account-history?user_id=${id}`);assert.deepEqual(new Set(history.data.data.rows.map(e=>e.kind)),new Set(['account_created','password_changed']));assert.equal(history.data.data.accounts.find(u=>u.id===id).password.actor_name,'Recorded-editor');
+  const text=JSON.stringify(history.data);for(const value of [password,'Replacement-fixture-password-123','password_hash','scrypt$','session_version'])assert.ok(!text.includes(value));
+  assert.equal((await f.owner.call('/api/platform/account-history?offset=-1')).status,400);assert.equal((await f.owner.call('/api/platform/account-history?user_id=abc')).status,400);
+  const {accountEvent,addAccountEvent}=await import('../account-events.js');await f.accounts.platformAtomic(d=>{for(let i=0;i<55;i++)addAccountEvent(d,accountEvent('account_access_changed',d.users[1],d.users[id]));});
+  const first=await f.accounts.accountHistory({userId:id}),second=await f.accounts.accountHistory({userId:id,offset:50});assert.equal(first.rows.length,50);assert.equal(first.has_more,true);assert.equal(second.rows.length,7);assert.ok(!second.rows.some(e=>first.rows.some(a=>a.id===e.id)));
+  assert.ok((await f.owner.call('/api/platform')).data.data.operations.every(e=>!e.kind.startsWith('account_')&&!e.kind.startsWith('password_')));
+});
+
+test('approved managed reset revokes old credentials immediately, preserves MFA, and the public form redeems it only once',async t=>{
+  const f=await fixture(t),{codes}=await f.enroll(),admin=f.client();await admin.login('Admin');await f.enroll(admin);
+  const old=structuredClone(await f.accounts.read(f.admin)),mfa=(await f.accounts.platformRead()).mfa[f.admin],body={reason:'Account holder requested recovery'},path=`/api/platform/accounts/${f.admin}/reset-password`;
+  assert.equal((await f.owner.call(path,body)).data.code,'STEP_UP_REQUIRED');const proof=await f.approval(f.owner,path,body,codes[0]);
+  const issued=await f.owner.call(path,body,'POST',{'X-Notizo-Approval':proof});assert.equal(issued.status,200);const token=new URLSearchParams(new URL(issued.data.data.reset_url).hash.slice(1)).get('reset');assert.equal(token.length,43);
+  const changed=await f.accounts.read(f.admin);assert.notEqual(changed.session_version,old.session_version);assert.equal(await (await import('../accounts.js')).verifyPassword(password,changed.password_hash),false);assert.equal((await admin.call('/api/account')).status,401);
+  const snapshot=await f.accounts.platformRead();assert.deepEqual(snapshot.mfa[f.admin],mfa);assert.deepEqual(snapshot.grants[f.admin],['one']);assert.ok(!JSON.stringify(snapshot).includes(token));
+  const visitor=f.client();await visitor.call('/api/auth/session');const next='Reset-fixture-password-123';const results=await Promise.all([visitor.call('/api/auth/reset-password',{token,password:next}),visitor.call('/api/auth/reset-password',{token,password:next})]);assert.deepEqual(results.map(r=>r.status).sort(),[200,400]);
+  const history=await f.accounts.accountHistory({userId:f.admin});assert.equal(history.rows.filter(e=>e.kind==='password_reset_requested').length,1);assert.equal(history.rows.filter(e=>e.kind==='password_reset_completed').length,1);assert.equal(history.rows.find(e=>e.kind==='password_reset_completed').requested_by.username,'Superadmin');assert.ok(!JSON.stringify(history).includes(token));
+  await visitor.call('/api/auth/session');const login=await visitor.call('/api/login',{username:'Admin',password:next});assert.equal(login.status,200);assert.equal(login.data.mfa_required,true);
+  assert.equal((await f.owner.call(path,body,'POST',{'X-Notizo-Approval':proof})).status,403);
+  const selfPath='/api/platform/accounts/1/reset-password',selfProof=await f.approval(f.owner,selfPath,body,codes[1]);assert.equal((await f.owner.call(selfPath,body,'POST',{'X-Notizo-Approval':selfProof})).status,400);
+});
+
+test('managed reset rejects expired links, superseded versions and inactive targets',async t=>{
+  const f=await fixture(t);await f.enroll();const u=await f.accounts.read(1),auth={id:1,role:'superadmin',version:u.session_version};
+  const issue=async()=>{const raw=crypto.randomBytes(32).toString('base64url'),hash=tokenHash(raw);await f.accounts.startManagedReset(auth,f.editor,hash,'unusable-hash','Fixture approved reset');return hash;};
+  const first=await issue();await f.accounts.platformAtomic(d=>{const key=`reset-link:${first}`,v=JSON.parse(d.config[key]);v.expires_ms=Date.now()-1;d.config[key]=JSON.stringify(v);});assert.equal(await f.accounts.redeemManagedReset(first,'replacement'),false);
+  const second=await issue(),third=await issue();assert.equal(await f.accounts.redeemManagedReset(second,'replacement'),false);assert.ok(await f.accounts.redeemManagedReset(third,'replacement'));
+  await f.accounts.platformAtomic(d=>{d.users[f.editor].is_active=false;});await assert.rejects(issue(),/active account/);
+});

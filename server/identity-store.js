@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {accountEvent,insertAccountEvent} from './account-events.js';
 
 export async function ensureIdentity(pool) {
   const [ids] = await pool.query("SHOW COLUMNS FROM admin_accounts LIKE 'id'");
@@ -42,17 +43,18 @@ export function mysqlIdentityStore(pool) {
     async find(username) { return (await pool.query(`SELECT ${userFields} FROM admin_accounts WHERE username = ? LIMIT 1`, [username]))[0][0]; },
     async permissions(id) { return (await pool.query('SELECT domain_key FROM user_domain_access WHERE user_id = ?', [id]))[0].map(row => row.domain_key); },
     async users() { return (await pool.query(`SELECT ${userFields} FROM admin_accounts ORDER BY id`))[0]; },
-    async createUser(input) {
+    async createUser(input,actor) {
       const c = await pool.getConnection();
       try { await c.beginTransaction();
         const [exists] = await c.query('SELECT id FROM admin_accounts WHERE username = ? FOR UPDATE', [input.username]);
         if (exists.length) throw Object.assign(new Error('Username already exists.'), { status: 409 });
         const [result] = await c.query('INSERT INTO admin_accounts (username,password_hash,session_version,role,legacy_deadline_ms) VALUES (?,?,?,?,0)', [input.username,input.password_hash,crypto.randomBytes(24).toString('hex'),input.role]);
         for (const key of input.domains) await c.query('INSERT INTO user_domain_access (user_id,domain_key) VALUES (?,?)', [result.insertId,key]);
+        if(actor)await insertAccountEvent(c,accountEvent('account_created',actor,{id:result.insertId,username:input.username},{source:'user_management',changes:{role:input.role,is_active:true,domains:input.domains}}));
         await c.commit(); return result.insertId;
       } catch (error) { await c.rollback(); throw error; } finally { c.release(); }
     },
-    async updateUser(id, input) {
+    async updateUser(id, input,actor) {
       const c = await pool.getConnection();
       try { await c.beginTransaction();
         const [r] = await c.query('UPDATE admin_accounts SET role=?,is_active=?,access_version=access_version+1,session_version=? WHERE id=? AND access_version=? AND id<>1', [input.role,input.is_active,crypto.randomBytes(24).toString('hex'),id,input.version]);
@@ -60,6 +62,7 @@ export function mysqlIdentityStore(pool) {
         await c.query('DELETE FROM user_domain_access WHERE user_id=?', [id]);
         for (const key of input.domains) await c.query('INSERT INTO user_domain_access (user_id,domain_key) VALUES (?,?)', [id,key]);
         await c.query("UPDATE dashboard_sessions SET ended_ms=?,end_reason='access_changed' WHERE user_id=? AND ended_ms IS NULL AND expires_ms>?", [Date.now(),id,Date.now()]);
+        if(actor){const [[target]]=await c.query('SELECT id,username FROM admin_accounts WHERE id=?',[id]);await insertAccountEvent(c,accountEvent('account_access_changed',actor,target,{source:'user_management',changes:input}));}
         await c.commit(); return true;
       } catch (error) { await c.rollback(); throw error; } finally { c.release(); }
     },

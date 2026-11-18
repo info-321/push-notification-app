@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {accountEventKinds,accountSummaries,publicAccountEvent,isAccountEvent} from './account-events.js';
 import {accountVisible,privateAccountIds,privateAccountNames,rememberPrivateAccounts,historyVisible,publicActivity} from './account-visibility.js';
 import {defaultPlatform,stable,appError} from './platform-crypto.js';
 const parse=(value,fallback)=>typeof value==='string'?JSON.parse(value):value??fallback;
@@ -23,15 +24,15 @@ async function snapshot(c,locked=false){
     mfa:keyed(mfa.map(m=>({...m,enabled:Boolean(m.enabled),recovery:parse(m.recovery,[])})),'user_id'),teams:Object.fromEntries((await c.query('SELECT * FROM platform_team'))[0].map(r=>[r.user_id,Number(r.admin_id)])),
     config:Object.fromEntries((await c.query('SELECT * FROM platform_config'))[0].map(r=>[r.name,r.value])),
     approvals:keyed((await c.query('SELECT * FROM platform_approvals WHERE expires_ms>?',[Date.now()-86400000]))[0],'token_hash'),
-    operations:keyed((await c.query('SELECT * FROM platform_operations ORDER BY created_ms DESC LIMIT 100'))[0].map(r=>({...r,details:parse(r.details,{})})),'id')};
+    operations:keyed((await c.query(`SELECT * FROM platform_operations WHERE kind NOT IN (${accountEventKinds.map(()=>'?').join(',')}) ORDER BY created_ms DESC LIMIT 100`,accountEventKinds))[0].map(r=>({...r,details:parse(r.details,{})})),'id')};
 }
 async function persist(c,before,after){
   if(stable(before.state)!==stable(after.state))await c.query('UPDATE platform_state SET enabled=?,owner_id=?,sends_paused=?,policy=? WHERE id=1',[after.state.enabled,after.state.owner_id,after.state.sends_paused,JSON.stringify(after.state.policy)]);
   for(const [id,u]of Object.entries(after.users)){
     const old=before.users[id];
     if(!old)await c.query('INSERT INTO admin_accounts (id,username,password_hash,session_version,role,is_active,access_version,legacy_deadline_ms) VALUES (?,?,?,?,?,?,?,0)',[id,u.username,u.password_hash,u.session_version,u.role,u.is_active,u.access_version]);
-    else if(stable(old)!==stable(u))await c.query('UPDATE admin_accounts SET role=?,is_active=?,access_version=?,session_version=?,password_hash=?,legacy_deadline_ms=0 WHERE id=?',[u.role,u.is_active,u.access_version,u.session_version,u.password_hash,id]);
-    if(old&&old.session_version!==u.session_version)await c.query("UPDATE dashboard_sessions SET ended_ms=?,end_reason='access_changed' WHERE user_id=? AND ended_ms IS NULL",[Date.now(),id]);
+    else if(stable(old)!==stable(u))await c.query('UPDATE admin_accounts SET role=?,is_active=?,access_version=?,session_version=?,password_hash=?,password_changed_at=?,legacy_deadline_ms=0 WHERE id=?',[u.role,u.is_active,u.access_version,u.session_version,u.password_hash,u.password_changed_at||null,id]);
+    if(old&&old.session_version!==u.session_version)await c.query("UPDATE dashboard_sessions SET ended_ms=?,end_reason=? WHERE user_id=? AND ended_ms IS NULL",[Date.now(),after.sessionReasons?.[id]||'access_changed',id]);
     if(stable(before.grants[id]||[])!==stable(after.grants[id]||[])){
       await c.query('DELETE FROM user_domain_access WHERE user_id=?',[id]);for(const key of after.grants[id]||[])await c.query('INSERT INTO user_domain_access (user_id,domain_key) VALUES (?,?)',[id,key]);
     }
@@ -45,6 +46,13 @@ async function persist(c,before,after){
 export function mysqlPlatformStore(pool){return {
   async platformStatus(id){const [[s]]=await pool.query('SELECT * FROM platform_state WHERE id=1');if(!s)throw new Error('Platform state unavailable.');const m=id?(await pool.query('SELECT enabled FROM platform_mfa WHERE user_id=?',[id]))[0][0]:null;return {...s,enabled:Boolean(s.enabled),sends_paused:Boolean(s.sends_paused),policy:parse(s.policy,{}),mfa_enabled:Boolean(m?.enabled)};},
   async platformRead(){return snapshot(pool);},
+  async accountHistory({offset=0,userId=null}={}){
+    const [users]=await pool.query('SELECT id,username,role,is_active,password_changed_at FROM admin_accounts ORDER BY id');
+    const [metadata]=await pool.query("SELECT name,value FROM platform_config WHERE name LIKE 'account-audit:%'");
+    const filter=userId?' AND JSON_EXTRACT(details,\'$.target_id\')=?':'';
+    const [events]=await pool.query(`SELECT * FROM platform_operations WHERE kind IN (${accountEventKinds.map(()=>'?').join(',')})${filter} ORDER BY created_ms DESC,id DESC LIMIT 51 OFFSET ?`,[...accountEventKinds,...(userId?[userId]:[]),offset]);
+    return {accounts:accountSummaries(users,Object.fromEntries(metadata.map(r=>[r.name,r.value]))),rows:events.slice(0,50).map(publicAccountEvent),has_more:events.length>50,offset};
+  },
   async platformConfig(name){return (await pool.query('SELECT value FROM platform_config WHERE name=?',[name]))[0][0]?.value||null;},
   async platformAttempts(ids,offset=0,actor){
     const d=await this.platformRead(),where=[],params=[];
@@ -66,17 +74,18 @@ export function mysqlPlatformStore(pool){return {
     }
     return (await pool.query(`SELECT * FROM activity_log ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY occurred_ms DESC LIMIT 50 OFFSET ?`,[...params,offset]))[0].map(row=>publicActivity(row,auth));
   },
-  async platformAtomic(fn){const c=await pool.getConnection();try{await c.beginTransaction();const data=await snapshot(c,true),before=structuredClone(data);const result=await fn(data);rememberPrivateAccounts(data,before);await persist(c,before,data);await c.query('DELETE FROM platform_approvals WHERE expires_ms<?',[Date.now()-86400000]);await c.commit();return result;}catch(e){await c.rollback();throw e;}finally{c.release();}},
+  async platformAtomic(fn){const c=await pool.getConnection();try{await c.beginTransaction();const data=await snapshot(c,true),before=structuredClone(data);const result=await fn(data);rememberPrivateAccounts(data,before);await persist(c,before,data);await c.query('DELETE FROM platform_approvals WHERE expires_ms<?',[Date.now()-86400000]);await c.query("DELETE FROM platform_config WHERE name LIKE 'reset-link:%' AND JSON_EXTRACT(IF(name LIKE 'reset-link:%',value,'{}'),'$.expires_ms')<? LIMIT 500",[Date.now()-86400000]);await c.commit();return result;}catch(e){await c.rollback();throw e;}finally{c.release();}},
 };}
 export function memoryPlatformStore(identity){let data={state:defaultPlatform(),mfa:{},teams:{},config:{},approvals:{},operations:{}},queue=Promise.resolve();return {
   async platformStatus(id){return {...structuredClone(data.state),mfa_enabled:Boolean(data.mfa[id]?.enabled)};},
+  async accountHistory({offset=0,userId=null}={}){const d=await this.platformRead(),events=Object.values(d.operations).filter(e=>isAccountEvent(e)&&(!userId||e.details.target_id===userId)).sort((a,b)=>b.created_ms-a.created_ms||b.id.localeCompare(a.id));return {accounts:accountSummaries(Object.values(d.users),d.config),rows:events.slice(offset,offset+50).map(publicAccountEvent),has_more:events.length>offset+50,offset};},
   async platformConfig(name){return data.config[name]||null;},
   async platformAttempts(ids,offset=0,actor={}){const d=await this.platformRead();return (await identity.attempts(0,Infinity)).filter(r=>(!ids||ids.includes(r.user_id))&&historyVisible(d,actor,r,'login')).slice(offset,offset+50);},
   async platformActivity(auth,offset=0){const d=await this.platformRead(),ids=auth.role==='superadmin'||!d.state.enabled&&auth.role==='admin'?null:managedUsers(d,auth).map(u=>u.id);return (await identity.activity(null,0,Infinity)).filter(r=>(!ids||ids.includes(r.actor_id))&&historyVisible(d,auth,r,'activity')).slice(offset,offset+50).map(r=>publicActivity(r,auth));},
   async platformRead(){return structuredClone({...data,users:keyed(await identity.users(),'id'),grants:Object.fromEntries(await Promise.all((await identity.users()).map(async u=>[u.id,await identity.permissions(u.id)])))});},
   async platformAtomic(fn){const run=queue.then(async()=>{const current=await this.platformRead(),before=structuredClone(current),result=await fn(current);rememberPrivateAccounts(current,before);
-    for(const [id,u]of Object.entries(current.users)){const row=(await identity.users()).find(r=>Number(r.id)===Number(id));if(row)Object.assign(row,u);else{const made=await identity.createUser({...u,domains:current.grants[id]||[]});if(made!==Number(id))throw new Error('Fixture ID mismatch');Object.assign(await identity.readUser(made),u);}if(before.users[id]?.session_version!==u.session_version)await identity.endOthers(Number(id),null,'access_changed');await identity.setPermissions(Number(id),current.grants[id]||[]);}
-    data={...current};delete data.users;delete data.grants;return result;});queue=run.catch(()=>{});return run;},
+    for(const [id,u]of Object.entries(current.users)){const row=(await identity.users()).find(r=>Number(r.id)===Number(id));if(row)Object.assign(row,u);else{const made=await identity.createUser({...u,domains:current.grants[id]||[]});if(made!==Number(id))throw new Error('Fixture ID mismatch');Object.assign(await identity.readUser(made),u);}if(before.users[id]?.session_version!==u.session_version)await identity.endOthers(Number(id),null,current.sessionReasons?.[id]||'access_changed');await identity.setPermissions(Number(id),current.grants[id]||[]);}
+    data={...current};delete data.sessionReasons;delete data.users;delete data.grants;return result;});queue=run.catch(()=>{});return run;},
 };}
 export const rotateAccess=user=>{user.access_version=Number(user.access_version||1)+1;user.session_version=crypto.randomBytes(24).toString('hex');};
 export const managedUsers=(data,actor)=>Object.values(data.users).filter(u=>accountVisible(data,actor,u)&&(actor.role==='superadmin'||Number(u.id)===actor.id||(['editor','viewer'].includes(u.role)&&data.teams[u.id]===actor.id&&(data.grants[u.id]||[]).every(k=>(data.grants[actor.id]||[]).includes(k)))));

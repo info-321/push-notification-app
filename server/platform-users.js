@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {accountEvent,addAccountEvent} from './account-events.js';
 import {accountVisible} from './account-visibility.js';
 import {hashPassword} from './accounts.js';
 import {managedUsers,assertActor,rotateAccess} from './platform-store.js';
@@ -10,7 +11,7 @@ export function changeManagedUser(d,auth,input,id,passwordHash,domainKeys){
   if(Object.keys(input).some(k=>!['username','password','role','domains','is_active','version','manager_id'].includes(k)))throw appError('Unexpected user setting.');
   if(!['superadmin','admin','editor','viewer'].includes(input.role)||!Array.isArray(input.domains)||input.domains.length>100||new Set(input.domains).size!==input.domains.length||input.domains.some(k=>!domainKeys.includes(k)))throw appError('Choose a valid role and websites.');
   if(!owner&&(!['editor','viewer'].includes(input.role)||input.domains.some(k=>!(d.grants[actor.id]||[]).includes(k))))throw appError('You can manage Editors and Viewers only within your assigned websites.',403);
-  let user;
+  let user;const creating=id===null;
   if(id!==null&&(!Number.isSafeInteger(id)||id<1))throw appError('Invalid user.');
   if(id){user=d.users[id];if(!user||!managedUsers(d,actor).some(u=>u.id===id))throw appError('User is unavailable.',404);if(id===actor.id)throw appError('Change another account here; your own access is protected.');if(!owner&&!['editor','viewer'].includes(user.role))throw appError('You cannot change this role.',403);if(input.version!==user.access_version)throw appError('User changed. Reload before saving.',409);if(typeof input.is_active!=='boolean')throw appError('Choose an account status.');}
   else {if(typeof input.username!=='string'||!input.username.trim()||input.username.length>255||!passwordHash)throw appError('Enter a username and a password of 12-128 characters.');if(Object.values(d.users).some(u=>u.username.toLowerCase()===input.username.trim().toLowerCase()))throw appError('Username already exists.',409);id=Math.max(0,...Object.keys(d.users).map(Number))+1;user={id,username:input.username.trim(),password_hash:passwordHash,session_version:crypto.randomUUID(),access_version:1,is_active:1};d.users[id]=user;}
@@ -31,6 +32,7 @@ export function changeManagedUser(d,auth,input,id,passwordHash,domainKeys){
     if(next.length!==previous.length){d.grants[member]=next;rotateAccess(d.users[member]);}
     if(user.role!=='admin'||!user.is_active)d.teams[member]=null;
   }
+  addAccountEvent(d,accountEvent(creating?'account_created':'account_access_changed',actor,user,{changes:{role:user.role,is_active:Boolean(user.is_active),domains:d.grants[id],manager_id:d.teams[id]||null}}));
   return id;
 }
 export function installPlatformUsers(app,{accounts,pool,security}){

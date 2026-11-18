@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import {accountEvent,addAccountEvent,insertAccountEvent} from './account-events.js';
+import {managedResetStore} from './managed-reset.js';
 import {ensurePlatform,mysqlPlatformStore,memoryPlatformStore} from './platform-store.js';
 import {ensureRecovery,mysqlRecoveryStore,memoryRecoveryStore} from './recovery-store.js';
 import { promisify } from 'node:util';
@@ -30,6 +32,7 @@ export function mysqlAccountRepository(pool) {
     ...mysqlIdentityStore(pool),
     ...mysqlRecoveryStore(pool),
     ...mysqlPlatformStore(pool),
+    ...managedResetStore(),
     async initialize(username, password) {
       await pool.query(`CREATE TABLE IF NOT EXISTS admin_accounts (
         id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -44,7 +47,7 @@ export function mysqlAccountRepository(pool) {
       await ensureRecovery(pool);
       await ensurePlatform(pool);
       if (await this.read()) return;
-      await pool.query('INSERT IGNORE INTO admin_accounts (id, username, password_hash, session_version) VALUES (1, ?, ?, ?)', [username, await hashPassword(password), crypto.randomBytes(24).toString('hex')]);
+      const c=await pool.getConnection();try{await c.beginTransaction();const [inserted]=await c.query('INSERT IGNORE INTO admin_accounts (id, username, password_hash, session_version) VALUES (1, ?, ?, ?)', [username, await hashPassword(password), crypto.randomBytes(24).toString('hex')]);if(inserted.affectedRows)await insertAccountEvent(c,accountEvent('account_created',{id:0,username:'Host operator'},{id:1,username},{source:'host_setup'}));await c.commit();}catch(e){await c.rollback();throw e;}finally{c.release();}
     },
     async read(id = 1) {
       const [rows] = await pool.query('SELECT * FROM admin_accounts WHERE id = ?', [id]);
@@ -55,8 +58,12 @@ export function mysqlAccountRepository(pool) {
       return result.affectedRows > 0;
     },
     async changePassword(previousHash, hash, version, date, id = 1) {
-      const [result] = await pool.query('UPDATE admin_accounts SET password_hash = ?, session_version = ?, password_changed_at = ? WHERE id = ? AND password_hash = ?', [hash, version, date, id, previousHash]);
-      return result.affectedRows > 0;
+      const c=await pool.getConnection();try{await c.beginTransaction();
+        const [[user]]=await c.query('SELECT id,username,password_hash FROM admin_accounts WHERE id=? FOR UPDATE',[id]);
+        if(!user||user.password_hash!==previousHash){await c.rollback();return false;}
+        await c.query('UPDATE admin_accounts SET password_hash=?,session_version=?,password_changed_at=? WHERE id=?',[hash,version,date,id]);
+        await insertAccountEvent(c,accountEvent('password_changed',user,user,{source:'self_service'}));await c.commit();return true;
+      }catch(e){await c.rollback();throw e;}finally{c.release();}
     },
     async closeLegacy(id) { await pool.query('UPDATE admin_accounts SET session_version=?,legacy_deadline_ms=0 WHERE id=?',[crypto.randomUUID(),id]); },
   };
@@ -70,7 +77,16 @@ export function memoryAccountRepository(username, password) {
   const api = {
     ...identity,
     ...memoryPlatformStore(identity),
-    ...memoryRecoveryStore(async id=>Number(id)===1?(await api.read(),record):identity.readUser(id),identity),
+    ...managedResetStore(),
+    ...memoryRecoveryStore(async id=>Number(id)===1?(await api.read(),record):identity.readUser(id),identity,event=>api.platformAtomic(d=>addAccountEvent(d,event))),
+    async createUser(input,actor){
+      if(!actor)return identity.createUser(input);
+      return api.platformAtomic(d=>{const id=Math.max(...Object.keys(d.users).map(Number))+1;d.users[id]={id,username:input.username,password_hash:input.password_hash,role:input.role,is_active:1,access_version:1,session_version:crypto.randomUUID(),legacy_deadline_ms:0};if(Object.values(d.users).some(u=>u.id!==id&&u.username===input.username))throw Object.assign(new Error('Username already exists.'),{status:409});d.grants[id]=input.domains;addAccountEvent(d,accountEvent('account_created',actor,d.users[id],{source:'user_management',changes:{...input,is_active:true}}));return id;});
+    },
+    async updateUser(id,input,actor){
+      if(!actor)return identity.updateUser(id,input);
+      return api.platformAtomic(d=>{const user=d.users[id];if(!user||Number(id)===1||user.access_version!==input.version)return false;Object.assign(user,{role:input.role,is_active:input.is_active,access_version:user.access_version+1,session_version:crypto.randomUUID()});d.grants[id]=input.domains;addAccountEvent(d,accountEvent('account_access_changed',actor,user,{source:'user_management',changes:input}));return true;});
+    },
     async read(id = 1) {
       if (Number(id) !== 1) return identity.readUser(id);
       initialization ||= hashPassword(password).then(hash => { record = { id: 1, username, role: 'admin', is_active: 1, access_version: 1, legacy_deadline_ms: Date.now() + 43200000, password_hash: hash, session_version: crypto.randomBytes(24).toString('hex'), password_changed_at: null, last_login_at: null, last_login_ip: null }; });
@@ -84,10 +100,7 @@ export function memoryAccountRepository(username, password) {
       return true;
     },
     async changePassword(previousHash, hash, version, date, id = 1) {
-      const account = Number(id) === 1 ? record : await identity.readUser(id);
-      if (account.password_hash !== previousHash) return false;
-      Object.assign(account, { password_hash: hash, session_version: version, password_changed_at: date });
-      return true;
+      return api.platformAtomic(d=>{const account=d.users[id];if(account.password_hash!==previousHash)return false;Object.assign(account,{password_hash:hash,session_version:version,password_changed_at:date});d.sessionReasons={[id]:'password_changed'};addAccountEvent(d,accountEvent('password_changed',account,account,{source:'self_service'}));return true;});
     },
     async closeLegacy(id) { const account=Number(id)===1?record:await identity.readUser(id);account.session_version=crypto.randomUUID();account.legacy_deadline_ms=0; },
   };

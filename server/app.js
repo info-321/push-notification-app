@@ -48,7 +48,7 @@ export function createApp({ pool, webpush, adminUsername, adminPassword, secret,
   installAccountRoutes(app, { accounts, requireAdmin, createToken, browser });
   installPlatformAuth(app,{accounts,security,secret});
   installPlatformUsers(app,{accounts,pool,security});
-  installPlatformRoutes(app,{accounts,pool,security,mailer,secret});
+  installPlatformRoutes(app,{accounts,pool,security,mailer,secret,dashboardBase});
   installSecurityRoutes(app, {accounts,pool,security});
   installDrafts(app, {pool,requireAdmin,security});
   installUnsubscribe(app,{pool,requireAdmin});

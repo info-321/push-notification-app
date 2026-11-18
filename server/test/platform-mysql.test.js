@@ -55,5 +55,23 @@ test('MySQL platform migration, durable encrypted secrets, single-use factors an
     assert.deepEqual((await pool.query('SELECT * FROM domains'))[0],before);assert.deepEqual((await pool.query('SELECT * FROM subscriptions'))[0],subscriptions);
     assert.equal(crypt.decrypt(await accounts.platformConfig('smtp'),'platform:smtp').password,'fixture-mail-password');
     const id=crypto.randomUUID();await accounts.platformAtomic(d=>{d.operations[id]={id,kind:'backup',status:'completed',actor_id:0,created_ms:Date.now(),details:{snapshot:'fixture-safe-name'}};});assert.equal((await restarted.platformRead()).operations[id].details.snapshot,'fixture-safe-name');
+    // Lifecycle history uses the existing operations/config tables and survives restarts.
+    let history=await restarted.accountHistory();assert.equal(history.accounts.find(u=>u.id===1).created.actor_name,'Host operator');
+    const activeOwner=Object.values((await accounts.platformRead()).users).find(u=>u.role==='superadmin'&&u.is_active),actor={id:activeOwner.id,role:'superadmin',version:activeOwner.session_version};
+    const target=structuredClone(await accounts.read(1)),token=crypto.randomBytes(32).toString('base64url'),digest=crypto.createHash('sha256').update(token).digest('hex');
+    await accounts.startSession({id:crypto.randomUUID(),user_id:1,token_hash:'a'.repeat(64),login_ms:Date.now(),expires_ms:Date.now()+600000,auth_transport:'cookie',ip_address:null,device:null,browser:null,os:null});
+    await accounts.startManagedReset(actor,1,digest,'unusable-test-hash','Verified holder requested reset');
+    assert.notEqual((await restarted.read(1)).session_version,target.session_version);assert.ok((await restarted.read(1)).password_changed_at);
+    assert.equal((await accounts.sessions(1))[0].end_reason,'password_reset');assert.ok(!JSON.stringify(await accounts.platformRead()).includes(token));
+    const resets=await Promise.all([accounts,restarted].map(a=>a.redeemManagedReset(digest,'new-fixture-hash')));assert.equal(resets.filter(Boolean).length,1);
+    history=await restarted.accountHistory({userId:1});assert.equal(history.rows.filter(e=>e.kind==='password_reset_completed').length,1);assert.equal(history.rows.find(e=>e.kind==='password_reset_requested').actor_name,activeOwner.username);assert.equal(history.accounts.find(u=>u.id===1).password.source,'owner_reset_link');
+    // Audit failure must roll back both the password and reset-token changes.
+    await pool.query("CREATE TRIGGER reject_fixture_event BEFORE INSERT ON platform_operations FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture audit failure'");
+    const unchanged=await accounts.read(1);await assert.rejects(accounts.startManagedReset(actor,1,'b'.repeat(64),'bad-hash','Rollback fixture request'));
+    assert.deepEqual(await accounts.read(1),unchanged);assert.equal(await accounts.platformConfig('reset-link:'+'b'.repeat(64)),null);
+    await assert.rejects(accounts.changePassword(unchanged.password_hash,'bad-hash','bad-version',new Date(),1));assert.deepEqual(await accounts.read(1),unchanged);
+    await pool.query('DROP TRIGGER reject_fixture_event');
+    const {accountEvent,addAccountEvent}=await import('../account-events.js');await accounts.platformAtomic(d=>{for(let i=0;i<55;i++)addAccountEvent(d,accountEvent('account_access_changed',d.users[activeOwner.id],d.users[1]));});
+    const firstPage=await restarted.accountHistory({userId:1}),secondPage=await restarted.accountHistory({userId:1,offset:50});assert.equal(firstPage.rows.length,50);assert.equal(firstPage.has_more,true);assert.ok(secondPage.rows.length>0);assert.ok(!secondPage.rows.some(e=>firstPage.rows.some(a=>a.id===e.id)));assert.ok((await restarted.platformRead()).operations[id]);
   }finally{await pool.end();await root.query(`DROP DATABASE ${name}`);await root.end();}
 });

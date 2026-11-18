@@ -109,3 +109,14 @@ Check that the owner can access Platform Administration; each Admin sees only as
 ## Account visibility
 
 Admin, Editor and Viewer responses exclude Superadmin account identities, login attempts, sessions and activity. A private account registry preserves that protection after later role changes. Filtering happens before pagination, and direct user/session requests for hidden accounts return the same unavailable response as unknown accounts. Superadmins retain access to the full audit history. Audit and recovery records are preserved in MySQL; the Account screen hides Recovery email and Login sessions while retaining password changes, two-factor settings and permitted activity history.
+
+
+## Account history and secure password resets
+
+Platform Administration ? Account history and password resets is restricted to enrolled Superadmins. It records account creation, access changes, self-service password changes, email recovery completion, and managed reset requests/completions. Records include actor, target, timestamp, source and reset reason. New lifecycle events use the existing MySQL platform_operations table; per-account creation/latest-password summaries use platform_config. Existing accounts without recorded creation metadata display **Not recorded**. Older password-change timestamps may be available without an actor; these are not backfilled with guesses. Audit history has no dashboard edit/delete controls and contains no passwords, password hashes or raw reset tokens.
+
+To reset another active account, choose **Reset password**, give a reason and confirm your own password and a fresh authenticator/recovery code. This immediately replaces the old password with an unusable random credential and revokes all sessions. A private, single-use link is returned once and expires after 15 minutes. Copy it and share it privately with the verified account holder; dismissing the link removes it from the page. The link is never stored in browser storage or audit history. MySQL stores only its SHA-256 digest with expiry and account-version binding. The user selects their new password using the existing reset page; their role, website grants and MFA enrollment remain unchanged. Requesting a newer managed reset supersedes older links. If the link expires before use, issue another reset.
+
+An account cannot use this action to reset itself; use Account ? Change Password or the verified email recovery flow. Reset completion is attributed to a **Reset-link holder**, with the requesting Superadmin recorded separately, rather than claiming the link proves a person's identity. Forgotten MFA is a separate recovery operation. A password reset never disables it. An owner can reset another owner, but cannot change its own permissions or bypass last-owner safeguards.
+
+Role help beside the user Role selector and in Account explains the current scope. Ordinary roles do not receive private Superadmin history or controls.

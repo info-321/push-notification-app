@@ -71,6 +71,7 @@ test('password reset is single-use, rejects expiry and rotates passwords while r
   const token=new URL(f.messages.at(-1).url).hash.split('=')[1],next='New-fixture-password-456';
   const result=await f.c.call('/api/auth/reset-password',{token,password:next});assert.equal(result.status,200);assert.equal(result.data.token,undefined);
   assert.equal(await verifyPassword(next,(await f.accounts.read()).password_hash),true);
+  const events=await f.accounts.accountHistory({userId:1});assert.equal(events.rows.find(e=>e.kind==='password_reset_completed').source,'email_recovery');assert.ok(!JSON.stringify(events).includes(token));
   assert.equal((await other.call('/api/account')).status,401);
   await f.c.call('/api/auth/session');assert.equal((await f.c.call('/api/auth/reset-password',{token,password:next})).status,400);
   const row=await f.accounts.read(),expired=crypto.randomBytes(32).toString('base64url');await f.accounts.issueRecovery({token_hash:crypto.createHash('sha256').update(expired).digest('hex'),user_id:1,purpose:'reset',email:'owner@example.test',session_version:row.session_version,expires_ms:Date.now()-1});
