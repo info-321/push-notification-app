@@ -8,13 +8,13 @@
   justify-content: center;
   gap: 34px;
   padding: 24px;
-  background: linear-gradient(110deg, #1d3979, #207f96);
-  color: #e5faf6;
+  background: #f0f5f8;
+  color: #273457;
   font-family: 'Poppins', Arial, sans-serif;
 }
 #notizo-preloader .pword {
   margin: 0;
-  color: #c3e9ed;
+  color: #1d3979;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .6em;
@@ -28,12 +28,12 @@
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: transparent;
-  -webkit-text-stroke: 1px rgba(159, 231, 221, .65);
+  -webkit-text-stroke: 1px rgba(29, 57, 121, .45);
 }
 #notizo-preloader .pnum b {
   position: absolute;
   inset: 0;
-  color: #b5f2e7;
+  color: #219e9f;
   font-weight: inherit;
   -webkit-text-stroke: 0;
   clip-path: inset(100% 0 0 0);
@@ -43,12 +43,12 @@
   width: min(300px, 70vw);
   height: 2px;
   overflow: hidden;
-  background: #c3e9ed30;
+  background: #d4e4ea;
 }
 #notizo-preloader .pline i {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, #12ac8c, #b5f2e7);
+  background: linear-gradient(90deg, #12ac8c, #219e9f);
   transform: scaleX(0);
   transform-origin: left;
 }
@@ -66,14 +66,14 @@
 #notizo-preloader button {
   margin-top: 16px;
   padding: 10px 24px;
-  border: 1px solid #c3e9ed;
+  border: 1px solid #168994;
   border-radius: 6px;
   color: #fff;
   background: #12ac8c;
   font: inherit;
   cursor: pointer;
 }
-#notizo-preloader button:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+#notizo-preloader button:focus-visible { outline: 3px solid #1d3979; outline-offset: 4px; }
 @keyframes notizo-preloader-out { to { clip-path: inset(0 0 100% 0); visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) {
   #notizo-preloader.exit { animation: none; visibility: hidden; }
