@@ -137,3 +137,9 @@ test('policy changes require Admin enrollment immediately and website pauses can
   await f.accounts.platformAtomic(d=>{d.state.policy.require_admin_mfa=true;});
   const blocked=await c.call('/api/domains');assert.equal(blocked.status,403);assert.equal(blocked.data.code,'MFA_REQUIRED');assert.equal((await c.call('/api/auth/session')).data.mfa_enrollment_required,true);
 });
+
+test('unavailable SMTP settings fail safely without an unhandled recovery request rejection',async t=>{
+  const f=await fixture(t);f.accounts.platformConfig=async()=>{throw new Error('Fixture encrypted settings unavailable');};
+  assert.equal((await f.owner.call('/api/auth/forgot-password',{username:'Superadmin'})).status,503);
+  assert.equal((await f.owner.call('/api/auth/session')).status,200);
+});

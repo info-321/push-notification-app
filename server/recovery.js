@@ -5,6 +5,7 @@ import {validMailbox} from './mail.js';
 const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 const validToken=t=>typeof t==='string'&&/^[A-Za-z0-9_-]{43}$/.test(t);
 export function installRecoveryRoutes(app,{accounts,requireAdmin,browser,mailer={enabled:false},secret,dashboardBase}) {
+  const mailAvailable=async()=>{try{return mailer.available?await mailer.available():Boolean(mailer.enabled);}catch{return false;}};
   const base=new URL(dashboardBase);if(base.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(base.hostname))throw new Error('Recovery links require HTTPS.');
   const limit=async(req,label,value,max)=>accounts.recoveryLimit(crypto.createHmac('sha256',secret).update(`recovery:${label}:${value}`).digest('hex'),max);
   const rate=async(req,res,next)=>{try{if(!await limit(req,'ip',loginMetadata(req).ip_address||'unknown',30))return res.set('Retry-After','900').status(429).json({ok:false,message:'Too many requests. Try again in 15 minutes.'});next();}catch{res.status(503).json({ok:false,message:'Recovery is temporarily unavailable.'});}};
@@ -15,9 +16,9 @@ export function installRecoveryRoutes(app,{accounts,requireAdmin,browser,mailer=
     const url=new URL('/login',base);url.hash=new URLSearchParams({[purpose==='verify'?'verify':'reset']:token}).toString();
     try{await mailer.send({to:email,purpose,url:url.href});}catch{await accounts.discardRecovery(hash);throw new Error('Email delivery failed.');}
   };
-  app.get('/api/account/recovery',requireAdmin,async(req,res)=>{try{res.json({ok:true,data:{...await accounts.recovery(req.auth.id),mail_enabled:mailer.available?await mailer.available():mailer.enabled}});}catch{res.status(503).json({ok:false,message:'Could not load recovery settings.'});}});
+  app.get('/api/account/recovery',requireAdmin,async(req,res)=>{try{res.json({ok:true,data:{...await accounts.recovery(req.auth.id),mail_enabled:await mailAvailable()}});}catch{res.status(503).json({ok:false,message:'Could not load recovery settings.'});}});
   app.post('/api/account/recovery',requireAdmin,rate,async(req,res)=>{
-    if(!(mailer.available?await mailer.available():mailer.enabled))return res.status(503).json({ok:false,message:'Email delivery is not configured. Ask your administrator to finish SMTP setup.'});
+    if(!(await mailAvailable()))return res.status(503).json({ok:false,message:'Email delivery is not configured. Ask your administrator to finish SMTP setup.'});
     const {email,password}=req.body||{};
     if(!validMailbox(email))return res.status(400).json({ok:false,message:'Enter a valid recovery email address.'});
     try{
@@ -31,7 +32,7 @@ export function installRecoveryRoutes(app,{accounts,requireAdmin,browser,mailer=
     try{const ok=validToken(req.body?.token)&&await accounts.redeemRecovery(digest(req.body.token),'verify');res.status(ok?200:400).json({ok:Boolean(ok),message:ok?'Recovery email verified. You can now use Forgot password.':'This verification link is invalid, expired or already used.'});}catch{res.status(503).json({ok:false,message:'Verification is temporarily unavailable.'});}
   });
   app.post('/api/auth/forgot-password',browser.guard,rate,async(req,res)=>{
-    if(!(mailer.available?await mailer.available():mailer.enabled))return res.status(503).json({ok:false,message:'Password-reset email is not configured yet. Contact your administrator for help.'});
+    if(!(await mailAvailable()))return res.status(503).json({ok:false,message:'Password-reset email is not configured yet. Contact your administrator for help.'});
     const username=req.body?.username;
     if(typeof username!=='string'||!username.trim()||username.length>255)return res.status(400).json({ok:false,message:'Enter your username.'});
     // Respond independently of account existence and SMTP latency. Work remains
