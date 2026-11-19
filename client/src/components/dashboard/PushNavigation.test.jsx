@@ -27,4 +27,6 @@ test('desktop retains the full navigation row and original links',()=>{
   mobile=false;render(<Sections/>);expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   expect(screen.getByRole('link',{name:'Schedule List'})).toHaveAttribute('href','/push/schedules?domain=ttw');
   expect(screen.getByRole('button',{name:'Send Push'})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Segments Coming soon'})).toBeDisabled();
+  expect(screen.getByRole('button',{name:'Template Gallery Coming soon'})).toBeDisabled();
 });

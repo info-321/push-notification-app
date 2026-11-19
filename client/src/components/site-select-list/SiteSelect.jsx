@@ -146,8 +146,8 @@ const SiteSelect = ({
                   <span
                     className={`domain-status ${item.configured ? 'ok' : 'pending'}`}
                     title={item.configured
-                      ? 'Browser notifications have been enabled for this website.'
-                      : 'Finish setup and enable notifications on your website.'}
+                      ? 'Web-push keys and browser subscriptions are saved. This is not a live delivery check.'
+                      : 'No confirmed subscription setup is recorded. Review Configuration.'}
                   >
                     {item.configured ? 'Configured' : 'Not Configured'}
                   </span>

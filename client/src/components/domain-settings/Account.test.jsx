@@ -12,12 +12,12 @@ beforeEach(() => {
   apiFetch.mockImplementation(async url => response(url.endsWith('/api/account') ? profile : url.endsWith('/api/account/recovery')?{mail_enabled:false}:url.endsWith('/api/domains')?[{ domain_key: 'mice', domain_name: 'micetraveladvisor.com', time_zone: 'Asia/Kolkata' }]:[]));
 });
 
-test('renders real account details with a hidden password and disabled administrator deletion', async () => {
+test('renders real account details with a hidden password and hides unavailable account deletion', async () => {
   render(<Account selectedDomainKey="mice" />);
   expect(await screen.findByText('owner@example.test')).toBeInTheDocument();
   expect(screen.getByText('127.0.0.1')).toBeInTheDocument();
   expect(screen.getByLabelText('Password hidden')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Delete Account' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Delete Account' })).not.toBeInTheDocument();
   expect(screen.getByLabelText('Current Password')).toHaveAttribute('type', 'password');
 });
 

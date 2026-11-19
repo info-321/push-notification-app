@@ -20,6 +20,9 @@ test('uses the selected domain counts, marks unknown breakdowns, and routes quic
   expect(await screen.findByLabelText('Total Subscribers: 7')).toBeTruthy();
   expect(screen.getByLabelText('Web Subscribers: 7')).toBeTruthy();
   expect(screen.getByLabelText('Mobile Subscribers: Not available')).toBeTruthy();
+  expect(screen.getByText('Configured · Browser subscriptions recorded')).toBeTruthy();
+  expect(screen.queryByText(/Browser subscriptions are connected/)).toBeNull();
+  expect(screen.getAllByText('Coming soon').length).toBeGreaterThan(1);
   expect(await screen.findByText(/No campaign reports match these filters/)).toBeTruthy();
   expect(apiFetch).toHaveBeenCalledWith('https://api.example.test/api/domains/mice/overview');
   fireEvent.click(screen.getByRole('button', { name: /Send Push/ }));

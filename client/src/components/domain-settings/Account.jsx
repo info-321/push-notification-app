@@ -102,7 +102,6 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
               {profile.role && <div><dt>Role</dt><dd>{profile.role}</dd></div>}
               <div><dt>Status</dt><dd>{profile.status}</dd></div>
             </dl>
-            <button type="button" className="account-delete" disabled title="Deletion of the administrator account is not available">Delete Account</button>
           </div>}
         </section>
         <section className="account-panel account-password-panel" aria-labelledby="change-password-heading">

@@ -21,8 +21,17 @@ test('configuration starts with collapsed installation rows and never sends on l
   expect(await screen.findByText('micetraveladvisor.com')).toBeInTheDocument();
   for (const label of ['Install With Script', 'Install WordPress Plugin']) expect(screen.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('link', { name: 'Download WordPress Plugin' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Pop ups' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Pop ups Coming soon' })).toBeDisabled();
+  expect(screen.getByText(/Public HTTPS API address configured/)).toHaveTextContent('does not confirm');
   expect(apiFetch.mock.calls.every(([, options]) => !options?.method)).toBe(true);
+});
+
+test.each([[false,'API address is not ready'],[undefined,'readiness is unknown']])('API readiness %s is not presented as a connected website',async(liveReady,text)=>{
+  apiFetch.mockResolvedValue(response({...details,live_ready:liveReady}));
+  render(<ConfigurationPanel domainKey="mice"/>);
+  await screen.findByText('micetraveladvisor.com');
+  expect(screen.getByText(new RegExp(text))).toBeInTheDocument();
+  expect(screen.queryByText(/Public HTTPS API address configured/)).not.toBeInTheDocument();
 });
 
 test('script and WordPress accordions switch independently and copy the correct public or administrator values', async () => {

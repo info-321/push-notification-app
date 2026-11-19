@@ -22,9 +22,6 @@ function TextField({ id, label, ...props }) {
   return <div className="settings-field"><label htmlFor={id}>{label}</label><input id={id} {...props} /></div>;
 }
 
-function EmailToggle({ label, id }) {
-  return <div className="settings-toggle-field"><label htmlFor={id}>{label}</label><button type="button" id={id} className="settings-switch" role="switch" aria-checked="false" aria-label={label} disabled><span />OFF</button></div>;
-}
 
 export default function Settings({ selectedDomainKey = '', onSelectDomain = () => {}, onBack = () => {}, onAccount = () => {}, onConfiguration = () => {}, onPwa = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
   const [domains, setDomains] = useState([]);
@@ -35,7 +32,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
   const [timeZone, setTimeZone] = useState('Asia/Kolkata');
   const [generalError, setGeneralError] = useState('');
   const [pushError, setPushError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(selectedDomainKey));
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [reload, setReload] = useState(0);
@@ -128,10 +125,6 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
               {!timeZones.some(([value]) => value === timeZone) && <option value={timeZone}>{timeZone}</option>}
               {timeZones.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
             </select></div>
-            <EmailToggle id="settings-feedback-email" label="Feedback Notification Email" />
-            <EmailToggle id="settings-weekly-email" label="Weekly Report Email" />
-            <EmailToggle id="settings-daily-email" label="Daily Report Email" />
-            <p className="settings-help">Email notifications and reports are not enabled yet.</p>
             {loading && <p className="settings-help" role="status">Loading settings…</p>}
             {generalError && <p className="settings-error" role="alert">{generalError} <button type="button" onClick={retry}>Try again</button></p>}
             {notice && <p className="settings-success" role="status">{notice}</p>}
@@ -141,6 +134,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
 
         <section className="settings-panel" aria-labelledby="push-settings-heading">
           <h2 id="push-settings-heading"><SettingsIcon type="push" />Push Sending Settings</h2>
+          <p className="settings-integration-status" role="status">{loading ? 'Loading web-push settings...' : pushError ? 'Web-push status unavailable' : push?.domain_key && push?.vapid_public_key ? 'Web-push keys available' : activeKey ? 'Web-push setup incomplete' : 'Select a website'}</p>
           <TextField id="settings-project" label="Domain / Project Key" value={push?.domain_key || ''} placeholder="Select a configured website" readOnly />
           <div className="settings-field"><label htmlFor="settings-sender-key">Sender API Key</label><div className="settings-secret-field"><input id="settings-sender-key" type={showSender ? 'text' : 'password'} placeholder="Protected integration credential" value={push?.sender_api_key || ''} readOnly autoComplete="off" /><button type="button" disabled={!push?.sender_api_key} onClick={() => setShowSender(value => !value)} aria-pressed={showSender}>{showSender ? 'Hide' : 'Show'}</button></div></div>
           <TextField id="settings-public-key" label="Public Key" value={push?.vapid_public_key || ''} readOnly />
@@ -150,47 +144,18 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
           <button type="button" className="settings-update" onClick={configure} disabled={!push || loading}>Open Configuration</button>
         </section>
 
-        <section className="settings-panel settings-inactive" aria-labelledby="ios-settings-heading">
-          <h2 id="ios-settings-heading"><SettingsIcon type="ios" />iOS Push Settings</h2><p className="settings-integration-status">Native iOS push is not enabled yet</p>
-          <fieldset disabled><legend className="settings-sr-only">iOS integration</legend>
-            <TextField id="settings-ios-file" label="Key (.p8 file)" type="file" accept=".p8" />
-            <TextField id="settings-ios-key-id" label="Key ID" placeholder="Key ID" />
-            <TextField id="settings-ios-team-id" label="Team ID" placeholder="Team ID" />
-            <TextField id="settings-ios-bundle-id" label="App Bundle ID" placeholder="App Bundle ID" />
-            <button type="button" className="settings-update">Update</button><button type="button" className="settings-sdk">↓ Download SDK</button>
-          </fieldset>
-        </section>
-
-        <section className="settings-panel settings-inactive" aria-labelledby="android-settings-heading">
-          <h2 id="android-settings-heading"><SettingsIcon type="android" />Android Push Settings</h2><p className="settings-integration-status">Native Android push is not enabled yet</p>
-          <fieldset disabled><legend className="settings-sr-only">Android integration</legend>
-            <TextField id="settings-android-project" label="Android Project ID" placeholder="Android Project ID" />
-            <TextField id="settings-android-account" label="Android Service Account" type="file" accept="application/json,.json" />
-            <button type="button" className="settings-update">Update</button>
-          </fieldset>
-        </section>
-
-        <section className="settings-panel settings-inactive settings-mailchimp" aria-labelledby="mailchimp-settings-heading">
-          <h2 id="mailchimp-settings-heading">Mailchimp Setting</h2><p className="settings-integration-status">Mailchimp is not connected</p>
-          <fieldset disabled><legend className="settings-sr-only">Mailchimp integration</legend>
-            <TextField id="settings-mailchimp-key" label="Mailchimp API Key" type="password" placeholder="Mailchimp API Key" autoComplete="off" />
-            <TextField id="settings-mailchimp-list" label="Mailchimp List ID" placeholder="Mailchimp List ID" />
-            <button type="button" className="settings-update">Update</button>
-          </fieldset>
-        </section>
-
-        <section className="settings-panel settings-inactive" aria-labelledby="email-settings-heading">
-          <h2 id="email-settings-heading"><SettingsIcon type="mail" />Email Settings</h2><p className="settings-integration-status">Email sending is not connected</p>
-          <fieldset disabled><legend className="settings-sr-only">Email integration</legend>
-            <div className="settings-field"><label htmlFor="settings-mail-type">Mail type</label><select id="settings-mail-type" defaultValue="SMTP"><option>SMTP</option></select></div>
-            <TextField id="settings-smtp-host" label="SMTP Hostname" placeholder="SMTP Hostname" />
-            <TextField id="settings-smtp-user" label="SMTP Username" placeholder="SMTP Username" autoComplete="off" />
-            <TextField id="settings-smtp-password" label="SMTP Password" type="password" autoComplete="new-password" />
-            <div className="settings-field"><span className="settings-label">SMTP Port</span><div className="settings-radio-group"><label><input type="radio" name="smtp-port" value="465" />465 (SSL)</label><label><input type="radio" name="smtp-port" value="587" />587 (TLS)</label></div></div>
-            <TextField id="settings-email-from-name" label="From Name" placeholder="From Name" />
-            <TextField id="settings-email-from" label="Verified Email Address (From Email)" type="email" placeholder="From Email" />
-            <div className="settings-email-actions"><button type="button" className="settings-email-test">Send Test Email</button><button type="button" className="settings-update">Update</button></div>
-          </fieldset>
+        <section className="settings-panel settings-planned" aria-labelledby="planned-settings-heading">
+          <h2 id="planned-settings-heading">Coming soon</h2>
+          <p className="settings-help">These features are not available yet. No setup or credentials are required for them.</p>
+          <ul className="settings-planned-list">
+            {[
+              ['Email reports', 'Feedback notifications, weekly reports and daily reports.'],
+              ['Native iOS apps', 'Push notifications for native iOS apps. Apple web push is already supported separately.'],
+              ['Native Android apps', 'Push notifications for native Android apps. Android browser push is already supported separately.'],
+              ['Mailchimp integration', 'Connect a Mailchimp audience.'],
+              ['Website email campaigns', 'Send campaign emails for a website. Account recovery email is managed separately.'],
+            ].map(([name, description]) => <li key={name}><strong>{name}</strong><p>{description}</p></li>)}
+          </ul>
         </section>
       </div>
     </main>

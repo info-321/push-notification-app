@@ -31,6 +31,8 @@ test('draft editing and previews never publish until the explicit publish action
   render(<PromptSettings domainKey="one" />);
   expect(screen.getByRole('note', { name: 'Apple device setup' })).toHaveTextContent('iPads use Desktop, laptop & tablet settings');
   fireEvent.change(await screen.findByLabelText('Heading', { exact: true }), { target: { value: 'Travel updates' } });
+  expect(screen.getByText('Default prompt · Not published')).toBeInTheDocument();
+  expect(screen.queryByText('Current button is live')).not.toBeInTheDocument();
   expect(within(screen.getByRole('region', { name: 'Subscription prompt preview' })).getByText('Travel updates')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Tablet', exact: true }));
   fireEvent.click(within(screen.getByRole('region', { name: 'Subscription prompt preview' })).getByRole('button', { name: 'Enable notifications', exact: true }));

@@ -4,7 +4,7 @@ import './push-navigation.css';
 
 export default function PushNavigation({ children, onNavigate = href => window.location.assign(href) }) {
   const mobile = useMobileSettings(), profile = useContext(SettingsAccessContext);
-  if (!mobile) return <nav className="analytics-navigation" aria-label="Push navigation">{children}</nav>;
+  if (!mobile) return <nav className="analytics-navigation" aria-label="Push navigation">{React.Children.map(children, item => React.isValidElement(item) && item.props.disabled ? React.cloneElement(item, { title: 'Coming soon', children: <>{item.props.children}<small className="push-coming-soon">Coming soon</small></> }) : item)}</nav>;
   const items = React.Children.toArray(children).filter(item => React.isValidElement(item) &&
     (profile?.role !== 'viewer' || ['Reports', 'Analytics'].includes(item.props.children)));
   const current = items.findIndex(item => item.props['aria-current'] === 'page');

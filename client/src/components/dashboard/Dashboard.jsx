@@ -65,7 +65,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
         {error && <div className="overview-panel overview-message" role="alert"><p>{error}</p><button onClick={() => setRefresh(value => value + 1)}>Try again</button></div>}
         {!loading && !error && overview && <>
           <div className={`overview-setup ${domain.is_configured ? 'is-connected' : ''}`}>
-            <span><span className="overview-status-dot" />{domain.is_configured ? 'Configured · Browser subscriptions are connected' : 'Setup needed · Enable notifications on your website to connect a browser'}</span>
+            <span><span className="overview-status-dot" />{domain.is_configured ? 'Configured · Browser subscriptions recorded' : 'Setup not confirmed · Review your website configuration'}</span>
             <button onClick={openConfig}>Manage configuration <span aria-hidden="true">→</span></button>
           </div>
           <section className="overview-metrics" aria-label="Subscriber statistics">
@@ -73,7 +73,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
               ['Total Subscribers', counts.total, 'Current saved subscriptions'],
               ['Web Subscribers', counts.web, 'Desktop and mobile browsers'],
               ['Mobile Subscribers', counts.mobile, counts.mobile === null ? 'Waiting for browsers to revisit' : 'Recorded mobile browsers (including tablets)'],
-              ['App Subscribers', counts.app, 'Native app integration not enabled'],
+              ['App Subscribers', counts.app, 'Coming soon: native app integration'],
             ].map(([label, value, detail]) => <article className="overview-panel overview-metric" key={label}>
               <strong aria-label={`${label}: ${value === null ? 'Not available' : value}`}>{value === null ? '—' : number(value)}</strong><h2>{label}</h2><p>{detail}</p>
             </article>)}
@@ -99,7 +99,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
               <button className="overview-panel overview-event" onClick={sendPush}><Icon name="bell" /><span>Notifications</span><small>Open composer <span aria-hidden="true">→</span></small></button>
               {[
                 ['Offer Popup', 'popup'], ['Exit Offer', 'exit'], ['Newsletter', 'mail'], ['Miscellaneous', 'template'], ['Survey', 'report'],
-              ].map(([label, icon]) => <div className="overview-panel overview-event overview-unavailable" key={label}><Icon name={icon} /><span>{label}</span><small>Not enabled</small></div>)}
+              ].map(([label, icon]) => <div className="overview-panel overview-event overview-unavailable" key={label}><Icon name={icon} /><span>{label}</span><small>Coming soon</small></div>)}
             </div>
           </section>
         </>}

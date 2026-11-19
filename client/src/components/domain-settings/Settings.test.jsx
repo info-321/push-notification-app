@@ -20,11 +20,12 @@ beforeEach(() => {
   });
 });
 
-test('renders the six reference cards with real web-push data and masked sender credentials', async () => {
+test('renders available settings with real web-push data and masked sender credentials', async () => {
   const configure = jest.fn();
   render(<Settings selectedDomainKey="mice" onConfiguration={configure} />);
   await waitFor(() => expect(screen.getByLabelText('Time Zone')).toBeEnabled());
-  for (const heading of ['General Setting', 'Push Sending Settings', 'iOS Push Settings', 'Android Push Settings', 'Mailchimp Setting', 'Email Settings']) expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
+  for (const heading of ['General Setting', 'Push Sending Settings', 'Coming soon']) expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
+  expect(screen.getByText('Web-push keys available')).toBeInTheDocument();
   expect(screen.getByLabelText('Public Key')).toHaveValue('public-key');
   expect(screen.getByLabelText('Sender API Key')).toHaveAttribute('type', 'password');
   fireEvent.click(screen.getByRole('button', { name: 'Show', exact: true }));
@@ -47,13 +48,26 @@ test('saves the selected website time zone and reloads the saved value', async (
   await waitFor(() => expect(screen.getByLabelText('Time Zone')).toHaveValue('America/New_York'));
 });
 
-test('unsupported email and native integrations remain disabled and cannot submit credentials', async () => {
+test('unfinished integrations are labelled Coming soon and offer no credential forms or inactive controls', async () => {
   render(<Settings selectedDomainKey="mice" />);
   await waitFor(() => expect(screen.getByLabelText('Time Zone')).toBeEnabled());
-  for (const label of ['SMTP Password', 'Mailchimp API Key', 'Key (.p8 file)', 'Android Service Account']) expect(screen.getByLabelText(label)).toBeDisabled();
-  for (const toggle of screen.getAllByRole('switch')) expect(toggle).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Send Test Email' })).toBeDisabled();
+  const planned=screen.getByRole('region',{name:'Coming soon'});
+  for (const name of ['Email reports','Native iOS apps','Native Android apps','Mailchimp integration','Website email campaigns']) expect(within(planned).getByText(name,{exact:true})).toBeInTheDocument();
+  expect(within(planned).queryByRole('textbox')).not.toBeInTheDocument();
+  for (const label of ['SMTP Password', 'Mailchimp API Key', 'Key (.p8 file)', 'Android Service Account']) expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+  expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Send Test Email' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Email sending is not connected')).not.toBeInTheDocument();
   expect(apiFetch.mock.calls.every(([, options]) => !options?.method)).toBe(true);
+});
+
+test('failed web-push requests show unavailable status without claiming keys are available', async()=>{
+  const original=apiFetch.getMockImplementation();
+  apiFetch.mockImplementation((url,options)=>url.endsWith('/integration')?Promise.resolve(response(null,false,'Cannot load keys')):original(url,options));
+  render(<Settings selectedDomainKey="mice"/>);
+  expect(screen.queryByText('Web-push keys available')).not.toBeInTheDocument();
+  expect(await screen.findByText('Web-push status unavailable')).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Open Configuration'})).toBeDisabled();
 });
 
 test('save errors preserve the chosen time zone and permit retry', async () => {

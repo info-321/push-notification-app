@@ -255,7 +255,7 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
                       <p className="push-help">Yesterday uses UTC. The other periods cover the last 7, 15, or 30 days.</p>
                     </div>}
                   </div>
-                  <div className="push-unavailable">Send to App Subscribers<input type="checkbox" disabled aria-label="App subscribers unavailable" /></div>
+                  <div className="push-unavailable">Send to App Subscribers<small>Coming soon: native app delivery</small></div>
                 </fieldset>
                 {!finished && <div className="push-audience-count" aria-live="polite">{!selected.length ? 'Select at least one website.' : !webEnabled ? 'Enable web subscribers to send.' : audienceError ? <p role="alert">{audienceError} <button onClick={() => setCountReload(value => value + 1)}>Refresh audience</button></p> : audience ? <><strong>{number(audience.matching)}</strong> matching subscriptions across {websites.length} {websites.length === 1 ? 'website' : 'websites'}.{platform !== 'all' && audience.unknown > 0 && <p>{number(audience.unknown)} subscriptions have unknown device types and are excluded from this platform filter.</p>}</> : 'Counting matching subscriptions...'}</div>}
                 {!finished && !audienceError && <button className="push-back" type="button" disabled={sending || !selected.length || !webEnabled || !audience} onClick={() => setCountReload(value => value + 1)}>Refresh audience</button>}

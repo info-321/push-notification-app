@@ -3,3 +3,4 @@
 .push-mobile-navigation label > span { display:block; margin:2px 0 7px; color:#647588; font-size:11px; letter-spacing:.04em; }
 .push-mobile-navigation select { display:block; width:100%; min-width:0; min-height:48px; padding:10px 12px; border:1px solid #d6e4e9; border-radius:12px; background:#f5f9fa; color:#173b56; font:inherit; font-size:16px; font-weight:500; }
 .push-mobile-navigation select:focus-visible { outline:2px solid #18a89b; outline-offset:2px; }
+.analytics-navigation .push-coming-soon { display:block; margin-top:3px; font-size:10px; line-height:1.3; color:#697985; }

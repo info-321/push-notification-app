@@ -25,6 +25,11 @@
 .settings-update:disabled,.settings-panel fieldset:disabled .settings-update { background:#79c9b3; color:#f9fffd; }
 .settings-panel fieldset:disabled input,.settings-panel fieldset:disabled select { color:#85929b; background:#fafbfc; opacity:1; }
 .settings-integration-status { font-size:10px; color:#778893; padding:5px 9px; border-radius:4px; background:#f0f4f6; margin:-10px 0 21px; display:inline-block; }
+.settings-planned { grid-column:1/-1; }
+.settings-planned-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:18px 24px; list-style:none; margin:20px 0 0; padding:0; }
+.settings-planned-list li { padding:14px; border:1px solid #e2e9ee; border-radius:10px; background:#f8fafb; }
+.settings-planned-list strong { font-size:13px; font-weight:500; color:#425970; }
+.settings-planned-list p { margin:6px 0 0; font-size:12px; color:#6b7d89; line-height:1.7; }
 .settings-sdk { border:0; background:#e6e7e8; color:#838b91; border-radius:6px; padding:9px 15px; font-size:12px!important; margin-top:16px; }
 .settings-radio-group { display:flex; align-items:center; gap:28px; padding:6px 0 20px; }
 .settings-radio-group label { display:flex; align-items:center; font-size:12px; gap:3px; white-space:nowrap; color:#7c858e; }

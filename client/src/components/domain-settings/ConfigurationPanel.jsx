@@ -15,7 +15,7 @@ export default function ConfigurationPanel({ domainKey, onDomains = () => {} }) 
   const [showSender, setShowSender] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
   const [title, setTitle] = useState('Test notification');
-  const [body, setBody] = useState('Push notifications are connected.');
+  const [body, setBody] = useState('This is a test notification from Notizo.');
   const [url, setUrl] = useState('');
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState('');
@@ -82,10 +82,10 @@ export default function ConfigurationPanel({ domainKey, onDomains = () => {} }) 
     <section className="configuration-card configuration-install" aria-labelledby="configuration-push-heading">
       <nav className="configuration-subtabs" aria-label="Integration options">
         <button className="is-active" aria-current="page">Push Notification</button>
-        {['Pop ups', 'After Sale Feedback', 'Android Setting', 'iOS Setting'].map(label => <button key={label} disabled title="Not available yet">{label}</button>)}
+        {['Pop ups', 'After Sale Feedback', 'Native Android apps', 'Native iOS apps'].map(label => <button key={label} disabled title="Coming soon">{label}<small className="configuration-coming-soon">Coming soon</small></button>)}
       </nav>
       <h1 id="configuration-push-heading">Push Notification</h1>
-      {!details.live_ready && <p className="configuration-local-note" role="status">This API is configured for local testing. A public HTTPS API address is needed to connect a live website.</p>}
+      <p className="configuration-local-note" role="status">{details.live_ready === true ? 'Public HTTPS API address configured. This does not confirm that your website plugin or service worker is connected. Subscribe on your website and send a test to verify the integration.' : details.live_ready === false ? 'API address is not ready for a live website. Configure a public HTTPS API address; local HTTP addresses are for testing only.' : 'API address readiness is unknown. Review the API address before testing your website integration.'}</p>
 
       <div className="configuration-accordions">
         <div className="configuration-accordion">

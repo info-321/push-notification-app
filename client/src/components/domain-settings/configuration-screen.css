@@ -10,6 +10,7 @@
 .configuration-subtabs button { border:1px solid #0784ff; padding:10px 16px; border-radius:0; font-size:14px; background:#fff; color:#0784ff; min-height:43px; }
 .configuration-subtabs button.is-active { color:#101820; border-color:#18282d; border-bottom:3px solid #1bb58c; padding-bottom:8px; }
 .configuration-subtabs button:disabled { color:#448dd5; border-color:#86b7ef; }
+.configuration-coming-soon { display:block; margin-top:4px; font-size:10px; color:#647588; }
 .configuration-install h1 { margin:0; padding:80px 0 24px; font-size:24px; color:#404a54; font-weight:400; line-height:1.4; box-shadow:0 3px 4px -3px #6e7d8f77; }
 .configuration-accordions { margin:20px 50px 0; }
 .configuration-install-toggle { display:flex; width:100%; align-items:center; gap:16px; text-align:left; padding:12px 0; min-height:57px; background:none; border:0; border-bottom:1px solid #dce1e5; color:#50647c; font-size:13px; }
