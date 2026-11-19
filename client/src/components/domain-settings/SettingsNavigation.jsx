@@ -1,5 +1,5 @@
 import React, { createContext, forwardRef, useContext, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import MobileFooter from '../navigation/MobileFooter';
 import './settings-navigation.css';
 
 export const SettingsAccessContext = createContext(null);
@@ -52,29 +52,11 @@ const SettingsNavigation = forwardRef(function SettingsNavigation({ children }, 
         children: <><span aria-hidden="true">&#8592;</span> Back to Setup</>,
       })}
     </div>
-    {createPortal(<div className="settings-mobile-footer">
-      <nav className="settings-bottom-navigation" aria-label="Settings navigation">
-      {bottomItems.map(item => {
+    <MobileFooter label="Settings navigation" contentSelector=".domain-list-main" items={bottomItems.map(item => {
         const label = item === setup ? 'Setup' : mobileLabel(item.props.children);
         const current = item === active || (item === setup && inAdvanced);
-        return React.cloneElement(item, {
-          className: current ? 'settings-bottom-item is-current' : 'settings-bottom-item',
-          'aria-label': label,
-          title: label,
-          'aria-current': current ? (inAdvanced ? 'location' : 'page') : undefined,
-          onClick: event => {
-            if (item.props.disabled || item.props['aria-disabled']) { event.preventDefault(); return; }
-            item.props.onClick?.(event);
-            if (!event.defaultPrevented) {
-              document.querySelector('.domain-list-main')?.scrollTo?.({ top: 0, behavior: 'auto' });
-              window.scrollTo({ top: 0, behavior: 'auto' });
-            }
-          },
-          children: <><NavigationIcon section={label} /><span className="settings-bottom-label">{label}</span></>,
-        });
-      })}
-      </nav>
-    </div>, document.body)}
+        return { element: item, label, icon: <NavigationIcon section={label} />, current, ariaCurrent: inAdvanced ? 'location' : 'page' };
+      })} />
   </>;
 });
 export default SettingsNavigation;

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import './domain-list.css';
 import { useMobileSettings } from './SettingsNavigation';
 
-export default function SettingsHeader({ children, onDashboard, onAllWebsites, onAccount, onSettings, onLogout }) {
+export default function SettingsHeader({ children, onDashboard, onAllWebsites, onAccount, onSettings, onManageDomains, onLogout }) {
   const [open, setOpen] = useState(false), profile = useRef(null), trigger = useRef(null);
   const mobile = useMobileSettings();
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function SettingsHeader({ children, onDashboard, onAllWebsites, o
         {open && <nav className="domain-list-profile-menu" aria-label="Account options">
           {mobile && <button type="button" onClick={action(onDashboard)}>Dashboard</button>}
           <a href="/dashboard" onClick={onAllWebsites ? event => { event.preventDefault(); action(onAllWebsites)(); } : undefined}>All websites</a>
+          {onManageDomains && <button type="button" onClick={action(onManageDomains)}>Manage domains</button>}
           <a href="/settings/account" onClick={onAccount ? event => { event.preventDefault(); action(onAccount)(); } : undefined}>My account</a>
           {onSettings && <button type="button" onClick={action(onSettings)}>Settings</button>}
           <button type="button" onClick={action(onLogout)}>Log out</button>

@@ -1,7 +1,31 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import Icon from './DashboardIcon';
+import SettingsHeader from '../domain-settings/SettingsHeader';
+import { SettingsAccessContext, useMobileSettings } from '../domain-settings/SettingsNavigation';
+import MobileFooter from '../navigation/MobileFooter';
 
-export default function WebsiteHeader({ domains = [], domainKey, domainName, analytics = false, activePage = analytics ? 'analytics' : 'dashboard', onAllSites, onManageDomains, onSettings, onSelectDomain, onConfiguration = () => {}, onDashboard, onLogout }) {
+export default function WebsiteHeader({ domains = [], domainKey, domainName, analytics = false, activePage = analytics ? 'analytics' : 'dashboard', mobileDashboard = false, onAllSites, onManageDomains, onSettings, onSelectDomain, onConfiguration = () => {}, onDashboard, onLogout }) {
+  const mobile = useMobileSettings(), profile = useContext(SettingsAccessContext);
+  if (mobile && mobileDashboard) {
+    const dashboard = () => onDashboard ? onDashboard() : onSelectDomain?.(domainKey, domainName);
+    const items = [
+      { element: <button type="button" aria-label="Dashboard" onClick={dashboard} />, label: 'Dashboard', icon: <Icon name="home" />, current: true },
+      ...(profile?.role === 'viewer' ? [] : [{ element: <a aria-label="Push" href={`/push?domain=${encodeURIComponent(domainKey)}`} target="_blank" rel="noopener noreferrer" title="Open Push Notification in a new tab" />, label: 'Push', icon: <Icon name="send" /> }]),
+      { element: <a aria-label="Reports" href={`/push/reports?domain=${encodeURIComponent(domainKey)}`} />, label: 'Reports', icon: <Icon name="report" /> },
+      ...(profile?.role === 'viewer' ? [] : [{ element: <button type="button" aria-label="Setup" onClick={() => onConfiguration(domainKey, domainName || '')} />, label: 'Setup', icon: <Icon name="settings" /> }]),
+    ];
+    return <>
+      <SettingsHeader onDashboard={dashboard} onAllWebsites={onAllSites} onManageDomains={onManageDomains} onSettings={onSettings} onLogout={onLogout}>
+        <div className="domain-list-brand"><button type="button" className="domain-list-logo" onClick={onAllSites} aria-label="Back to all websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
+          <select aria-label="Website" value={domainKey} onChange={event => { const site=domains.find(item => item.domain_key === event.target.value); if (site) onSelectDomain?.(site.domain_key, site.domain_name); }}>
+            {!domains.some(item => item.domain_key === domainKey) && <option value={domainKey}>{domainName || 'Selected website'}</option>}
+            {domains.map(item => <option key={item.domain_key} value={item.domain_key}>{item.domain_name}</option>)}
+          </select>
+        </div>
+      </SettingsHeader>
+      <MobileFooter label="Website navigation" contentSelector=".overview-main" className="website-mobile-footer" items={items} />
+    </>;
+  }
   return <header className="overview-hero"><div className="overview-header-inner">
     <div className="overview-topbar">
       <div className="overview-brand"><button className="overview-logo" onClick={onAllSites} aria-label="Back to all websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>

@@ -54,7 +54,7 @@ export default function Dashboard({ domainKey, onAllSites, onManageDomains, onSe
 
   return (
     <div className="overview-page">
-      <WebsiteHeader domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={onAllSites} onManageDomains={onManageDomains} onSettings={onSettings} onSelectDomain={onSelectDomain} onConfiguration={openConfig} onSendPush={sendPush} onLogout={onLogout} />
+      <WebsiteHeader mobileDashboard domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={onAllSites} onManageDomains={onManageDomains} onSettings={onSettings} onSelectDomain={onSelectDomain} onConfiguration={openConfig} onSendPush={sendPush} onLogout={onLogout} />
 
       <main className="overview-main">
         <div className="overview-heading">
