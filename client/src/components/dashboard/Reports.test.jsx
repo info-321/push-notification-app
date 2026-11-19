@@ -46,3 +46,9 @@ test('CSV download uses the authenticated API and shows an error if export fails
   await waitFor(() => expect(screen.getByRole('button', { name: 'Download CSV' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not download reports'); clicked.mockRestore();
 });
+
+test('empty reports show a readable status without a wide empty table',()=>{
+  render(<ReportTable rows={[]} domainKey="site" timeZone="UTC"/>);
+  expect(screen.getByRole('status')).toHaveTextContent('No campaign reports match these filters.');
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+});

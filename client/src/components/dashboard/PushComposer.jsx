@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import WebsiteHeader from './WebsiteHeader';
+import PushNavigation from './PushNavigation';
 import NotificationPreview from './NotificationPreview';
 import BannerSettings, { newBanner } from './BannerSettings';
 import ScheduleControls, { newSchedule, ScheduleSummary } from './ScheduleControls';
@@ -207,9 +208,9 @@ export default function PushComposer({ domainKey, onAllSites, onManageDomains, o
   const reset = () => { setFinished(false); setResults([]); setDraft({ title: '', body: '', url: '/', icon: savedIcon.current, banner: JSON.parse(JSON.stringify(savedBanner.current)) }); setSaveBanner(false); setSelected([domainKey]); setPlatform('all'); setSubscribed('all'); setTargetDevices('all'); setTargetBrowsers('all'); setWebEnabled(true); setSendMode('now'); setSchedule(newSchedule(domain?.time_zone || 'Asia/Kolkata')); setSchedulePreview(null); schedulingKey.current = null; setStep(1); setError(''); };
 
   return <div className="overview-page push-composer-page">
-    <WebsiteHeader activePage="push" domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={navigate(onAllSites)} onManageDomains={navigate(onManageDomains)} onSettings={navigate(onSettings)} onSelectDomain={navigate(onSelectDomain)} onDashboard={() => navigate(onDashboard)(domainKey, domain?.domain_name)} onConfiguration={navigate(onConfiguration)} onLogout={navigate(onLogout)} />
+    <WebsiteHeader onNavigate={navigate(href => window.location.assign(href))} activePage="push" domains={domains} domainKey={domainKey} domainName={domain?.domain_name} onAllSites={navigate(onAllSites)} onManageDomains={navigate(onManageDomains)} onSettings={navigate(onSettings)} onSelectDomain={navigate(onSelectDomain)} onDashboard={() => navigate(onDashboard)(domainKey, domain?.domain_name)} onConfiguration={navigate(onConfiguration)} onLogout={navigate(onLogout)} />
     <main className="overview-main push-main">
-      <nav className="analytics-navigation" aria-label="Push navigation"><span aria-current="page">Send Push</span><button disabled>Segments</button><a href={`/push/reports?domain=${encodeURIComponent(domainKey)}`}>Reports</a><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>Schedule List</a><button disabled>Template Gallery</button><a href={`/push/settings?domain=${encodeURIComponent(domainKey)}`}>Push Setting</a><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></nav>
+      <PushNavigation onNavigate={navigate(href => window.location.assign(href))}><span aria-current="page">Send Push</span><button disabled>Segments</button><a href={`/push/reports?domain=${encodeURIComponent(domainKey)}`}>Reports</a><a href={`/push/schedules?domain=${encodeURIComponent(domainKey)}`}>Schedule List</a><button disabled>Template Gallery</button><a href={`/push/settings?domain=${encodeURIComponent(domainKey)}`}>Push Setting</a><a href={`/analytics?domain=${encodeURIComponent(domainKey)}`}>Analytics</a></PushNavigation>
       {!loading&&!loadError&&<div className="push-draft-status"><p role="status">{draftStorage.status}</p><div><button type="button" disabled={!draftStorage.loaded||draftStorage.busy||sending||finished||step===1} onClick={draftStorage.save}>Save draft now</button><button type="button" disabled={!draftStorage.loaded||draftStorage.busy||sending} onClick={async()=>{if(!window.confirm('Discard your saved draft and start a new notification?'))return;try{await draftStorage.discard();reset();}catch(e){setError(e.message);}}}>Discard draft</button></div></div>}
       <h1 className="overview-sr-only">Send Push for {domain?.domain_name || 'your website'}</h1>
       {loading && <p role="status">Loading websites...</p>}

@@ -10,7 +10,7 @@ beforeEach(()=>{
   window.matchMedia=jest.fn(()=>query);window.scrollTo=jest.fn();
 });
 afterEach(()=>{delete window.matchMedia;});
-const Header=({role='admin',...props})=><SettingsAccessContext.Provider value={{role}}><WebsiteHeader mobileDashboard domains={domains} domainKey="ttw" domainName="travelandtourworld.com" {...props}/></SettingsAccessContext.Provider>;
+const Header=({role='admin',...props})=><SettingsAccessContext.Provider value={{role}}><WebsiteHeader domains={domains} domainKey="ttw" domainName="travelandtourworld.com" {...props}/></SettingsAccessContext.Provider>;
 
 test('mobile dashboard has four destinations, correct website links and working Setup navigation',()=>{
   const configure=jest.fn();render(<Header onConfiguration={configure}/>);
@@ -47,4 +47,19 @@ test('viewers have read-only dashboard navigation',()=>{
   render(<Header role="viewer"/>);const nav=screen.getByRole('navigation',{name:'Website navigation'});
   expect(within(nav).getByRole('button',{name:'Dashboard'})).toBeTruthy();expect(within(nav).getByRole('link',{name:'Reports'})).toBeTruthy();
   expect(within(nav).queryByRole('link',{name:'Push'})).toBeNull();expect(within(nav).queryByRole('button',{name:'Setup'})).toBeNull();
+});
+
+test.each([['reports','Reports'],['push','Push'],['push-settings','Push'],['analytics','Push']])('mobile %s uses the shared header and highlights %s', (activePage, label)=>{
+  render(<Header activePage={activePage}/>);
+  const nav=screen.getByRole('navigation',{name:'Website navigation'});
+  expect(within(nav).getByRole('link',{name:label,exact:true}).getAttribute('aria-current')).toBe('page');
+  expect(within(nav).getByRole('button',{name:'Dashboard',exact:true}).hasAttribute('aria-current')).toBe(false);
+});
+
+test('composer can guard same-tab Reports and My account navigation',()=>{
+  const navigate=jest.fn();render(<Header activePage="push" onNavigate={navigate}/>);
+  fireEvent.click(within(screen.getByRole('navigation',{name:'Website navigation'})).getByRole('link',{name:'Reports',exact:true}));
+  expect(navigate).toHaveBeenCalledWith('/push/reports?domain=ttw');
+  fireEvent.click(screen.getByRole('button',{name:'Account menu'}));fireEvent.click(screen.getByRole('link',{name:'My account'}));
+  expect(navigate).toHaveBeenCalledWith('/settings/account');
 });

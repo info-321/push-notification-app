@@ -9,3 +9,10 @@
 @media(max-width:600px) { .reports-main .analytics-heading { align-items:flex-start; gap:15px; flex-direction:column; }.report-filters { padding:16px; }.report-toolbar { flex-wrap:wrap; }.report-heading a { font-size:12px; }.report-pagination { gap:8px; } }
 
 .report-copy { padding:8px 10px; font-size:10px; }
+@media(max-width:620px) {
+  .reports-main .report-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr)); }
+  .reports-main .report-filters label { min-width:0; }
+  .reports-main .report-filters input,.reports-main .report-filters select { font-size:16px; min-height:44px; }
+  .reports-main .report-filters button,.reports-main .report-pagination button { min-height:44px; }
+  .reports-main .report-pagination { flex-wrap:wrap; }
+}
