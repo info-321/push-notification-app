@@ -1,0 +1,39 @@
+.settings-shell-header .domain-list-profile-trigger { width:44px; height:44px; justify-content:center; }
+.settings-shell-header .domain-list-profile-menu { top:calc(100% + 6px); width:184px; padding:6px; z-index:30; }
+.settings-shell-header .domain-list-profile-menu a { display:flex; align-items:center; min-height:44px; padding:9px 12px; text-decoration:none; color:#29364d; font-size:13px; border-radius:4px; }
+.settings-shell-header .domain-list-profile-menu button { min-height:44px; }
+.settings-shell-header .domain-list-profile-menu a:hover { background:#eef5f8; }
+.domain-list-tabs > a { border:0; border-bottom:3px solid transparent; background:none; padding:16px 5px 18px; color:#7c8594; font-size:12px; white-space:nowrap; text-decoration:none; text-align:center; }
+.domain-list-tabs > a[aria-current=page] { color:#101b2d; border-bottom-color:#18b486; }
+.domain-list-tabs > a[aria-disabled=true] { opacity:.5; }
+.settings-mobile-navigation { margin:4px 0 22px; }
+.settings-mobile-caption { display:block; margin:0 0 8px 2px; color:#647588; font-size:12px; }
+.settings-mobile-navigation .settings-section-trigger { width:100%; min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 16px; border:1px solid #dbe5eb; border-radius:10px; background:#fff; color:#173b56; font-size:14px; font-weight:500; box-shadow:0 2px 6px #243b5005; text-align:left; }
+.settings-section-trigger svg { width:18px; height:18px; color:#188f97; flex-shrink:0; }
+.settings-section-sheet { position:fixed; inset:auto 0 0; width:100%; max-width:620px; max-height:85dvh; box-sizing:border-box; margin:0 auto; padding:10px 16px max(20px,env(safe-area-inset-bottom)); border:0; border-radius:20px 20px 0 0; background:#fff; color:#173b56; box-shadow:0 -8px 40px #17304a1f; overflow-y:auto; overscroll-behavior:contain; }
+.settings-section-sheet::backdrop { background:#102a4666; }
+.settings-sheet-handle { width:36px; height:4px; border-radius:4px; background:#d7e0e6; margin:0 auto 8px; }
+.settings-sheet-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; margin:0 0 8px; }
+.settings-sheet-heading h2 { font-size:17px; font-weight:600; margin:0; }
+.settings-sheet-heading button { width:44px; height:44px; padding:0; border:0; border-radius:50%; background:#f0f5f8; color:#466278; font-size:25px; }
+.settings-section-options { display:grid; gap:4px; }
+.settings-section-options > button,.settings-section-options > a { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:48px; padding:12px 14px; border:0; border-radius:9px; background:#fff; color:#466278; text-align:left; text-decoration:none; font-size:14px; }
+.settings-section-options > :hover { background:#f2f7f8; }
+.settings-section-options > .settings-section-current { color:#087e7d; background:#e4f4f1; font-weight:600; }
+.settings-section-options > :disabled,.settings-section-options > [aria-disabled=true] { opacity:.5; }
+.settings-section-options > :focus-visible,.settings-sheet-heading button:focus-visible { outline:3px solid #2ab7b3; outline-offset:-3px; }
+@media(min-width:621px) and (max-width:850px) { .domain-list-tabs > a { padding:16px 14px; flex-shrink:0; } }
+@media(max-width:620px) {
+  .settings-shell-header.domain-list-header { padding:10px 16px; min-height:64px; }
+  .settings-shell-header .domain-list-header-inner { flex-wrap:nowrap; gap:8px; }
+  .settings-shell-header .domain-list-brand { min-width:0; flex:1; gap:10px; }
+  .settings-shell-header .domain-list-logo { min-width:44px; min-height:44px; justify-content:center; flex-shrink:0; }
+  .settings-shell-header .domain-list-brand select { width:auto; min-width:0; min-height:44px; max-width:calc(100% - 54px); padding-inline:4px; font-size:12px; flex:0 1 auto; }
+  .settings-shell-header .domain-list-account { flex-shrink:0; gap:0; }
+  .domain-list-page:not(.sites-page) .domain-list-main { padding:16px 16px 36px; }
+  .domain-list-page .account-panel,.domain-list-page .settings-panel { padding:20px 16px; }
+  .domain-list-page .account-profile-box { padding:10px 0; border:0; }
+  .domain-list-page .account-panel input:not([type=checkbox]):not([type=radio]),.domain-list-page .account-panel select,.domain-list-page .settings-panel input:not([type=checkbox]):not([type=radio]),.domain-list-page .settings-panel select { font-size:16px!important; }
+  .domain-list-page .account-password-panel h1 { margin-bottom:20px; }
+  .domain-list-page .account-save,.domain-list-page .settings-update { min-height:44px; }
+}

@@ -1,3 +1,5 @@
+import SettingsHeader from './SettingsHeader';
+import SettingsNavigation from './SettingsNavigation';
 import WebsiteSendingControl from '../platform/WebsiteSendingControl';
 import React, { useEffect, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
@@ -37,7 +39,6 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [reload, setReload] = useState(0);
-  const [showProfile, setShowProfile] = useState(false);
   const [showSender, setShowSender] = useState(false);
   const activeKey = selectedDomainKey || domains[0]?.domain_key || '';
   const activeDomain = domains.find(domain => domain.domain_key === activeKey);
@@ -96,7 +97,7 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
   const retry = () => setReload(value => value + 1);
 
   return <div className="domain-list-page settings-screen">
-    <header className="domain-list-header"><div className="domain-list-header-inner">
+    <SettingsHeader onDashboard={() => onDashboard(activeKey, activeDomain?.domain_name)} onLogout={onLogout} onAccount={onAccount}>
       <div className="domain-list-brand">
         <button type="button" className="domain-list-logo" onClick={() => onDashboard()} aria-label="All websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
         <select aria-label="Select website" value={activeKey} disabled={!domains.length || saving} onChange={event => {
@@ -107,19 +108,14 @@ export default function Settings({ selectedDomainKey = '', onSelectDomain = () =
           {domains.map(domain => <option key={domain.domain_key} value={domain.domain_key}>{domain.domain_name}</option>)}
         </select>
       </div>
-      <div className="domain-list-account"><button className="domain-list-dashboard-link" onClick={() => onDashboard(activeKey, activeDomain?.domain_name)}>Dashboard</button>
-        <div className="domain-list-profile"><button type="button" className="domain-list-profile-trigger" aria-label="Account menu" aria-expanded={showProfile} onClick={() => setShowProfile(value => !value)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">⌄</span>
-        </button>{showProfile && <div className="domain-list-profile-menu"><button onClick={onBack}>Domains</button><button onClick={onLogout}>Log out</button></div>}</div>
-      </div>
-    </div></header>
+    </SettingsHeader>
 
     <main className="domain-list-main">
-      <nav className="domain-list-tabs" aria-label="Settings navigation">
+      <SettingsNavigation>
         <button className="is-active" aria-current="page">Settings</button><button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeKey || loading}>Configuration</button>
         <button onClick={onBack}>Domain</button><button onClick={onPwa}>PWA Setting</button><button onClick={() => { window.location.href='/settings/users'; }}>User</button>
-      </nav>
+      </SettingsNavigation>
       {domainsError && <p className="settings-error" role="alert">{domainsError} <button onClick={retry}>Try again</button></p>}
       {domainsLoading && !activeKey && <p role="status" className="settings-page-note">Loading websites…</p>}
       {!domainsLoading && !domainsError && !domains.length && <p role="status" className="settings-page-note">Add a website in <button onClick={onBack}>Domains</button> to configure its settings.</p>}

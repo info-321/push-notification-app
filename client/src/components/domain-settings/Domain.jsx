@@ -1,3 +1,5 @@
+import SettingsHeader from './SettingsHeader';
+import SettingsNavigation from './SettingsNavigation';
 import React, { useEffect, useState } from 'react';
 import './domain.css';
 import './domain-list.css';
@@ -21,7 +23,6 @@ const Domain = ({
   selectedDomainName = '',
   defaultTab = 'domain',
 }) => {
-  const [showMenu, setShowMenu] = useState(false);
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
   const [timeZone, setTimeZone] = useState('Asia/Kolkata');
@@ -171,30 +172,25 @@ const Domain = ({
 
   return (
     <div className={activeTab === 'config' ? 'domain-list-page configuration-screen' : 'domain-list-page'}>
-        <header className="domain-list-header"><div className="domain-list-header-inner">
-          <div className="domain-list-brand">
+        <SettingsHeader onDashboard={onDashboard} onLogout={onLogout} onSettings={onSettings} onAccount={onAccount}>
+      <div className="domain-list-brand">
             <button type="button" className="domain-list-logo" aria-label="Website dashboard" onClick={onDashboard}><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
             <select aria-label="Select website" value={dropdownValue} onChange={handleSiteChange}>
               <option value="add">Add Domain +</option>
               {domains.map(item => <option value={item.name} key={item.key}>{item.name}</option>)}
             </select>
           </div>
-          <div className="domain-list-account"><button type="button" className="domain-list-dashboard-link" onClick={onDashboard}>Dashboard</button>
-            <div className="domain-list-profile"><button type="button" className="domain-list-profile-trigger" aria-label="Account menu" aria-expanded={showMenu} onClick={() => setShowMenu(value => !value)}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">&#8964;</span>
-            </button>{showMenu && <div className="domain-list-profile-menu"><button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button onClick={onLogout}>Log out</button></div>}</div>
-          </div>
-        </div></header>
+    </SettingsHeader>
 
       <div className="domain-list-main">
-        <nav className="domain-list-tabs" aria-label="Settings navigation">
+        <SettingsNavigation>
           <button onClick={onSettings}>Settings</button>
           <button onClick={onAccount}>Account</button>
           <button className={activeTab === 'config' ? 'is-active' : ''} aria-current={activeTab === 'config' ? 'page' : undefined} disabled={activeTab !== 'config' && !selectedDomainKey} onClick={() => { setActiveTab('config'); onSelectDomainTab('config'); }}>Configuration</button>
           <button className={activeTab === 'domain' ? 'is-active' : ''} aria-current={activeTab === 'domain' ? 'page' : undefined} onClick={onDomains}>Domain</button>
           <button onClick={onPwa}>PWA Setting</button>
           <button onClick={() => { window.location.href='/settings/users'; }}>User</button>
-        </nav>
+        </SettingsNavigation>
 
         {activeTab === 'domain' && (
           <section className="form-card">

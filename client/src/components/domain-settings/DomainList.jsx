@@ -1,3 +1,5 @@
+import SettingsHeader from './SettingsHeader';
+import SettingsNavigation from './SettingsNavigation';
 import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE, apiFetch, protectedFetch } from '../../api';
 import './domain-list.css';
@@ -16,7 +18,6 @@ export default function DomainList({ access, selectedDomainKey, onNew, onConfigu
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  const [showProfile, setShowProfile] = useState(false);
   const selectAll = useRef(null);
   const nameInput = useRef(null);
   const editTrigger = useRef(null);
@@ -105,7 +106,7 @@ export default function DomainList({ access, selectedDomainKey, onNew, onConfigu
   };
 
   return <div className="domain-list-page">
-    <header className="domain-list-header"><div className="domain-list-header-inner">
+    <SettingsHeader onDashboard={() => onDashboard(activeDomain?.domain_key, activeDomain?.domain_name)} onLogout={onLogout} onSettings={onSettings} onAccount={onAccount}>
       <div className="domain-list-brand">
         <button type="button" className="domain-list-logo" onClick={() => onDashboard()} aria-label="All websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
         <select aria-label="Select website" value={activeDomain?.domain_key || ''} disabled={!domains.length || deleting} onChange={event => {
@@ -116,26 +117,17 @@ export default function DomainList({ access, selectedDomainKey, onNew, onConfigu
           {domains.map(domain => <option key={domain.domain_key} value={domain.domain_key}>{domain.domain_name}</option>)}
         </select>
       </div>
-      <div className="domain-list-account">
-        <button className="domain-list-dashboard-link" onClick={() => onDashboard(activeDomain?.domain_key, activeDomain?.domain_name)}>Dashboard</button>
-        <div className="domain-list-profile">
-          <button type="button" className="domain-list-profile-trigger" aria-label="Account menu" aria-expanded={showProfile} onClick={() => setShowProfile(value => !value)}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">⌄</span>
-          </button>
-          {showProfile && <div className="domain-list-profile-menu"><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>}
-        </div>
-      </div>
-    </div></header>
+    </SettingsHeader>
 
     <main className="domain-list-main">
-      <nav className="domain-list-tabs" aria-label="Settings navigation">
+      <SettingsNavigation>
         <button onClick={onSettings}>Settings</button>
         <button onClick={onAccount}>Account</button>
         <button onClick={configure} disabled={!activeDomain}>Configuration</button>
         <button className="is-active" aria-current="page">Domain</button>
         <button onClick={onPwa}>PWA Setting</button>
         <button onClick={() => { window.location.href='/settings/users'; }}>User</button>
-      </nav>
+      </SettingsNavigation>
 
       <section className="domain-list-panel" aria-label="Domains">
         <div className="domain-list-toolbar">

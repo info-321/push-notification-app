@@ -1,3 +1,4 @@
+import {SettingsAccessContext} from './components/domain-settings/SettingsNavigation';
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import PlatformAdmin from './components/platform/PlatformAdmin';
@@ -304,7 +305,7 @@ const Workspace = ({onLogoutError,onProfile}) => {
 
   if(view==='platform')return <PlatformAdmin onDashboard={()=>setView('sites')} onLogout={handleLogout}/>;
 
-  if(view === 'users') return <UserManagement onDashboard={()=>setView('sites')} onLogout={handleLogout}/>;
+  if(view === 'users') return <UserManagement selectedDomainKey={selectedDomainKey} onSelectDomain={(key,name)=>{setSelectedDomainKey(key);setSelectedDomainName(name);}} onDashboard={(key,name)=>key?openOverview(key,name):setView('sites')} onLogout={handleLogout}/>;
 
   if (view === 'settings') {
     return <Settings
@@ -473,5 +474,5 @@ const Workspace = ({onLogoutError,onProfile}) => {
 
 export default function App(){
   const [logoutError,setLogoutError]=useState(''),[profile,setProfile]=useState(null);
-  return <>{profile?.role==='superadmin'&&<nav className="platform-entry" aria-label="Platform owner"><a href="/platform">Platform Administration</a></nav>}<Workspace onProfile={setProfile} onLogoutError={setLogoutError}/><ConfirmAction/>{logoutError&&<div className="logout-error" role="alert"><span>{logoutError}</span><button type="button" aria-label="Dismiss sign-out message" onClick={()=>setLogoutError('')}>Dismiss</button></div>}</>;
+  return <SettingsAccessContext.Provider value={profile}>{profile?.role==='superadmin'&&<nav className="platform-entry" aria-label="Platform owner"><a href="/platform">Platform Administration</a></nav>}<Workspace onProfile={setProfile} onLogoutError={setLogoutError}/><ConfirmAction/>{logoutError&&<div className="logout-error" role="alert"><span>{logoutError}</span><button type="button" aria-label="Dismiss sign-out message" onClick={()=>setLogoutError('')}>Dismiss</button></div>}</SettingsAccessContext.Provider>;
 }

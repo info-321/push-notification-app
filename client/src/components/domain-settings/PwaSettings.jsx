@@ -1,3 +1,5 @@
+import SettingsHeader from './SettingsHeader';
+import SettingsNavigation from './SettingsNavigation';
 import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE, apiFetch } from '../../api';
 import { buildPwaManifest, downloadManifest, readPwaIcon } from './pwa-files';
@@ -37,7 +39,6 @@ export default function PwaSettings({ selectedDomainKey = '', onSelectDomain = (
   const [reading, setReading] = useState({});
   const [notice, setNotice] = useState('');
   const [retry, setRetry] = useState(0);
-  const [showProfile, setShowProfile] = useState(false);
   const [loadedKey, setLoadedKey] = useState('');
   const iconRequests = useRef({});
   const navigation = useRef(null);
@@ -111,18 +112,15 @@ export default function PwaSettings({ selectedDomainKey = '', onSelectDomain = (
   try { hostname = new URL(settings.start_url).hostname; } catch {}
 
   return <div className="domain-list-page pwa-screen">
-    <header className="domain-list-header"><div className="domain-list-header-inner">
+    <SettingsHeader onDashboard={() => onDashboard(activeKey, domain?.domain_name)} onLogout={onLogout} onSettings={onSettings} onAccount={onAccount}>
       <div className="domain-list-brand"><button type="button" className="domain-list-logo" aria-label="All websites" onClick={() => onDashboard()}><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
         <select aria-label="Select website" value={activeKey} disabled={!domains.length || saving} onChange={event => { const selected = domains.find(item => item.domain_key === event.target.value); if (selected) onSelectDomain(selected.domain_key, selected.domain_name); }}>
           {!domain && <option value={activeKey}>Select a website</option>}{domains.map(item => <option key={item.domain_key} value={item.domain_key}>{item.domain_name}</option>)}
         </select>
       </div>
-      <div className="domain-list-account"><button className="domain-list-dashboard-link" onClick={() => onDashboard(activeKey, domain?.domain_name)}>Dashboard</button>
-        <div className="domain-list-profile"><button type="button" className="domain-list-profile-trigger" aria-label="Account menu" aria-expanded={showProfile} onClick={() => setShowProfile(value => !value)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">&#8964;</span></button>{showProfile && <div className="domain-list-profile-menu"><button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button onClick={onLogout}>Log out</button></div>}</div>
-      </div>
-    </div></header>
+    </SettingsHeader>
     <main className="domain-list-main">
-      <nav ref={navigation} className="domain-list-tabs" aria-label="Settings navigation"><button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button><button onClick={onDomains}>Domain</button><button className="is-active" aria-current="page">PWA Setting</button><button onClick={() => { window.location.href='/settings/users'; }}>User</button></nav>
+      <SettingsNavigation ref={navigation}><button onClick={onSettings}>Settings</button><button onClick={onAccount}>Account</button><button disabled={!activeKey} onClick={() => onConfiguration(activeKey, domain?.domain_name || '')}>Configuration</button><button onClick={onDomains}>Domain</button><button className="is-active" aria-current="page">PWA Setting</button><button onClick={() => { window.location.href='/settings/users'; }}>User</button></SettingsNavigation>
       {error && <p className="pwa-error" role="alert">{error}{!loadedKey && <button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button>}</p>}
       {loading && <p className="pwa-note" role="status">Loading PWA settings...</p>}
       {!loading && !activeKey && !error && <p className="pwa-note">Add a website in <button onClick={onDomains}>Domains</button> to configure its PWA.</p>}
