@@ -6,6 +6,29 @@
   color: #4e5359;
 }
 
+.sites-page .domain-list-header-inner {
+  flex-wrap: nowrap;
+}
+
+.sites-page .domain-list-brand {
+  min-width: 0;
+}
+
+.sites-page .domain-list-brand select {
+  min-width: 0;
+}
+
+.sites-page .domain-list-logo,
+.sites-page .domain-list-account {
+  flex-shrink: 0;
+}
+
+.sites-page .domain-list-profile-trigger {
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
 .sites-hero {
   display: flex;
   justify-content: space-between;
@@ -212,7 +235,9 @@
 .card-actions { z-index:1; }
 
 .domain-name {
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 700;
   color: #111827;
 }
@@ -247,6 +272,10 @@
   transform: translateY(-2px);
 }
 
+.sites-page .domain-card:focus-within {
+  z-index: 2;
+}
+
 .domain-action:hover {
   box-shadow: 0 6px 14px rgba(15, 76, 129, 0.18);
   transform: translateY(-1px);
@@ -278,7 +307,7 @@
 
 .card-menu {
   position: absolute;
-  margin-top: 36px;
+  top: calc(100% + 6px);
   right: 0;
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -310,7 +339,12 @@
 }
 
 @media(max-width:620px) {
-  .sites-card { padding:24px 26px 30px; }
+  .sites-page .domain-list-header-inner { gap:8px; }
+  .sites-page .domain-list-brand { gap:12px; flex:1; }
+  .sites-page .domain-list-brand select { width:100%; max-width:240px; }
+  .sites-card { padding:24px 16px 28px; }
   .sites-header h1 { font-size:20px; }
+  .sites-page .domain-card { padding:14px 12px; gap:8px; }
+  .sites-page .card-actions { gap:6px; }
   .sites-page .domain-name { font-size:14px; }
 }

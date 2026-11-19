@@ -114,10 +114,9 @@ const SiteSelect = ({
           </select>
         </div>
         <div className="domain-list-account">
-          <button type="button" className="domain-list-dashboard-link" disabled={!domains.length} onClick={() => { const chosen = domains.find(item => item.name === selectedDomain) || domains[0]; if (chosen) onSelectDomain?.(chosen.key, chosen.name); }}>Dashboard</button>
           <div className="domain-list-profile">
             <button type="button" className="domain-list-profile-trigger" aria-label="Account menu" aria-expanded={showProfileMenu} onClick={() => setShowProfileMenu(open => !open)}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg><span aria-hidden="true">&#8964;</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg>
             </button>
             {showProfileMenu && <div className="domain-list-profile-menu">
               <button type="button" onClick={onAccount}>Account</button>
