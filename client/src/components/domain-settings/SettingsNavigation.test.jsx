@@ -8,53 +8,58 @@ beforeEach(() => {
   listeners = new Set();
   query = { matches:true, addEventListener:(_,listener)=>listeners.add(listener), removeEventListener:(_,listener)=>listeners.delete(listener) };
   window.matchMedia = jest.fn(() => query);
-  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
-  HTMLDialogElement.prototype.close = function () { this.open = false; };
+  window.scrollTo = jest.fn();
 });
 afterEach(() => { delete window.matchMedia; document.body.style.overflow = ''; });
 
-function Navigation({ role = 'admin', navigate = jest.fn() }) {
+function Navigation({ role = 'admin', navigate = jest.fn(), setup = jest.fn(), pwa = jest.fn(), active = 'Account', disabledSetup = false }) {
   return <SettingsAccessContext.Provider value={{role}}><SettingsNavigation>
-    <button onClick={navigate}>Settings</button><button aria-current="page">Account</button>
-    <button disabled>Configuration</button><button>Domain</button><button>PWA Setting</button><button>User</button>
+    <button aria-current={active==='Settings'?'page':undefined} onClick={navigate}>Settings</button><button aria-current={active==='Account'?'page':undefined}>Account</button>
+    <button disabled={disabledSetup} aria-current={active==='Configuration'?'page':undefined} onClick={setup}>Configuration</button><button>Domain</button><button aria-current={active==='PWA Setting'?'page':undefined} onClick={pwa}>PWA Setting</button><button>User</button>
   </SettingsNavigation></SettingsAccessContext.Provider>;
 }
 
-test('mobile navigation opens the current section, navigates, and restores scroll and focus', () => {
+test('mobile settings provide five direct destinations with the selected page and working navigation', () => {
   const navigate=jest.fn(); render(<Navigation navigate={navigate}/>);
-  const trigger=screen.getByRole('button',{name:'Choose settings section: Account'});
-  fireEvent.click(trigger);
-  const sheet=screen.getByRole('dialog',{name:'Website settings'});
-  expect(within(sheet).getByRole('button',{name:'Account'}).getAttribute('aria-current')).toBe('page');
-  expect(document.activeElement).toBe(within(sheet).getByRole('button',{name:'Account'}));
-  expect(within(sheet).getByRole('button',{name:'Configuration'}).disabled).toBe(true);
-  expect(document.body.style.overflow).toBe('hidden');
-  fireEvent.click(within(sheet).getByRole('button',{name:'Settings',exact:true}));
+  const nav=screen.getByRole('navigation',{name:'Settings navigation'});
+  expect(within(nav).getAllByRole('button').map(button=>button.textContent)).toEqual(['Settings','Account','Setup','Domains','Users']);
+  expect(within(nav).getByRole('button',{name:'Account'}).getAttribute('aria-current')).toBe('page');
+  expect(screen.queryByRole('button',{name:/Choose settings section/})).toBeNull();
+  fireEvent.click(within(nav).getByRole('button',{name:'Settings',exact:true}));
   expect(navigate).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(document.body.style.overflow).toBe('');
-  expect(document.activeElement).toBe(trigger);
+  expect(window.scrollTo).toHaveBeenCalledWith({top:0,behavior:'auto'});
 });
 
-test('native Escape dismissal and resizing close the sheet cleanly', () => {
-  render(<Navigation/>);
-  const trigger=screen.getByRole('button',{name:'Choose settings section: Account'});
-  fireEvent.click(trigger); fireEvent(screen.getByRole('dialog'),new Event('cancel',{bubbles:true}));
-  expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(trigger);
+test('PWA settings remain inside Setup, with a return link and desktop tab access', () => {
+  const setup=jest.fn(); render(<Navigation active="PWA Setting" setup={setup}/>);
+  const nav=screen.getByRole('navigation',{name:'Settings navigation'});
+  expect(within(nav).getByRole('button',{name:'Setup'}).getAttribute('aria-current')).toBe('location');
+  expect(within(nav).queryByRole('button',{name:'PWA Settings'})).toBeNull();
+  expect(screen.getByRole('heading',{name:'PWA Settings'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Back to Setup'}));
+  expect(setup).toHaveBeenCalledTimes(1);
   act(()=>{query.matches=false;listeners.forEach(listener=>listener());});
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(document.body.style.overflow).toBe('');
   expect(screen.getByRole('navigation',{name:'Settings navigation'}).className).toBe('domain-list-tabs');
+  expect(screen.getByRole('button',{name:'PWA Setting'}).getAttribute('aria-current')).toBe('page');
+  expect(screen.queryByRole('button',{name:'Setup'})).toBeNull();
 });
 
-test('role restrictions hide user management and configuration from a viewer', () => {
-  render(<Navigation role="viewer"/>);
-  fireEvent.click(screen.getByRole('button',{name:'Choose settings section: Account'}));
-  const sheet=screen.getByRole('dialog');
-  expect(within(sheet).queryByRole('button',{name:'Users'})).toBeNull();
-  expect(within(sheet).queryByRole('button',{name:'Configuration'})).toBeNull();
-  expect(within(sheet).getByRole('button',{name:'Domains'})).toBeTruthy();
+test('viewer navigation excludes user management and routes Setup to the permitted PWA page', () => {
+  const setup=jest.fn(),pwa=jest.fn(); render(<Navigation role="viewer" setup={setup} pwa={pwa}/>);
+  const nav=screen.getByRole('navigation',{name:'Settings navigation'});
+  expect(within(nav).queryByRole('button',{name:'Users'})).toBeNull();
+  expect(within(nav).queryByRole('button',{name:'Configuration'})).toBeNull();
+  fireEvent.click(within(nav).getByRole('button',{name:'Setup'}));
+  expect(pwa).toHaveBeenCalledTimes(1);expect(setup).not.toHaveBeenCalled();
+});
+
+test('disabled setup controls do not navigate, and editor navigation hides user management', () => {
+  const setup=jest.fn();render(<Navigation role="editor" disabledSetup setup={setup}/>);
+  const nav=screen.getByRole('navigation',{name:'Settings navigation'});
+  expect(within(nav).getByRole('button',{name:'Setup'}).disabled).toBe(true);
+  fireEvent.click(within(nav).getByRole('button',{name:'Setup'}));
+  expect(setup).not.toHaveBeenCalled();
+  expect(within(nav).queryByRole('button',{name:'Users'})).toBeNull();
 });
 
 test('the mobile account menu keeps Dashboard accessible and has no extra arrow', () => {

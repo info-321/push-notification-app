@@ -245,7 +245,14 @@ const Domain = ({
           </section>
         )}
 
-        {activeTab === 'config' && <ConfigurationPanel key={selectedDomainKey} domainKey={selectedDomainKey} onDomains={onDomains} />}
+        {activeTab === 'config' && <>
+          <ConfigurationPanel key={selectedDomainKey} domainKey={selectedDomainKey} onDomains={onDomains} />
+          <details className="settings-advanced">
+            <summary>Advanced settings</summary>
+            <p>Customise your website's installed app name, icons and appearance.</p>
+            <button type="button" onClick={onPwa}>PWA Settings<span aria-hidden="true">&#8594;</span></button>
+          </details>
+        </>}
       </div>
     </div>
   );
