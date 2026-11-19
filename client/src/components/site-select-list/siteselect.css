@@ -341,7 +341,7 @@
 @media(max-width:620px) {
   .sites-page .domain-list-header-inner { gap:8px; }
   .sites-page .domain-list-brand { gap:12px; flex:1; }
-  .sites-page .domain-list-brand select { width:100%; max-width:240px; }
+  .sites-page .domain-list-brand select { width:auto; max-width:calc(100% - 56px); flex:0 1 auto; }
   .sites-card { padding:24px 16px 28px; }
   .sites-header h1 { font-size:20px; }
   .sites-page .domain-card { padding:14px 12px; gap:8px; }
