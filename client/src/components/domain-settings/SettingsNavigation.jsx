@@ -1,4 +1,5 @@
 import React, { createContext, forwardRef, useContext, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './settings-navigation.css';
 
 export const SettingsAccessContext = createContext(null);
@@ -51,8 +52,7 @@ const SettingsNavigation = forwardRef(function SettingsNavigation({ children }, 
         children: <><span aria-hidden="true">&#8592;</span> Back to Setup</>,
       })}
     </div>
-    <div className="settings-mobile-footer">
-      <div className="settings-content-edge" aria-hidden="true" />
+    {createPortal(<div className="settings-mobile-footer">
       <nav className="settings-bottom-navigation" aria-label="Settings navigation">
       {bottomItems.map(item => {
         const label = item === setup ? 'Setup' : mobileLabel(item.props.children);
@@ -65,13 +65,16 @@ const SettingsNavigation = forwardRef(function SettingsNavigation({ children }, 
           onClick: event => {
             if (item.props.disabled || item.props['aria-disabled']) { event.preventDefault(); return; }
             item.props.onClick?.(event);
-            if (!event.defaultPrevented) window.scrollTo({ top: 0, behavior: 'auto' });
+            if (!event.defaultPrevented) {
+              document.querySelector('.domain-list-main')?.scrollTo?.({ top: 0, behavior: 'auto' });
+              window.scrollTo({ top: 0, behavior: 'auto' });
+            }
           },
           children: <><NavigationIcon section={label} /><span className="settings-bottom-label">{label}</span></>,
         });
       })}
       </nav>
-    </div>
+    </div>, document.body)}
   </>;
 });
 export default SettingsNavigation;

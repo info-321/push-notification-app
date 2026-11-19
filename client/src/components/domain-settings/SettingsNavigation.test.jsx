@@ -62,6 +62,20 @@ test('disabled setup controls do not navigate, and editor navigation hides user 
   expect(within(nav).queryByRole('button',{name:'Users'})).toBeNull();
 });
 
+test('the mobile footer is outside the scrolling content and resets the content position', () => {
+  const view=render(<main className="domain-list-main"><Navigation/></main>);
+  const pane=screen.getByRole('main'),scroll=jest.fn();pane.scrollTo=scroll;
+  const nav=screen.getByRole('navigation',{name:'Settings navigation'});
+  expect(pane.contains(nav)).toBe(false);
+  fireEvent.click(within(nav).getByRole('button',{name:'Account',exact:true}));
+  expect(scroll).toHaveBeenCalledWith({top:0,behavior:'auto'});
+  act(()=>{query.matches=false;listeners.forEach(listener=>listener());});
+  expect(pane.contains(screen.getByRole('navigation',{name:'Settings navigation'}))).toBe(true);
+  expect(document.querySelector('.settings-mobile-footer')).toBeNull();
+  view.unmount();
+  expect(document.querySelector('.settings-mobile-footer')).toBeNull();
+});
+
 test('the mobile account menu keeps Dashboard accessible and has no extra arrow', () => {
   const dashboard=jest.fn(),logout=jest.fn();
   render(<SettingsHeader onDashboard={dashboard} onLogout={logout}><div className="domain-list-brand">Website</div></SettingsHeader>);
