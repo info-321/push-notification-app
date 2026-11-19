@@ -43,6 +43,10 @@ id_ed25519.*
 secrets/
 credentials/
 credentials.json
+alerts.conf
+age-identity*.txt
+backup_ed25519*
+*.tar.age
 service-account*.json
 service_account*.json
 

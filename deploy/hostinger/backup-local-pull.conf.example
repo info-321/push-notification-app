@@ -1,0 +1,4 @@
+{
+  "enabled": false,
+  "recipient_file": "/etc/notizo-backup/local-recipient.txt"
+}

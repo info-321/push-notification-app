@@ -50,35 +50,16 @@ def write_json(path, value):
             os.unlink(name)
 
 
-def run(snapshot, config):
-    if not config.exists():
-        print('Off-server backup is not configured; local backup remains available.')
-        return
-    settings = json.loads(private_file(config).read_text(encoding='utf-8'))
-    allowed = {'enabled', 'recipient_file', 'rclone_config', 'remote_dir'}
-    if not isinstance(settings, dict) or set(settings) - allowed or not isinstance(settings.get('enabled'), bool):
-        raise ValueError('Invalid off-server backup configuration.')
-    if not settings['enabled']:
-        print('Off-server backup is disabled; local backup remains available.')
-        return
-    recipient = private_file(settings['recipient_file'])
-    rclone_config = private_file(settings['rclone_config'])
-    # The configuration/recipient files must live outside the repository and
-    # snapshots, so an .env backup cannot accidentally include upload credentials.
-    for path in (recipient, rclone_config):
-        if path.resolve().is_relative_to(ROOT.parent.parent):
-            raise ValueError('Keep backup credentials and recipients outside the application checkout.')
-    remote = settings['remote_dir']
-    if not isinstance(remote, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*:[^\r\n\x00]+', remote):
-        raise ValueError('Choose a named rclone remote and dedicated backup directory.')
-    for tool in ('age', 'rclone'):
-        if not shutil.which(tool):
-            raise ValueError('Install age and rclone before enabling off-server backups.')
+def seal_snapshot(snapshot, recipient):
+    recipient = private_file(recipient)
+    if recipient.resolve().is_relative_to(ROOT.parent.parent):
+        raise ValueError("Keep encryption recipients outside the checkout.")
+    if not shutil.which("age"):
+        raise ValueError("Install age before preparing encrypted exports.")
     snapshot = snapshot.resolve()
     if snapshot.parent != ROOT / 'backups' / 'automatic' or not re.fullmatch(r'20[0-9]{6}T[0-9]{6}Z-[A-Za-z0-9]+', snapshot.name):
         raise ValueError('Choose a completed backup directly in backups/automatic.')
     files = [snapshot / name for name in ('database.sql.gz', 'application.env', 'SHA256SUMS', 'backup-info.txt')]
-    (snapshot / 'offsite-receipt.json').unlink(missing_ok=True)
     if any(path.is_symlink() or not path.is_file() for path in files):
         raise ValueError('The local snapshot is incomplete or contains symbolic links.')
     manifest = {}
@@ -115,7 +96,7 @@ def run(snapshot, config):
                         child.wait()
             os.chmod(temporary, 0o600)
             os.replace(temporary, encrypted)
-            write_json(seal, {'sha256':fingerprint(encrypted)})
+            write_json(seal, {'sha256':fingerprint(encrypted), 'recipient_sha256':fingerprint(recipient)})
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
@@ -123,6 +104,40 @@ def run(snapshot, config):
         raise ValueError('Invalid encrypted snapshot path.')
     if seal.is_symlink() or not seal.is_file() or json.loads(seal.read_text(encoding='utf-8')).get('sha256') != fingerprint(encrypted):
         raise ValueError('The encrypted snapshot changed. Retain the original local dump and investigate before retrying.')
+    if json.loads(seal.read_text(encoding='utf-8')).get('recipient_sha256', fingerprint(recipient)) != fingerprint(recipient):
+        raise ValueError('The encryption recipient changed. Keep the existing archive and review key rotation before retrying.')
+    return encrypted
+
+
+def run(snapshot, config):
+    if not config.exists():
+        print('Cloud/SFTP upload is not configured; local backup remains available.')
+        return
+    settings = json.loads(private_file(config).read_text(encoding='utf-8'))
+    allowed = {'enabled', 'recipient_file', 'rclone_config', 'remote_dir'}
+    if not isinstance(settings, dict) or set(settings) - allowed or not isinstance(settings.get('enabled'), bool):
+        raise ValueError('Invalid off-server backup configuration.')
+    if not settings['enabled']:
+        print('Off-server backup is disabled; local backup remains available.')
+        return
+    recipient = private_file(settings['recipient_file'])
+    rclone_config = private_file(settings['rclone_config'])
+    # The configuration/recipient files must live outside the repository and
+    # snapshots, so an .env backup cannot accidentally include upload credentials.
+    for path in (recipient, rclone_config):
+        if path.resolve().is_relative_to(ROOT.parent.parent):
+            raise ValueError('Keep backup credentials and recipients outside the application checkout.')
+    remote = settings['remote_dir']
+    if not isinstance(remote, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*:[^\r\n\x00]+', remote):
+        raise ValueError('Choose a named rclone remote and dedicated backup directory.')
+    for tool in ('age', 'rclone'):
+        if not shutil.which(tool):
+            raise ValueError('Install age and rclone before enabling off-server backups.')
+    snapshot = snapshot.resolve()
+    if snapshot.parent != ROOT / 'backups' / 'automatic' or not re.fullmatch(r'20[0-9]{6}T[0-9]{6}Z-[A-Za-z0-9]+', snapshot.name):
+        raise ValueError('Choose a completed backup directly in backups/automatic.')
+    (snapshot / 'offsite-receipt.json').unlink(missing_ok=True)
+    encrypted = seal_snapshot(snapshot, recipient)
     expected = fingerprint(encrypted)
     target = remote.rstrip('/') + '/' + snapshot.name + '.tar.age'
     options = ['--config', str(rclone_config), '--contimeout', '20s', '--timeout', '2m', '--retries', '3']

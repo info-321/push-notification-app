@@ -213,11 +213,11 @@ systemctl status push-notification-backup.service --no-pager
 journalctl -u push-notification-backup.service -n 50 --no-pager
 ```
 
-There is no automatic deletion policy. Monitor storage with
-`du -sh backups/automatic` and `df -h /`. Local backups protect against mistakes
-and database corruption, but not loss of the VPS. Copy completed backup folders
-to separate, private storage; add off-server automation when that storage is
-available. Saving an application database backup does not back up the TTW
+The bounded retention policy is documented in [STORAGE.md](STORAGE.md). Monitor
+storage with `du -sh backups/automatic` and `df -h /`. Local backups protect
+against mistakes and database corruption, but not loss of the VPS. Configure
+[encrypted PC copies and email alerts](../windows/BACKUPS.md) for off-server
+protection. Saving an application database backup does not back up the TTW
 similarity application's database or all server configurations.
 
 For an actual disaster recovery, keep the original backup intact, restore its

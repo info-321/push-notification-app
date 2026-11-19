@@ -29,14 +29,17 @@ Subsequent successful deployments install/update these root-owned systemd units:
 | Full local backup; optional encrypted upload | Daily 02:15 | 07:45 |
 | Isolated restore of the latest local backup | Sunday 02:35 | 08:05 |
 | Bounded database/local-backup retention | Daily 03:15 | 08:45 |
+| Backup freshness and operator email retry | Every 30 minutes | Every 30 minutes |
 
 Restore tests use a disposable MySQL container with no network, production mounts
 or published ports. They verify the dump/configuration checksums, restore the
 tables, check the original administrator and full-endpoint index, and write
 `restore-verified.json` only after success. Existing older snapshots remain
 restorable. A failed job sets the systemd service to failed and writes a
-`notizo-ops` error in the system journal. These are local operational alerts;
-email/chat delivery requires a separately configured monitoring destination.
+failure in the system journal. Host-side email alerts use the private
+`/etc/notizo-backup/alerts.conf` SMTP configuration and run independently of
+Docker/MySQL. Until that file is configured, incidents are retained locally and
+the status command explicitly reports email alerts as not configured.
 
 From the Hostinger SSH terminal:
 
@@ -107,7 +110,32 @@ since aged out of the live database. Backup lifecycle policies must therefore
 match the retention policy. Restoring an old backup can bring old detail back;
 run preview/maintenance after recovery before reopening the application.
 
-## Configure encrypted off-server backups later
+## Encrypted copies to the local Windows computer
+
+The operator can use the local Windows computer as the off-server destination.
+See [the Windows setup guide](../windows/BACKUPS.md). The prepared installer
+creates protected local identities and exact public-key activation commands.
+No private key is uploaded to Hostinger, and no incoming PC port is opened.
+
+After setup, `backup.sh` also prepares an encrypted export. This is **not** an
+off-server success until the PC downloads, decrypts, checks its inner manifest
+and acknowledges the exact ciphertext checksum. Unacknowledged snapshots are
+protected from local retention. The health timer alerts if no recent verified
+PC copy is recorded. Losing the entire VPS still requires an independent
+external outage monitor to generate an immediate alert.
+
+```bash
+python3 backup_health.py --status  # read-only, sends no email
+python3 ops_alert.py check        # SMTP/TLS/authentication only, sends no email
+python3 ops_alert.py test-email   # explicit operator delivery test
+```
+
+Email recipients are configured explicitly; this installation uses only
+`ttwabhijit@gmail.com`. No database dumps, `.env` contents, raw logs or keys
+appear in the emails. Keep an offline private recovery copy of the PC age
+identity. Local PC copies are retained without automatic deletion.
+
+## Optional cloud/SFTP destination
 
 This uses [age](https://github.com/FiloSottile/age) public-key encryption and
 [rclone](https://rclone.org/docs/) for S3-compatible storage or an SSH/SFTP remote.

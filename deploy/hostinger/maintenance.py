@@ -48,6 +48,9 @@ def prune_backups(config, apply):
     offsite=False
     if (ROOT/'backup-offsite.conf.local').exists():
         offsite=json.loads((ROOT/'backup-offsite.conf.local').read_text(encoding='utf-8')).get('enabled',False)
+    local_pull=False
+    if (ROOT/'backup-local-pull.conf.local').exists():
+        local_pull=json.loads((ROOT/'backup-local-pull.conf.local').read_text(encoding='utf-8')).get('enabled',False)
     removed=[]
     cutoff=time.time()-config['local_backup_days']*86400
     for entry in entries:
@@ -58,6 +61,9 @@ def prune_backups(config, apply):
         if offsite:
             receipt=entry/'offsite-receipt.json'
             if not receipt.is_file() or json.loads(receipt.read_text(encoding='utf-8')).get('status')!='uploaded_and_checksum_verified':continue
+        if local_pull:
+            receipt=entry/'local-copy-receipt.json'
+            if not receipt.is_file() or receipt.is_symlink() or json.loads(receipt.read_text(encoding='utf-8')).get('status')!='copied_and_restore_verified':continue
         resolved=entry.resolve()
         if resolved.parent!=root or entry.is_symlink():raise ValueError('Unsafe backup deletion target.')
         if apply:shutil.rmtree(resolved)

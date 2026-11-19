@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "require_offsite": true,
+  "recipients": ["ttwabhijit@gmail.com"],
+  "smtp": {
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "user": "YOUR_SENDER_EMAIL",
+    "password": "",
+    "from": "YOUR_SENDER_EMAIL"
+  }
+}

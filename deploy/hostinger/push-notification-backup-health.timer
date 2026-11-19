@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Notizo backup protection every 30 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Unit=push-notification-backup-health.service
+
+[Install]
+WantedBy=timers.target

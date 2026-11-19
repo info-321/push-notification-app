@@ -37,12 +37,15 @@ gzip -dc "$partial/database.sql.gz" | grep -F 'CREATE TABLE `subscriptions`' >/d
     cd -- "$partial"
     sha256sum database.sql.gz application.env > SHA256SUMS
 )
-printf 'Created (UTC): %s\nSource: push-notification-app MySQL database\nStorage: local VPS only\n' "$stamp" > "$partial/backup-info.txt"
+printf 'Created (UTC): %s\nSource: push-notification-app MySQL database\nStorage: created on VPS; external copies require verified receipts\n' "$stamp" > "$partial/backup-info.txt"
 chmod 600 "$partial"/*
 final="$script_dir/backups/automatic/${partial##*/.partial-}"
 mv -T -- "$partial" "$final"
 trap - ERR
 printf 'Backup completed: %s\n' "$final"
+if [[ -f "$script_dir/backup-export.py" ]]; then
+    python3 "$script_dir/backup-export.py" prepare "$final"
+fi
 if [[ -f "$script_dir/offsite-backup.py" ]]; then
     # An unconfigured destination is explicitly skipped. Configured uploads must
     # pass encryption and remote checksum verification or this service fails.

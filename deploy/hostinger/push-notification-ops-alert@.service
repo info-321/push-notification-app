@@ -1,6 +1,12 @@
 [Unit]
-Description=Record a Notizo backup or maintenance failure for %i
+Description=Email the Notizo operator about a failed backup check (%i)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/logger -p daemon.err -t notizo-ops Notizo job %i failed. Inspect systemctl --failed and journalctl for this unit.
+User=root
+UMask=0077
+WorkingDirectory=/opt/push-notification-app/deploy/hostinger
+ExecStart=/usr/bin/python3 /opt/push-notification-app/deploy/hostinger/ops_alert.py failure %i
+TimeoutStartSec=60
