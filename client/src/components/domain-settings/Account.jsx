@@ -5,6 +5,7 @@ import { API_BASE, apiFetch, acceptSession, authChanged } from '../../api';
 import './domain-list.css';
 import './account.css';
 import AccountSecurity from './AccountSecurity';
+import RecoverySettings from './RecoverySettings';
 
 export default function Account({ selectedDomainKey = '', onSelectDomain = () => {}, onSettings = () => {}, onDomains = () => {}, onConfiguration = () => {}, onPwa = () => {}, onDashboard = () => {}, onLogout = () => {} }) {
   const [profile, setProfile] = useState(null);
@@ -121,7 +122,7 @@ export default function Account({ selectedDomainKey = '', onSelectDomain = () =>
           </form>
         </section>
       </div>
-      {profile && <><MfaSettings/><AccountSecurity showSessions={false} platformOwner={profile.role==='superadmin'}/></>}
+      {profile && <><RecoverySettings key={profile.id||profile.username}/><MfaSettings/><AccountSecurity showSessions={false} platformOwner={profile.role==='superadmin'}/></>}
     </main>
   </div>;
 }

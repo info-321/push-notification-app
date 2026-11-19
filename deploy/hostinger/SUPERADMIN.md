@@ -44,7 +44,7 @@ Review the selections and type `ACTIVATE`. The command commits the role changes 
 3. Scan the QR code using a trusted authenticator app, then enter its current six-digit code.
 4. Save all ten recovery codes privately in a password manager. Check the acknowledgement and continue.
 5. Open **Platform Administration**, then **Users & website access**. Review Admin grants and Editor/Viewer team assignments. Removing an Admin website also removes that website from their managed team grants and revokes affected sessions.
-6. Existing verified recovery addresses and password-reset links remain supported. Recovery email and Login sessions are not displayed in Settings ? Account. Password resets preserve MFA; they do not bypass it.
+6. Existing verified recovery addresses and password-reset links remain supported. Each role can set its own verified recovery email in My account; Login sessions remain hidden from that screen. Password resets preserve MFA; they do not bypass it.
 
 The setup secret/QR and recovery codes are never stored in localStorage. Seeds and SMTP overrides are encrypted in MySQL using a key derived from `PUSH_API_SECRET`; recovery codes are stored only as keyed hashes. Back up the database **and** the protected deployment `.env`. Do not change `PUSH_API_SECRET` casually: it is needed to recover encrypted settings and preserve existing sending credentials.
 
@@ -110,7 +110,7 @@ Check that the owner can access Platform Administration; each Admin sees only as
 
 ## Account visibility
 
-Admin, Editor and Viewer responses exclude Superadmin account identities, login attempts, sessions and activity. A private account registry preserves that protection after later role changes. Filtering happens before pagination, and direct user/session requests for hidden accounts return the same unavailable response as unknown accounts. Superadmins retain access to the full audit history. Audit and recovery records are preserved in MySQL; the Account screen hides Recovery email and Login sessions while retaining password changes, two-factor settings and permitted activity history.
+Admin, Editor and Viewer responses exclude Superadmin account identities, login attempts, sessions and activity. A private account registry preserves that protection after later role changes. Filtering happens before pagination, and direct user/session requests for hidden accounts return the same unavailable response as unknown accounts. Superadmins retain access to the full audit history. Audit and recovery records are preserved in MySQL; the Account screen shows each signed-in user their own Recovery email, password changes, two-factor settings and permitted activity history. Login sessions remain hidden from the Account screen.
 
 
 ## Account history and secure password resets
@@ -131,3 +131,10 @@ Settings ? User ? **Edit user** lets a Superadmin edit another account's usernam
 **Reset password** is available in the same user table for active manageable accounts. Admin resets are checked against team membership and website grants again inside the database transaction. The private reset link expires after 15 minutes, works once, and is returned only to the initiating operator. Share it privately and verify the recipient. Passwords are never returned from MySQL or included in activity logs. The Superadmin-only account history records the operator, changed username/access and password changes/reset requests.
 
 Admins may now **create** additional Admins with an explicit subset of their currently assigned websites. These are independent peers, not subordinate team members: the creator cannot edit, disable, reset or inspect the peer's sessions. A creator can see their directly created Admins while all of the peer's website assignments remain inside the creator's current scope; only a Superadmin can manage their account. A later reduction of the creator's own assignments does not change an independent peer's already assigned websites. Editors/Viewers retain the existing team grant cascade. Admins cannot promote an existing Editor/Viewer to Admin or grant platform privileges. Fresh password confirmation and an enabled second factor protect all these mutations.
+
+
+## Private recovery email for every role
+
+Superadmins, Admins, Editors and Viewers can open **My account ? Recovery email**, enter their own recovery address and current Notizo password, and select **Send verification email**. The verification link expires after 30 minutes. After opening it, return to the Account screen and select **Refresh recovery status** to see the verified address. A pending replacement does not replace the previous verified recovery address until the email link is redeemed. The form clears the password after each submission and stores no email/password in browser storage.
+
+Recovery addresses are associated with user IDs across all websites; they are independent of the global SMTP sender. GET/POST `/api/account/recovery` use the authenticated user's ID, including for Superadmins. They do not expose a directory of other users' addresses. No existing recovery addresses, sender credentials, password hashes or MFA factors are changed by restoring the form. Email delivery uses the existing global settings. When delivery is unavailable, the form disables verification and displays a message to contact an administrator. Password reset through **Forgot password** continues to use the verified address and preserves MFA.

@@ -54,13 +54,15 @@ test('incorrect current-password errors keep the form available for correction',
   expect(localStorage.getItem('sessionToken')).toBeNull();
 });
 
-test.each(['superadmin','admin','editor','viewer'])('Account hides recovery and session sections for %s without fetching them',async role=>{
-  apiFetch.mockImplementation(async url=>response(url.endsWith('/api/account')?{...profile,role}:url.endsWith('/api/account/mfa')?{enabled:false,required:false}:[]));
+test.each(['superadmin','admin','editor','viewer'])('Account shows private recovery settings for %s while keeping sessions hidden',async role=>{
+  apiFetch.mockImplementation(async url=>response(url.endsWith('/api/account')?{...profile,role}:url.endsWith('/api/account/mfa')?{enabled:false,required:false}:url.endsWith('/api/account/recovery')?{verified_email:role+'@example.test',mail_enabled:true}:[]));
   render(<Account/>);await screen.findByText('owner@example.test');await screen.findByRole('heading',{name:'Activity history'});
-  expect(screen.queryByRole('heading',{name:'Recovery email'})).not.toBeInTheDocument();
+  expect(await screen.findByRole('heading',{name:'Recovery email'})).toBeInTheDocument();
+  expect(await screen.findByText(role+'@example.test')).toBeInTheDocument();
   expect(screen.queryByRole('heading',{name:'Login sessions'})).not.toBeInTheDocument();
   expect(screen.getByRole('heading',{name:'Two-factor authentication'})).toBeInTheDocument();
-  expect(apiFetch.mock.calls.some(([url])=>/\/api\/account\/(recovery|sessions)/.test(url))).toBe(false);
+  expect(apiFetch.mock.calls.some(([url])=>url.endsWith('/api/account/recovery'))).toBe(true);
+  expect(apiFetch.mock.calls.some(([url])=>url.includes('/api/account/sessions'))).toBe(false);
 });
 
 test('activity loading errors remain visible after the sessions section is removed',async()=>{

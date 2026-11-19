@@ -250,3 +250,22 @@ test('renamed privileged accounts retain private aliases and anonymous old-name 
   assert.ok((await f.accounts.platformAttempts(null,0,{role:'admin'})).every(a=>!a.username.includes('PrivateOwner')));
   const admin=f.client();await admin.login('Admin');const creation={username:'PrivateOwner',password,role:'editor',domains:['one']},approval=await f.approval(admin,'/api/users',creation);assert.equal((await admin.call('/api/users',creation,'POST',{'X-Notizo-Approval':approval})).status,409);
 });
+
+
+test('every role owns an independently verified recovery address and cannot read or change another account address',async t=>{
+  const f=await fixture(t);await f.enroll();const accounts=[['Superadmin',1,f.owner],['Admin',f.admin,f.client()],['Editor',f.editor,f.client()],['Viewer',f.viewer,f.client()]];
+  assert.equal((await f.client().call('/api/account/recovery')).status,401);
+  const verifier=f.client();await verifier.call('/api/auth/session');
+  for(const [name,id,c]of accounts){
+    if(name!=='Superadmin')await c.login(name);
+    const email=name.toLowerCase()+'-recovery@example.test',other=id===1?f.admin:1;
+    const wrong=await c.call('/api/account/recovery',{email,password:'incorrect'});assert.equal(wrong.status,400);
+    const saved=await c.call('/api/account/recovery',{email,password,user_id:other});assert.equal(saved.status,200);
+    const pending=(await c.call(`/api/account/recovery?user_id=${other}`)).data.data;assert.equal(pending.pending_email,email);assert.equal(pending.verified_email,undefined);
+    assert.equal((await f.accounts.recovery(id)).pending_email,email);assert.notEqual((await f.accounts.recovery(other)).pending_email,email);
+    const letter=f.messages.at(-1);assert.equal(letter.to,email);assert.equal(letter.purpose,'verify');const token=new URLSearchParams(new URL(letter.url).hash.slice(1)).get('verify');
+    assert.equal((await verifier.call('/api/auth/verify-email',{token})).status,200);
+    const own=(await c.call('/api/account/recovery')).data.data;assert.equal(own.verified_email,email);assert.equal(own.pending_email,null);assert.ok(!JSON.stringify(own).includes('token'));
+  }
+  for(const [name,id,c]of accounts){const own=(await c.call('/api/account/recovery?user_id=1')).data.data;assert.equal(own.verified_email,name.toLowerCase()+'-recovery@example.test');}
+});

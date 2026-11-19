@@ -9,3 +9,4 @@
 .security-user-form textarea,.security-reset-link input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd8e2;border-radius:5px;color:#273457;background:#fff;font:inherit}.security-reset-link{display:grid;gap:8px;font-size:13px}.security-panel .security-form-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}.security-user-form>fieldset>p{margin:0}
 
 .security-panel .security-action-link{display:inline-block;margin-inline-start:4px;text-decoration:none}
+.recovery-settings{margin-top:24px}.recovery-status{margin:16px 0;font-size:13px}.recovery-status>div{display:flex;gap:12px;flex-wrap:wrap;padding:8px 0}.recovery-status dt{font-weight:600}.recovery-status dd{margin:0;overflow-wrap:anywhere}.recovery-settings .security-heading{align-items:center}.recovery-settings .security-heading h2{margin:0}.recovery-settings .security-user-form{margin-top:18px}
