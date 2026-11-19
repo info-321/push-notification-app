@@ -144,7 +144,7 @@ def run(snapshot, config):
     # A directory source is essential: older rclone versions bypass immutable
     # checks for a single-file source, even with `copy`. This folder is checked
     # above to contain exactly one ciphertext file, never the plaintext backup.
-    subprocess.run(['rclone', 'copy', str(upload_dir), remote.rstrip('/'), '--immutable', *options], check=True,
+    subprocess.run(['rclone', 'copy', str(encrypted.parent), remote.rstrip('/'), '--immutable', *options], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
     if fingerprint(encrypted) != expected:
         raise RuntimeError('The encrypted snapshot changed during upload.')

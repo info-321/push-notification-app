@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from unittest.mock import MagicMock
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / 'deploy' / 'hostinger'))
@@ -176,6 +177,25 @@ class BackupMonitoringTests(unittest.TestCase):
         self.write(self.root / 'backup-local-pull.conf.local', {'enabled': True})
         self.assertEqual(maintenance.prune_backups(maintenance.policy(), True), [])
         self.assertTrue(all(path.exists() for path in entries))
+
+    def test_cloud_upload_uses_the_shared_encrypted_archive_directory(self):
+        snapshot = self.snapshot()
+        encrypted = snapshot / 'ciphertext' / (snapshot.name + '.tar.age')
+        encrypted.parent.mkdir()
+        encrypted.write_bytes(b'encrypted-cloud-fixture')
+        recipient = self.write(self.base / 'cloud-recipient.txt', 'public-fixture')
+        rclone = self.write(self.base / 'rclone.conf', '[fixture]\ntype = local\n')
+        config = self.write(self.root / 'backup-offsite.conf.local', {'enabled': True, 'recipient_file': str(recipient), 'rclone_config': str(rclone), 'remote_dir': 'fixture:/isolated'})
+        process = MagicMock()
+        process.stdout = io.BytesIO(encrypted.read_bytes())
+        process.wait.return_value = 0
+        process.poll.return_value = 0
+        module = offsite_backup_loader.module
+        with patch.object(module.shutil, 'which', return_value='/fixture'), patch.object(module, 'seal_snapshot', return_value=encrypted), patch.object(module.subprocess, 'run') as run, patch.object(module.subprocess, 'Popen', return_value=process), contextlib.redirect_stdout(io.StringIO()):
+            module.run(snapshot, config)
+        self.assertEqual(run.call_args.args[0][2], str(encrypted.parent))
+        self.assertIn('--immutable', run.call_args.args[0])
+        self.assertEqual(json.loads((snapshot / 'offsite-receipt.json').read_text())['status'], 'uploaded_and_checksum_verified')
 
     def test_pc_receipt_is_sent_only_after_decryption_verification(self):
         identity = self.write(self.base / 'pc-identity.txt', 'fixture-identity')
