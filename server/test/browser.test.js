@@ -35,7 +35,7 @@ function browser({ existing, permission = 'default', rejectSave = false, locatio
     console: { warn() {}, error() {} },
     async fetch(url, options) { if (url.includes('/api/targeting/')) return { ok: true, json: async () => ({ ok: true, data: { allowed: true } }) }; requests.push({ url, options }); return { ok: !rejectSave, async json() { return { ok: !rejectSave, ...locationResult, message: rejectSave ? 'Storage failed' : undefined }; } }; },
   };
-  return { context, requests, buttons, events, locationPrompts, locationCalls: () => locationCalls, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
+  return { context, registration, requests, buttons, events, locationPrompts, locationCalls: () => locationCalls, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
 }
 
 test('GPS requires a separate visitor action even when notification permission is already granted', async () => {
@@ -241,6 +241,102 @@ test('saving after a connection failure retries without discarding a browser sub
   failing = false;
   await b.context.window.PushNotifications.subscribe();
   assert.equal(b.permissionCalls(), 1); assert.equal(b.subscriptions(), 1);
+});
+
+test('an active but still activating worker finishes activation before the subscription UI becomes ready', async () => {
+  const b = browser();
+  let changed, removed = 0;
+  const worker = { state: 'activating', addEventListener(name, handler) { changed = handler; }, removeEventListener() { removed++; } };
+  b.registration.active = worker;
+  const setup = vm.runInNewContext(sdk, b.context);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(b.buttons.length, 0); assert.equal(b.permissionCalls(), 0);
+  worker.state = 'activated'; changed(); await setup;
+  assert.equal(removed, 1); assert.equal(b.buttons.length, 1);
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(b.subscriptions(), 1);
+});
+
+test('subscription retry rechecks the current worker and preserves a provider that took over after the popup opened', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  b.context.navigator.serviceWorker.getRegistration = async () => ({ scope: 'https://website.test/', active: { state: 'activated', scriptURL: 'https://website.test/feedify-worker.js' } });
+  await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === 'worker-provider-conflict');
+  assert.equal(b.subscriptions(), 0); assert.equal(b.requests.filter(r => r.url.endsWith('/api/subscriptions')).length, 0);
+});
+
+test('a replaced registration for our own worker is used instead of a stale PushManager', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  let created = 0;
+  b.context.navigator.serviceWorker.getRegistration = async () => ({ scope: 'https://website.test/', active: { state: 'activated', scriptURL: 'https://website.test/push-sw.js' }, pushManager: {
+    getSubscription: async () => null, subscribe: async () => { created++; return { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/current-worker', keys: {} }) }; },
+  } });
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(created, 1); assert.equal(b.subscriptions(), 0);
+});
+
+test('a transient native push abort retries once without another permission prompt', async () => {
+  const b = browser(); let calls = 0;
+  const nativeSubscribe = b.registration.pushManager.subscribe;
+  b.registration.pushManager.subscribe = () => ++calls === 1 ? Promise.reject(Object.assign(new Error('Registration failed - push service error'), { name: 'AbortError' })) : nativeSubscribe();
+  b.context.setTimeout = (fn, ms) => setTimeout(fn, ms === 500 ? 0 : ms);
+  await vm.runInNewContext(sdk, b.context);
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(calls, 2); assert.equal(b.permissionCalls(), 1);
+  assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 1);
+});
+
+test('a recovered subscription is reused after an aborted creation rather than created again', async () => {
+  const b = browser(); let sub, calls = 0;
+  b.registration.pushManager.getSubscription = async () => sub;
+  b.registration.pushManager.subscribe = async () => {
+    calls++; sub = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/recovered', keys: {} }) };
+    throw Object.assign(new Error('Registration failed - push service error'), { name: 'AbortError' });
+  };
+  b.context.setTimeout = (fn, ms) => setTimeout(fn, ms === 500 ? 0 : ms);
+  await vm.runInNewContext(sdk, b.context);
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(calls, 1); assert.equal(b.permissionCalls(), 1);
+});
+
+test('persistent Android push failures expose a safe support code and stop after one retry', async () => {
+  const b = browser(); let calls = 0;
+  b.context.navigator.userAgent = 'Mozilla Android Mobile Chrome/142.0.0.0';
+  b.registration.pushManager.subscribe = async () => { calls++; throw Object.assign(new Error('PRIVATE_ENDPOINT_CREDENTIALS'), { name: 'AbortError' }); };
+  b.context.setTimeout = (fn, ms) => setTimeout(fn, ms === 500 ? 0 : ms);
+  await vm.runInNewContext(sdk, b.context);
+  await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === 'browser-push-service' && error.browserError === 'AbortError' && /Google Play services/.test(error.userMessage));
+  assert.equal(calls, 2); assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 0);
+  const detail = b.events.find(e => e.type === 'push:error').detail;
+  assert.equal(detail.stage, 'browser-registration'); assert.equal(detail.permission, 'granted');
+  assert.equal(JSON.stringify(detail).includes('PRIVATE_ENDPOINT_CREDENTIALS'), false);
+  assert.equal(b.buttons[0].disabled, false);
+});
+
+test('native configuration, permission and worker-state failures are distinct and never retried blindly', async () => {
+  for (const [name, code] of [['InvalidStateError', 'browser-subscription-state'], ['InvalidAccessError', 'push-key-invalid'], ['NotAllowedError', 'permission-unavailable'], ['NotSupportedError', 'browser-push-unsupported'], ['SecurityError', 'browser-security-restriction']]) {
+    const b = browser(); let calls = 0;
+    b.context.navigator.userAgent = 'Mozilla Android Mobile Chrome/142.0.0.0';
+    b.registration.pushManager.subscribe = async () => { calls++; throw Object.assign(new Error('PRIVATE_NATIVE_EXCEPTION'), { name }); };
+    await vm.runInNewContext(sdk, b.context);
+    await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === code && error.browserError === name && !error.userMessage.includes('PRIVATE_NATIVE_EXCEPTION'));
+    assert.equal(calls, 1); assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 0);
+  }
+});
+
+test('a native push timeout permits retry without starting a second concurrent PushManager operation or late success', async () => {
+  const b = browser(); let expire, complete, nativeCalls = 0;
+  b.registration.pushManager.subscribe = () => { nativeCalls++; return new Promise(resolve => { complete = resolve; }); };
+  b.context.setTimeout = (callback, ms) => ms === 15000 ? (expire = callback, 'native-deadline') : setTimeout(callback, ms);
+  b.context.clearTimeout = timer => { if (timer !== 'native-deadline') clearTimeout(timer); };
+  await vm.runInNewContext(sdk, b.context);
+  const first = b.context.window.PushNotifications.subscribe(); await new Promise(resolve => setImmediate(resolve));
+  expire(); await assert.rejects(first, error => error.code === 'browser-push-timeout');
+  assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 0);
+  const retry = b.context.window.PushNotifications.subscribe(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(nativeCalls, 1);
+  complete({ toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/late', keys: {} }) });
+  await retry;
+  assert.equal(b.permissionCalls(), 1); assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 1);
 });
 
 test('worker accepts text payloads and does not open off-site notification links', async () => {

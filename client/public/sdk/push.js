@@ -8,7 +8,7 @@
   const cfg = window.pushConfig || {};
   // Keep helper scripts aligned with this SDK, even in browsers that previously
   // cached an unversioned helper for hours.
-  const sdkVersion = '2026-11-20.2';
+  const sdkVersion = '2026-11-20.3';
   if (!cfg.apiBase || !cfg.domainKey || !cfg.vapidPublicKey) {
     console.error('[Push SDK] Missing apiBase, domainKey, or vapidPublicKey.');
     return;
@@ -79,6 +79,7 @@
   let button;
   let promptController, promptToken;
   let savedSubscription, locationToken;
+  let pendingPushSubscription;
   let busy = false;
   const report = (name, detail) => window.dispatchEvent(new CustomEvent(`push:${name}`, { detail }));
   // Only these locally authored messages are suitable for the visitor-facing UI.
@@ -87,6 +88,77 @@
   const progress = message => {
     promptController?.progress?.(message);
     if (button) button.textContent = message;
+  };
+  const workerConflict = () => failure('worker-provider-conflict', 'Another notification provider is using this website\'s notification worker. It has been preserved. Please contact the website administrator.');
+  const waitForActiveWorker = reg => {
+    if (reg.active && (!reg.active.state || reg.active.state === 'activated')) return Promise.resolve();
+    const worker = reg.active || reg.installing || reg.waiting;
+    if (!worker) return Promise.reject(failure('worker-unavailable', 'Notification setup changed or did not start. Please reload this page and try again.'));
+    return new Promise((resolve, reject) => {
+      const finish = error => { clearTimeout(timer); worker.removeEventListener?.('statechange', check); error ? reject(error) : resolve(); };
+      const check = () => {
+        if (worker.state === 'activated') finish();
+        else if (worker.state === 'redundant') finish(failure('worker-unavailable', 'Notification setup changed or failed. Please reload this page and try again.'));
+      };
+      const timer = setTimeout(() => finish(failure('worker-timeout', 'Notification setup is taking too long. Please reload this page and try again.')), 10000);
+      worker.addEventListener('statechange', check); check();
+    });
+  };
+  const currentRegistration = async () => {
+    const scope = new URL(cfg.swScope || '/', location.origin).href;
+    const reg = typeof navigator.serviceWorker.getRegistration === 'function' ? await navigator.serviceWorker.getRegistration(scope) : registration;
+    if (!reg || (reg.scope && reg.scope !== scope)) throw failure('worker-unavailable', 'Notification setup changed. Please reload this page and try again.');
+    const workerUrl = new URL(cfg.swPath || '/push-sw.js', location.origin).href;
+    if ([reg.active, reg.waiting, reg.installing].some(worker => worker?.scriptURL && worker.scriptURL !== workerUrl)) throw workerConflict();
+    await waitForActiveWorker(reg);
+    return reg;
+  };
+  const browserSubscription = () => {
+    if (!pendingPushSubscription) {
+      const deadline = Date.now() + 15000;
+      const attempt = (async () => {
+        for (let retry = 0; retry < 2; retry++) {
+          registration = await currentRegistration();
+          try {
+            // Read again on retry in case the browser completed the first attempt.
+            const existing = await registration.pushManager.getSubscription();
+            checkIdentity(existing);
+            return existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(cfg.vapidPublicKey) });
+          } catch (error) {
+            if (retry || error.name !== 'AbortError' || Notification.permission !== 'granted' || navigator.onLine === false || Date.now() + 500 >= deadline) throw error;
+            progress('Retrying the browser notification connection...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      })();
+      pendingPushSubscription = attempt;
+      const clear = () => { if (pendingPushSubscription === attempt) pendingPushSubscription = null; };
+      attempt.then(clear, clear);
+    }
+    let timer;
+    // Native PushManager operations cannot be cancelled. Reuse a still-pending
+    // attempt on another click instead of creating competing subscriptions.
+    return Promise.race([pendingPushSubscription, new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(failure('browser-push-timeout', 'Chrome or your browser is taking too long to connect to its push service. Try switching between Wi-Fi and mobile data, then tap Subscribe again.')), 15000);
+    })]).finally(() => clearTimeout(timer));
+  };
+  const subscriptionFailure = error => {
+    if (error.userMessage) return error;
+    if (Notification.permission === 'denied') return blocked();
+    if (navigator.onLine === false) return failure('browser-offline', 'Your phone or computer is offline. Reconnect to the internet, then tap Subscribe again.');
+    const android = /Android/i.test(ua), name = error.name;
+    // Do not render native exception messages: some contain subscription URLs.
+    if (name === 'NotAllowedError') return failure('permission-unavailable', android
+      ? 'Chrome could not allow notifications. Check this website\'s permission in Chrome, and Android Settings > Apps > Chrome > Notifications, then try again.'
+      : 'Your browser did not allow notifications. Check this website\'s notification permission in browser site settings.');
+    if (name === 'InvalidStateError') return failure('browser-subscription-state', 'Your browser\'s notification setup has changed or conflicts with an existing subscription. Reload this page. If it still fails, contact the website administrator.');
+    if (['InvalidAccessError', 'InvalidCharacterError', 'TypeError'].includes(name)) return failure('push-key-invalid', 'The website\'s notification configuration could not be accepted by your browser. Please contact the website administrator.');
+    if (name === 'NotSupportedError') return failure('browser-push-unsupported', 'Push notifications are unavailable in this browser or device configuration. Update your browser and try in a normal browser tab.');
+    if (name === 'SecurityError') return failure('browser-security-restriction', 'Your browser or device security settings prevented notification setup. Open this website directly in a normal browser tab and check its site permissions.');
+    if (['AbortError', 'NetworkError'].includes(name)) return failure('browser-push-service', android
+      ? 'Chrome could not register with its push service. Try switching between Wi-Fi and mobile data, then retry. If it continues, update Chrome and Google Play services and check Chrome\'s Android notification permission.'
+      : 'Your browser could not register with its push service. Check your connection, update your browser, then retry.');
+    return failure('browser-subscription-failed', 'Your browser could not finish notification setup. Reload this page and try again. If it continues, share the support code with the website administrator.');
   };
   const shareLocation = () => {
     if (!savedSubscription || !locationToken) return Promise.reject(new Error('Enable notifications before sharing your location.'));
@@ -160,6 +232,7 @@
     if (!registration?.active) throw failure('setup-loading', 'Notification setup is still loading. Please try again.');
     if (Notification.permission === 'denied') throw blocked();
     busy = true;
+    let stage = 'permission';
     if (button) button.disabled = true;
     try {
       // Request permission in the click handler before other asynchronous work consumes the user gesture.
@@ -169,17 +242,18 @@
       const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
       promptController?.outcome(permission);
       if (permission !== 'granted') return;
+      stage = 'browser-registration';
       progress('Connecting to notifications...');
-      const existing = await registration.pushManager.getSubscription();
-      checkIdentity(existing);
-      const subscription = existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(cfg.vapidPublicKey) });
+      const subscription = await browserSubscription();
       // Prompt analytics are best-effort; they must never hold up a subscription.
+      stage = 'subscription-save';
       return await save(subscription);
     } catch (error) {
-      if (error.userMessage) throw error;
-      if (Notification.permission === 'denied') throw blocked();
-      if (error.name === 'NotAllowedError') throw failure('permission-unavailable', 'Your browser did not allow notifications. Check this website\'s notification permission in browser site settings.');
-      throw failure('browser-subscription-failed', 'Your browser could not connect to its push service. Please check your connection and try again.');
+      const mapped = subscriptionFailure(error);
+      const knownNames = ['AbortError', 'NetworkError', 'InvalidStateError', 'InvalidAccessError', 'InvalidCharacterError', 'NotAllowedError', 'NotSupportedError', 'SecurityError', 'TypeError'];
+      mapped.browserError = knownNames.includes(error.name) ? error.name : 'Error';
+      report('error', { code: mapped.code, stage, browserError: mapped.browserError, permission: Notification.permission });
+      throw mapped;
     } finally {
       busy = false;
       if (button) { button.disabled = false; button.textContent = cfg.buttonLabel || 'Enable notifications'; }
@@ -197,22 +271,10 @@
       const scope = new URL(cfg.swScope || '/', location.origin).href;
       const registrations = await navigator.serviceWorker.getRegistrations();
       const registration = registrations.find(item => item.scope === scope);
-      if (registration && [registration.active, registration.waiting, registration.installing].some(worker => worker && worker.scriptURL !== workerUrl.href)) throw new Error('Another service worker owns this scope. Notification setup was skipped to preserve it.');
+      if (registration && [registration.active, registration.waiting, registration.installing].some(worker => worker && worker.scriptURL !== workerUrl.href)) throw workerConflict();
     }
     registration = await navigator.serviceWorker.register(workerUrl.href, { scope: cfg.swScope || '/' });
-    if (!registration.active) {
-      await new Promise((resolve, reject) => {
-        const worker = registration.installing || registration.waiting;
-        if (!worker) return reject(new Error('The service worker did not start.'));
-        const timer = setTimeout(() => reject(new Error('Service worker activation timed out.')), 15000);
-        const check = () => {
-          if (worker.state === 'activated') { clearTimeout(timer); resolve(); }
-          else if (worker.state === 'redundant') { clearTimeout(timer); reject(new Error('Service worker installation failed.')); }
-        };
-        worker.addEventListener('statechange', check);
-        check();
-      });
-    }
+    await waitForActiveWorker(registration);
     const existing = await registration.pushManager.getSubscription();
     checkIdentity(existing);
     if (existing && Notification.permission === 'granted') { await save(existing); return; }

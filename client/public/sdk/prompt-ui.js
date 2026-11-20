@@ -101,6 +101,10 @@
         // Call synchronously within this gesture; telemetry never delays permission.
         subscribe().then(result => { if (result) hide(); }).catch(error => {
           status.textContent = error?.userMessage || 'Could not enable notifications. Please try again.';
+          if (typeof error?.code === 'string' && /^[a-z][a-z0-9-]{0,64}$/.test(error.code)) {
+            status.appendChild(make('br'));
+            status.appendChild(make('span', `Support code: ${error.code}${error.browserError && /^[A-Za-z]{1,24}$/.test(error.browserError) ? ' / ' + error.browserError : ''}`));
+          }
         }).finally(() => { allow.disabled = false; allow.textContent = p.allow_label; dismiss.disabled = false; panel.setAttribute('aria-busy', 'false'); });
       });
       if (p.template === 'sticky') {
