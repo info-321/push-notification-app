@@ -41,10 +41,12 @@ export async function recordDomainRemovals(pool,c,key) {
 export function installUnsubscribe(app,{pool,requireAdmin}) {
   app.get('/api/domains/:key/subscription-history',requireAdmin,async(req,res)=>{
     res.set('Cache-Control','no-store');
+    const event=req.query.event;
+    if(event!==undefined&&!['added','baseline','unsubscribed','expired','domain_deleted'].includes(event))return res.status(400).json({ok:false,message:'Choose a valid subscription event.'});
     try{const offset=Math.max(0,Math.min(100000,Number.parseInt(req.query.offset,10)||0));
       const [owned]=await pool.query('SELECT domain_key FROM domains WHERE domain_key=? AND user_id=1',[req.params.key]);
       if(!owned.length)return res.status(404).json({ok:false,message:'Website not found.'});
-      const [rows]=await pool.query('SELECT event_key,subscription_id,event_type,occurred_ms,device_type,browser_family FROM subscription_events WHERE domain_key=? AND user_id=1 ORDER BY occurred_ms DESC,event_key LIMIT 50 OFFSET ?',[req.params.key,offset]);
+      const [rows]=await pool.query(`SELECT event_key,subscription_id,event_type,occurred_ms,device_type,browser_family FROM subscription_events WHERE domain_key=? AND user_id=1${event?' AND event_type=?':''} ORDER BY occurred_ms DESC,event_key LIMIT 50 OFFSET ?`,[req.params.key,...(event?[event]:[]),offset]);
       const [[state]]=await pool.query('SELECT started_ms FROM subscription_history_state WHERE id=1');
       res.json({ok:true,data:{rows:rows.map(row=>({...row,occurred_ms:Number(row.occurred_ms)})),started_ms:Number(state.started_ms)}});
     }catch{res.status(503).json({ok:false,message:'Could not load subscription history.'});}

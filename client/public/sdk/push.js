@@ -8,7 +8,7 @@
   const cfg = window.pushConfig || {};
   // Keep helper scripts aligned with this SDK, even in browsers that previously
   // cached an unversioned helper for hours.
-  const sdkVersion = '2026-11-20.4';
+  const sdkVersion = '2026-11-20.5';
   if (!cfg.apiBase || !cfg.domainKey || !cfg.vapidPublicKey) {
     console.error('[Push SDK] Missing apiBase, domainKey, or vapidPublicKey.');
     return;
@@ -37,29 +37,91 @@
     finally { clearTimeout(timeout); }
   };
   const clientContext = { ipad, standalone };
-  let pendingWithdrawal;
-  const unsubscribe = async () => {
+  const optOutKey = `notizo-notifications-off:${cfg.domainKey}`;
+  const optedOut = () => { try { return localStorage.getItem(optOutKey) === '1'; } catch { return false; } };
+  const rememberOptOut = value => { try { if (value) localStorage.setItem(optOutKey, '1'); else localStorage.removeItem(optOutKey); } catch { /* Storage is optional. */ } };
+  let pendingWithdrawal, withdrawalInFlight, managerController, managerLoading;
+  let savedSubscription, locationToken;
+  const ownedRegistration = async () => {
+    if (typeof navigator.serviceWorker.getRegistrations !== 'function') return;
     const scope=new URL(cfg.swScope || '/',location.origin).href;
     const registrations=await navigator.serviceWorker.getRegistrations();
-    const own=registrations.find(item=>item.scope===scope&&item.active?.scriptURL&&isOwnWorkerScript(item.active.scriptURL));
-    if(!own)return false;
-    const sub=await own.pushManager.getSubscription();if(!sub&&!pendingWithdrawal)return true;
-    if(sub){pendingWithdrawal=sub.toJSON();await sub.unsubscribe();}
-    const data=pendingWithdrawal;
-    const response=await request('/api/subscriptions/unsubscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain_key:cfg.domainKey,subscription:data})});
-    const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.message || 'Could not unsubscribe.');
-    // Keep a failed server withdrawal available for an explicit retry in this
-    // page, without writing endpoint credentials to browser storage.
-    pendingWithdrawal=null;
-    window.dispatchEvent(new CustomEvent('push:unsubscribed',{detail:{}}));
-    return true;
+    return registrations.find(item=>item.scope===scope&&item.active?.scriptURL&&[item.active,item.waiting,item.installing].every(worker=>!worker||isOwnWorkerScript(worker.scriptURL)));
+  };
+  const unsubscribe = () => {
+    if (withdrawalInFlight) return withdrawalInFlight;
+    withdrawalInFlight = (async () => {
+      const own = await ownedRegistration();
+      const sub = own ? await own.pushManager.getSubscription() : null;
+      if (!own && !pendingWithdrawal) return false;
+      if (sub?.options?.applicationServerKey) {
+        const expected = Uint8Array.from(atob(cfg.vapidPublicKey.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - cfg.vapidPublicKey.length % 4) % 4)), c => c.charCodeAt(0));
+        if (Array.from(new Uint8Array(sub.options.applicationServerKey)).join(',') !== Array.from(expected).join(',')) throw new Error('This browser subscription belongs to another provider. It has not been changed.');
+      }
+      if (sub) pendingWithdrawal = sub.toJSON();
+      rememberOptOut(true);
+      if (pendingWithdrawal) {
+        const controller = new AbortController(); let timer;
+        try {
+          await Promise.race([
+            (async () => {
+              const response = await fetch(`${cfg.apiBase.replace(/\/$/, '')}/api/subscriptions/unsubscribe`, { method: 'POST', credentials: 'omit', signal: controller.signal,
+                headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domain_key: cfg.domainKey, subscription: pendingWithdrawal }) });
+              const result = await response.json();
+              if (!response.ok || !result?.ok) throw new Error('Could not update your notification preferences. Please tap Unsubscribe again to retry.');
+            })(),
+            new Promise((resolve, reject) => { timer = setTimeout(() => { reject(new Error('Updating your notification preferences took too long. Please tap Unsubscribe again to retry.')); controller.abort(); }, 10000); }),
+          ]);
+        } catch (error) {
+          throw new Error(error.message?.startsWith('Could not update') || error.message?.startsWith('Updating your notification') ? error.message : 'Could not reach the notification service. Please tap Unsubscribe again to retry.');
+        } finally { clearTimeout(timer); }
+      }
+      // Remove the database record first. The browser retains the proof needed
+      // for a retry if the server is offline; never persist endpoint keys locally.
+      if (sub) {
+        try { if (!await sub.unsubscribe() && await own.pushManager.getSubscription()) throw new Error('Browser cleanup failed'); }
+        catch { throw new Error('Website notifications have been stopped, but your browser could not finish disconnecting. Tap Unsubscribe again to finish.'); }
+      }
+      pendingWithdrawal = null; savedSubscription = null; locationToken = null;
+      document.getElementById?.('notizo-location-consent')?.remove();
+      managerController?.setSubscribed(false);
+      window.dispatchEvent(new CustomEvent('push:unsubscribed', { detail: {} }));
+      return true;
+    })().finally(() => { withdrawalInFlight = null; });
+    return withdrawalInFlight;
+  };
+  const showManager = async (subscribed = true) => {
+    if (cfg.manageNotifications === false) return;
+    if (managerController) { managerController.setSubscribed(subscribed, optedOut() && subscribed); return; }
+    if (!managerLoading) managerLoading = (async () => {
+      if (!window.PushSubscriptionUI) await new Promise((resolve, reject) => {
+        const script = document.createElement('script'), timer = setTimeout(() => { script.remove(); reject(new Error('Notification manager timeout')); }, 3000);
+        script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/subscription-ui.js?v=${sdkVersion}`;
+        script.onload = () => { clearTimeout(timer); resolve(); }; script.onerror = () => { clearTimeout(timer); reject(new Error('Notification manager unavailable')); };
+        try { document.head.appendChild(script); } catch (error) { clearTimeout(timer); reject(error); }
+      });
+      if (!document.body) await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+      managerController = window.PushSubscriptionUI.mount({ subscribed, pending: optedOut() && subscribed, unsubscribe,
+        canSubscribe: () => typeof window.PushNotifications.subscribe === 'function',
+        subscribe: () => {
+          if (typeof window.PushNotifications.subscribe !== 'function') return Promise.reject(new Error('Subscribing is unavailable for this browser. You can still unsubscribe.'));
+          return window.PushNotifications.subscribe();
+        } });
+    })().finally(() => { managerLoading = null; });
+    return managerLoading;
+  };
+  const manageExisting = async () => {
+    try {
+      const own = await ownedRegistration();
+      if (own && await own.pushManager.getSubscription()) await showManager();
+    } catch { /* Optional control must not delay or break subscription setup. */ }
   };
   window.PushNotifications={unsubscribe};
   // Fail closed before any invitation or worker can interfere with another service.
   try {
     const response = await request(`/api/targeting/${encodeURIComponent(cfg.domainKey)}?ipad=${ipad ? '1' : '0'}&standalone=${standalone ? '1' : '0'}`), result = await response.json();
-    if (!response.ok || !result.ok || result.data?.allowed !== true) return;
-  } catch { console.warn('[Push SDK] Device/browser rules unavailable; setup skipped.'); return; }
+    if (!response.ok || !result.ok || result.data?.allowed !== true) { await manageExisting(); return; }
+  } catch { console.warn('[Push SDK] Device/browser rules unavailable; setup skipped.'); await manageExisting(); return; }
   // Installation guidance is ordinary HTML; it must not depend on Notification
   // or PushManager, which are absent in ordinary iPhone/iPad browser tabs.
   if (appleMobile && !standalone) {
@@ -90,7 +152,6 @@
   let registration;
   let button;
   let promptController, promptToken;
-  let savedSubscription, locationToken;
   let pendingPushSubscription;
   let busy = false;
   const report = (name, detail) => window.dispatchEvent(new CustomEvent(`push:${name}`, { detail }));
@@ -234,9 +295,10 @@
       document.head.appendChild(script);
     });
     if (!document.body) await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+    if (!savedSubscription || !locationToken) return;
     window.PushLocationUI.mount({ key: cfg.domainKey, shareLocation });
   };
-  const save = async subscription => {
+  const save = async (subscription, explicit = false) => {
     progress('Saving your subscription...');
     const controller = new AbortController();
     let timer;
@@ -269,13 +331,16 @@
     } finally { clearTimeout(timer); }
     savedSubscription = subscription.toJSON();
     locationToken = result.location_token;
+    if (explicit) rememberOptOut(false);
     if (button) button.hidden = true;
     promptController?.hide();
     report('subscribed', {});
+    showManager().catch(() => { /* Subscription succeeds even if the optional control cannot load. */ });
     if (locationToken && !result.location_shared) offerLocation().catch(() => { /* Location is optional; notifications remain enabled. */ });
     return subscription;
   };
   const subscribe = async () => {
+    if (withdrawalInFlight) throw failure('unsubscribe-in-progress', 'Please wait for your unsubscribe request to finish.');
     if (busy) return;
     if (!registration) throw failure('setup-loading', 'Notification setup is still loading. Please try again.');
     if (Notification.permission === 'denied') throw blocked();
@@ -295,7 +360,7 @@
       const subscription = await browserSubscription();
       // Prompt analytics are best-effort; they must never hold up a subscription.
       stage = 'subscription-save';
-      return await save(subscription);
+      return await save(subscription, true);
     } catch (error) {
       const mapped = subscriptionFailure(error);
       const knownNames = ['AbortError', 'NetworkError', 'InvalidStateError', 'InvalidAccessError', 'InvalidCharacterError', 'NotAllowedError', 'NotSupportedError', 'SecurityError', 'TypeError'];
@@ -329,7 +394,9 @@
     await waitForActiveWorker(registration);
     const existing = await registration.pushManager.getSubscription();
     checkIdentity(existing);
+    if (existing && optedOut()) { await showManager(); return; }
     if (existing && Notification.permission === 'granted') { await save(existing); return; }
+    if (optedOut()) return;
     if (Notification.permission === 'denied') return;
     if (cfg.showButton !== false) {
       // Phones and larger devices have independently published prompts. Tablets
@@ -374,5 +441,6 @@
   } catch (error) {
     report('error', { message: error.message });
     console.error('[Push SDK]', error);
+    await manageExisting();
   }
 })();

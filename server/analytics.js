@@ -33,13 +33,13 @@ export function installAnalytics(app, pool) {
         AND COALESCE(p256dh, '') <> '' AND COALESCE(auth, '') <> ''
         AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)
         GROUP BY day_number, browser_family ORDER BY day_number`, [req.params.key, domains[0].user_id, range.first.getTime() / 1000, range.afterLast.getTime() / 1000]);
-      let lifecycleSince=null,historyComplete=false,removed=0,removals=new Map();
+      let lifecycleSince=null,historyComplete=false,removed=0,explicitUnsubscribed=0,expired=0,removals=new Map();
       if(pool.notizoLifecycle){
         lifecycleSince=Number((await pool.query('SELECT started_ms FROM subscription_history_state WHERE id=1'))[0][0].started_ms);
         historyComplete=range.first.getTime()>=lifecycleSince;
         [rows]=await pool.query(`SELECT FLOOR(occurred_ms/86400000) AS day_number,browser_family,COUNT(*) AS subscribers, ${deviceCountSql} FROM subscription_events WHERE domain_key=? AND user_id=? AND event_type IN ('added','baseline') AND occurred_ms>=? AND occurred_ms<? GROUP BY day_number,browser_family ORDER BY day_number`,[req.params.key,domains[0].user_id,range.first.getTime(),range.afterLast.getTime()]);
-        const [removedRows]=await pool.query("SELECT FLOOR(occurred_ms/86400000) AS day_number,COUNT(*) AS n FROM subscription_events WHERE domain_key=? AND user_id=? AND event_type IN ('unsubscribed','expired','domain_deleted') AND occurred_ms>=? AND occurred_ms<? GROUP BY day_number",[req.params.key,domains[0].user_id,range.first.getTime(),range.afterLast.getTime()]);
-        for(const row of removedRows){removals.set(Number(row.day_number),Number(row.n));removed+=Number(row.n);}
+        const [removedRows]=await pool.query("SELECT FLOOR(occurred_ms/86400000) AS day_number,COUNT(*) AS n,SUM(event_type='unsubscribed') AS explicit_unsubscribed,SUM(event_type='expired') AS expired FROM subscription_events WHERE domain_key=? AND user_id=? AND event_type IN ('unsubscribed','expired','domain_deleted') AND occurred_ms>=? AND occurred_ms<? GROUP BY day_number",[req.params.key,domains[0].user_id,range.first.getTime(),range.afterLast.getTime()]);
+        for(const row of removedRows){removals.set(Number(row.day_number),Number(row.n));removed+=Number(row.n);explicitUnsubscribed+=Number(row.explicit_unsubscribed||0);expired+=Number(row.expired||0);}
       }
       const counts = new Map(), browsers = new Map();
       let browserUnknown = 0;
@@ -62,6 +62,7 @@ export function installAnalytics(app, pool) {
         range: { start: range.start, end: range.end, time_zone: 'UTC' }, daily,
         added: totals.subscribers, ...summarizeDevices(totals),
         app: null, unsubscribed: pool.notizoLifecycle?removed:null, net: historyComplete?totals.subscribers-removed:null,
+        explicit_unsubscribed:pool.notizoLifecycle?explicitUnsubscribed:null,expired:pool.notizoLifecycle?expired:null,
         removals_tracked:Boolean(pool.notizoLifecycle),history_complete:historyComplete,lifecycle_since:lifecycleSince?new Date(lifecycleSince).toISOString():null,
         browser: { available: browserUnknown < totals.subscribers || totals.subscribers === 0,
           total: totals.subscribers, recorded: totals.subscribers - browserUnknown, unknown: browserUnknown,
