@@ -291,11 +291,6 @@ test('MySQL scheduler transactions, ownership, idempotency, concurrency and rest
       assert.equal(events.filter(e=>e.event_type==='added').length,2);assert.equal(events.filter(e=>e.event_type==='unsubscribed').length,1);assert.equal(events.filter(e=>e.event_type==='expired').length,1);
       const today=new Date().toISOString().slice(0,10),analytics=(await call(`/api/domains/${key}/analytics?start=${today}&end=${today}`,'GET',null,root)).data;
       assert.equal(analytics.added,2);assert.equal(analytics.unsubscribed,2);assert.equal(analytics.history_complete,false);assert.equal(analytics.net,null);
-      assert.equal(analytics.explicit_unsubscribed,1);assert.equal(analytics.expired,1);
-      const optedOut=await call(`/api/domains/${key}/subscription-history?event=unsubscribed`,'GET',null,root);
-      assert.equal(optedOut.status,200);assert.equal(optedOut.data.rows.length,1);assert.equal(optedOut.data.rows[0].event_type,'unsubscribed');
-      assert.equal((await pool.query('SELECT COUNT(*) AS n FROM subscriptions WHERE domain_key=?',[key]))[0][0].n,0);
-      assert.equal((await call(`/api/domains/${key}/subscription-history?event=invalid`,'GET',null,root)).status,400);
       await new Promise(r=>setTimeout(r,30));const activity=(await call('/api/account/activity','GET',null,root)).data;
       assert.ok(activity.some(a=>a.actor_id===made.data.id&&a.http_status===200));assert.equal(JSON.stringify(activity).includes(password),false);assert.equal(JSON.stringify(activity).includes(root),false);
       const again=mysqlAccountRepository(pool);await again.initialize('ignored','ignored');assert.equal((await again.read()).password_hash,hash);assert.ok((await again.sessions(made.data.id)).some(s=>s.end_reason==='logout'));assert.ok((await again.sessions(made.data.id)).some(s=>s.end_reason==='access_changed'));

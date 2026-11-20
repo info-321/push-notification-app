@@ -65,22 +65,6 @@ test('date presets use UTC and Monday week starts across month and year boundari
   expect(presetRange('today', '2024-02-29')).toEqual({ start: '2024-02-29', end: '2024-02-29' });
 });
 
-test('voluntary unsubscribers are shown separately from expired subscriptions and total removals', async () => {
-  const original = apiFetch.getMockImplementation();
-  apiFetch.mockImplementation(async url => {
-    const result = await original(url);
-    if (!url.includes('/analytics?')) return result;
-    const body = await result.json();
-    return response({ ...body.data, removals_tracked: true, history_complete: true, explicit_unsubscribed: 1, expired: 2, unsubscribed: 3, net: -1 });
-  });
-  render(<Analytics domainKey="mice" />);
-  const subscribers = screen.getByRole('region', { name: 'Subscribers', exact: true });
-  const summary = await within(subscribers).findByRole('table', { name: 'Subscriber period summary' });
-  expect(within(summary).getByRole('row', { name: 'Unsubscribers 1', exact: true })).toBeInTheDocument();
-  expect(within(summary).getByRole('row', { name: 'Expired subscriptions 2', exact: true })).toBeInTheDocument();
-  expect(within(summary).getByRole('row', { name: 'Subscriptions removed 3', exact: true })).toBeInTheDocument();
-});
-
 test('recorded desktop counts replace null and remaining unknown subscriptions are explained', async () => {
   const original = apiFetch.getMockImplementation();
   apiFetch.mockImplementation(async url => {

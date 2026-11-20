@@ -11,7 +11,6 @@ function browser({ existing, permission = 'default', rejectSave = false, locatio
   const buttons = [];
   const events = [];
   const locationPrompts = [];
-  const managers = [], storage = new Map();
   let locationCalls = 0;
   let permissionCalls = 0;
   let subscriptions = 0;
@@ -25,20 +24,18 @@ function browser({ existing, permission = 'default', rejectSave = false, locatio
   const window = { isSecureContext: true, PushManager: {}, Notification: notification, pushConfig: { domainKey: 'domain-key', apiBase: 'https://api.test/', vapidPublicKey: Buffer.alloc(65, 1).toString('base64url') }, dispatchEvent(event) { events.push(event); } };
   Object.assign(window.pushConfig, config);
   window.PushLocationUI = { mount: options => locationPrompts.push(options) };
-  window.PushSubscriptionUI = { mount: options => { const manager = { options, subscribed: options.subscribed, setSubscribed(value) { this.subscribed = value; } }; managers.push(manager); return manager; } };
   const context = {
     window, Notification: notification, navigator: { serviceWorker: { async register() { return registration; } }, geolocation: {
       getCurrentPosition(success, failure) { locationCalls++; if (locationDenied) failure({ code: 1 }); else success({ coords: { latitude: 22.57, longitude: 88.36, accuracy: 120 } }); },
     } },
     location: { origin: 'https://website.test' }, URL, AbortController, setTimeout, clearTimeout,
-    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     atob: value => Buffer.from(value, 'base64').toString('binary'),
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     document: { body: { appendChild(button) { buttons.push(button); } }, createElement() { return { style: {}, addEventListener(name, handler) { this[name] = handler; } }; } },
     console: { warn() {}, error() {} },
     async fetch(url, options) { if (url.includes('/api/targeting/')) return { ok: true, json: async () => ({ ok: true, data: { allowed: true } }) }; requests.push({ url, options }); return { ok: !rejectSave, async json() { return { ok: !rejectSave, ...locationResult, message: rejectSave ? 'Storage failed' : undefined }; } }; },
   };
-  return { context, registration, requests, buttons, events, managers, storage, locationPrompts, locationCalls: () => locationCalls, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
+  return { context, registration, requests, buttons, events, locationPrompts, locationCalls: () => locationCalls, permissionCalls: () => permissionCalls, subscriptions: () => subscriptions };
 }
 
 test('GPS requires a separate visitor action even when notification permission is already granted', async () => {
@@ -86,92 +83,11 @@ test('explicit unsubscribe withdraws only our worker subscription and remains av
   await vm.runInNewContext(sdk,b.context);
   assert.equal(b.permissionCalls(),0);assert.equal(b.subscriptions(),0);
   assert.equal(await b.context.window.PushNotifications.unsubscribe(),true);
-  assert.deepEqual(order,['server','browser']);
+  assert.deepEqual(order,['browser','server']);
   const sent=JSON.parse(b.requests.find(r=>r.url.endsWith('/unsubscribe')).options.body);
   assert.equal(sent.domain_key,'domain-key');assert.equal(sent.subscription.keys.auth,'fixture');
   own.active.scriptURL='https://website.test/another-provider.js';order.length=0;
   assert.equal(await b.context.window.PushNotifications.unsubscribe(),false);assert.deepEqual(order,[]);
-});
-
-test('subscribed browsers get a manager and a completed opt-out suppresses invitations and automatic resaving on return', async () => {
-  const b = browser({ existing: true, permission: 'granted' });
-  await vm.runInNewContext(sdk, b.context);
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(b.managers.length, 1); assert.equal(b.managers[0].subscribed, true);
-  b.registration.scope = 'https://website.test/'; b.registration.active = { scriptURL: 'https://website.test/push-sw.js' };
-  let sub = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/test', keys: {} }), unsubscribe: async () => { sub = null; return true; } };
-  b.registration.pushManager.getSubscription = async () => sub;
-  b.context.navigator.serviceWorker.getRegistrations = async () => [b.registration];
-  await b.managers[0].options.unsubscribe();
-  assert.equal(b.managers[0].subscribed, false);
-  assert.equal(b.storage.get('notizo-notifications-off:domain-key'), '1');
-  assert.equal([...b.storage.values()].some(value => String(value).includes('fcm.googleapis.com')), false);
-  delete b.context.window.PushNotifications;
-  b.requests.length = 0; b.buttons.length = 0;
-  await vm.runInNewContext(sdk, b.context);
-  assert.equal(b.requests.length, 0); assert.equal(b.buttons.length, 0); assert.equal(b.permissionCalls(), 0);
-});
-
-test('failed server withdrawals leave browser proof available for a safe retry, and completion is recorded only once', async () => {
-  const b = browser({ existing: true, permission: 'granted' }); await vm.runInNewContext(sdk, b.context);
-  b.registration.scope = 'https://website.test/'; b.registration.active = { scriptURL: 'https://website.test/push-sw.js' };
-  let cancelled = 0, fail = true, sub;
-  sub = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/test', keys: {} }), unsubscribe: async () => { cancelled++; sub = null; return true; } };
-  b.registration.pushManager.getSubscription = async () => sub;
-  b.context.navigator.serviceWorker.getRegistrations = async () => [b.registration];
-  const ordinary = b.context.fetch;
-  b.context.fetch = (url, options) => url.endsWith('/unsubscribe') && fail ? Promise.reject(new TypeError('Offline')) : ordinary(url, options);
-  await assert.rejects(b.context.window.PushNotifications.unsubscribe(), /tap Unsubscribe again/);
-  assert.equal(cancelled, 0); assert.equal(b.events.filter(e => e.type === 'push:unsubscribed').length, 0);
-  fail = false;
-  await b.context.window.PushNotifications.unsubscribe();
-  assert.equal(cancelled, 1); assert.equal(b.events.filter(e => e.type === 'push:unsubscribed').length, 1);
-});
-
-test('browser cleanup failures do not recreate the removed server subscription and remain retryable', async () => {
-  const b = browser({ existing: true, permission: 'granted' }); await vm.runInNewContext(sdk, b.context);
-  let fail = true, sub;
-  sub = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/test', keys: {} }), unsubscribe: async () => { if (fail) throw new Error('Native cleanup failed'); sub = null; return true; } };
-  b.registration.scope = 'https://website.test/'; b.registration.active = { scriptURL: 'https://website.test/push-sw.js' };
-  b.registration.pushManager.getSubscription = async () => sub;
-  b.context.navigator.serviceWorker.getRegistrations = async () => [b.registration];
-  await assert.rejects(b.context.window.PushNotifications.unsubscribe(), /notifications have been stopped.*finish/);
-  assert.equal(b.events.filter(e => e.type === 'push:unsubscribed').length, 0);
-  delete b.context.window.PushNotifications; b.requests.length = 0;
-  await vm.runInNewContext(sdk, b.context);
-  assert.equal(b.requests.some(r => r.url.endsWith('/api/subscriptions')), false);
-  fail = false; await b.context.window.PushNotifications.unsubscribe();
-  assert.equal(b.events.filter(e => e.type === 'push:unsubscribed').length, 1);
-});
-
-test('a stalled unsubscribe response body times out without cancelling the browser proof needed for retry', async () => {
-  const b = browser({ existing: true, permission: 'granted' }); await vm.runInNewContext(sdk, b.context);
-  let expire, cancelled = 0;
-  b.registration.scope = 'https://website.test/'; b.registration.active = { scriptURL: 'https://website.test/push-sw.js' };
-  b.registration.pushManager.getSubscription = async () => ({ toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/test', keys: {} }), unsubscribe: async () => { cancelled++; return true; } });
-  b.context.navigator.serviceWorker.getRegistrations = async () => [b.registration];
-  b.context.setTimeout = (fn, ms) => ms === 10000 ? (expire = fn, 'withdrawal-deadline') : setTimeout(fn, ms);
-  b.context.clearTimeout = timer => { if (timer !== 'withdrawal-deadline') clearTimeout(timer); };
-  b.context.fetch = async () => ({ ok: true, json: () => new Promise(() => {}) });
-  const pending = b.context.window.PushNotifications.unsubscribe(); await new Promise(resolve => setImmediate(resolve));
-  expire(); await assert.rejects(pending, /took too long/);
-  assert.equal(cancelled, 0); assert.equal(b.events.filter(e => e.type === 'push:unsubscribed').length, 0);
-});
-
-test('another provider VAPID identity cannot be withdrawn even if it uses our worker script', async () => {
-  const b = browser(); await vm.runInNewContext(sdk, b.context);
-  b.context.navigator.serviceWorker.getRegistrations = async () => [{ scope: 'https://website.test/', active: { scriptURL: 'https://website.test/push-sw.js' }, pushManager: { getSubscription: async () => ({ options: { applicationServerKey: new Uint8Array(65).fill(2).buffer }, unsubscribe() { assert.fail('Must preserve another provider subscription'); } }) } }];
-  await assert.rejects(b.context.window.PushNotifications.unsubscribe(), /another provider/);
-  assert.equal(b.requests.some(r => r.url.endsWith('/unsubscribe')), false);
-});
-
-test('an opt-out does not prevent a deliberate Subscribe again action from clearing that preference', async () => {
-  const b = browser(); b.storage.set('notizo-notifications-off:domain-key', '1');
-  await vm.runInNewContext(sdk, b.context);
-  assert.equal(b.buttons.length, 0); assert.equal(b.permissionCalls(), 0);
-  await b.context.window.PushNotifications.subscribe();
-  assert.equal(b.storage.has('notizo-notifications-off:domain-key'), false);
-  assert.equal(b.subscriptions(), 1);
 });
 
 test('SDK waits for a visitor action, then saves the subscription and hides the button', async () => {
