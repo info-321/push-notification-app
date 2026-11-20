@@ -89,3 +89,14 @@ test('the mobile account menu keeps Dashboard accessible and has no extra arrow'
   fireEvent.click(account);fireEvent.keyDown(document,{key:'Escape'});
   expect(account.getAttribute('aria-expanded')).toBe('false');expect(document.activeElement).toBe(account);
 });
+
+test.each(['superadmin','admin','editor','viewer'])('account menu gates platform administration for %s on mobile and desktop', role => {
+  render(<SettingsAccessContext.Provider value={{role}}><SettingsHeader /></SettingsAccessContext.Provider>);
+  fireEvent.click(screen.getByRole('button',{name:'Account menu'}));
+  for (const mobile of [true,false]) {
+    act(()=>{query.matches=mobile;listeners.forEach(listener=>listener());});
+    const link=screen.queryByRole('link',{name:'Platform Administration'});
+    if(role==='superadmin') expect(link.getAttribute('href')).toBe('/platform');
+    else expect(link).toBeNull();
+  }
+});

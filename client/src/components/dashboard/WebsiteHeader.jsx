@@ -15,7 +15,7 @@ export default function WebsiteHeader({ domains = [], domainKey, domainName, ana
       ...(profile?.role === 'viewer' ? [] : [{ element: <button type="button" aria-label="Setup" onClick={() => onConfiguration(domainKey, domainName || '')} />, label: 'Setup', icon: <Icon name="settings" /> }]),
     ];
     return <>
-      <SettingsHeader onDashboard={dashboard} onAllWebsites={onAllSites} onManageDomains={onManageDomains} onAccount={onNavigate ? () => onNavigate('/settings/account') : undefined} onSettings={onSettings} onLogout={onLogout}>
+      <SettingsHeader onDashboard={dashboard} onAllWebsites={onAllSites} onManageDomains={onManageDomains} onAccount={onNavigate ? () => onNavigate('/settings/account') : undefined} onPlatform={onNavigate ? () => onNavigate('/platform') : undefined} onSettings={onSettings} onLogout={onLogout}>
         <div className="domain-list-brand"><button type="button" className="domain-list-logo" onClick={onAllSites} aria-label="Back to all websites"><img src="/images/TTWLogo.jpg" alt="TTW" /></button>
           <select aria-label="Website" value={domainKey} onChange={event => { const site=domains.find(item => item.domain_key === event.target.value); if (site) onSelectDomain?.(site.domain_key, site.domain_name); }}>
             {!domains.some(item => item.domain_key === domainKey) && <option value={domainKey}>{domainName || 'Selected website'}</option>}
@@ -34,7 +34,7 @@ export default function WebsiteHeader({ domains = [], domainKey, domainName, ana
           {domains.map(item => <option key={item.domain_key} value={item.domain_key}>{item.domain_name}</option>)}
         </select></label>
       </div>
-      <div className="overview-account"><button onClick={onAllSites}>All websites</button><button onClick={onManageDomains}>Manage domains</button><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>
+      <div className="overview-account">{profile?.role === 'superadmin' && <a href="/platform">Platform Administration</a>}<button onClick={onAllSites}>All websites</button><button onClick={onManageDomains}>Manage domains</button><button onClick={onSettings}>Settings</button><button onClick={onLogout}>Log out</button></div>
     </div>
     <nav className="overview-navigation" aria-label="Website navigation">
       <button className={activePage === 'dashboard' ? 'overview-nav-active' : ''} aria-current={activePage === 'dashboard' ? 'page' : undefined} onClick={onDashboard}><Icon name="home" />Dashboard</button>

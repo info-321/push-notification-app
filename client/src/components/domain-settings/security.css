@@ -2,7 +2,6 @@
 
 .security-panels{min-width:0;grid-template-columns:minmax(0,1fr)}.security-panel{min-width:0}.security-user-form fieldset{min-width:0}.security-user-form>fieldset>label{display:grid}.security-user-form fieldset fieldset label{display:flex}
 
-.security-users-page .domain-list-account button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:4px 0}.security-users-page .domain-list-account{gap:24px}
 
 .security-activity-only{grid-template-columns:minmax(0,1fr)}
 
@@ -10,3 +9,19 @@
 
 .security-panel .security-action-link{display:inline-block;margin-inline-start:4px;text-decoration:none}
 .recovery-settings{margin-top:24px}.recovery-status{margin:16px 0;font-size:13px}.recovery-status>div{display:flex;gap:12px;flex-wrap:wrap;padding:8px 0}.recovery-status dt{font-weight:600}.recovery-status dd{margin:0;overflow-wrap:anywhere}.recovery-settings .security-heading{align-items:center}.recovery-settings .security-heading h2{margin:0}.recovery-settings .security-user-form{margin-top:18px}
+
+.security-user-actions > :is(button,a,span) { margin:0 4px 6px 0; }
+@media(max-width:620px) {
+  .security-users-page .security-panel h1 { font-size:22px; line-height:1.35; margin:0 0 14px; }
+  .security-users-page .security-panels { margin-top:0; gap:20px; }
+  .security-users-table { display:block; min-width:0!important; }
+  .security-users-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .security-users-table tbody { display:grid; gap:14px; }
+  .security-users-table tbody tr { display:block; padding:8px 12px; border:1px solid #dce6ec; border-radius:12px; background:#fff; }
+  .security-users-table tbody td { display:grid; grid-template-columns:72px minmax(0,1fr); gap:10px; padding:10px 0; font-size:13px; line-height:1.65; }
+  .security-users-table tbody td::before { content:attr(data-label); color:#62758a; font-size:12px; font-weight:500; }
+  .security-users-table .security-user-access { max-width:none; }
+  .security-users-table tbody .security-user-actions { display:flex; flex-wrap:wrap; gap:8px; border-bottom:0; }
+  .security-users-table .security-user-actions::before { flex-basis:100%; }
+  .security-users-table .security-user-actions > :is(button,a) { margin:0; min-height:44px; max-width:100%; display:inline-flex; align-items:center; justify-content:center; text-align:center; }
+}

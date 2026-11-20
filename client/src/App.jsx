@@ -474,5 +474,5 @@ const Workspace = ({onLogoutError,onProfile}) => {
 
 export default function App(){
   const [logoutError,setLogoutError]=useState(''),[profile,setProfile]=useState(null);
-  return <SettingsAccessContext.Provider value={profile}>{profile?.role==='superadmin'&&<nav className="platform-entry" aria-label="Platform owner"><a href="/platform">Platform Administration</a></nav>}<Workspace onProfile={setProfile} onLogoutError={setLogoutError}/><ConfirmAction/>{logoutError&&<div className="logout-error" role="alert"><span>{logoutError}</span><button type="button" aria-label="Dismiss sign-out message" onClick={()=>setLogoutError('')}>Dismiss</button></div>}</SettingsAccessContext.Provider>;
+  return <SettingsAccessContext.Provider value={profile}><Workspace onProfile={setProfile} onLogoutError={setLogoutError}/><ConfirmAction/>{logoutError&&<div className="logout-error" role="alert"><span>{logoutError}</span><button type="button" aria-label="Dismiss sign-out message" onClick={()=>setLogoutError('')}>Dismiss</button></div>}</SettingsAccessContext.Provider>;
 }

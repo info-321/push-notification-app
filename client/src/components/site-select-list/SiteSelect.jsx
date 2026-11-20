@@ -119,6 +119,7 @@ const SiteSelect = ({
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="9" r="3" /><path d="M5 19c1-6 13-6 14 0" /></svg>
             </button>
             {showProfileMenu && <div className="domain-list-profile-menu">
+              {access?.role === 'superadmin' && <a href="/platform">Platform Administration</a>}
               <button type="button" onClick={onAccount}>Account</button>
               <button type="button" onClick={onManageDomains}>Domains</button>
               <button type="button" onClick={onSettings}>Settings</button>

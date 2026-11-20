@@ -12,7 +12,7 @@
 .overview-logo img { height:34px; width:34px; object-fit:contain; }
 .overview-domain-picker select { color:white; background:transparent; border:1px solid #ffffff50; border-radius:6px; padding:9px 28px 9px 10px; max-width:320px; }
 .overview-domain-picker option { color:#273457; background:white; }
-.overview-account button { background:none; color:white; border:0; padding:8px 0; font-size:13px; }
+.overview-account button,.overview-account a { background:none; color:white; border:0; padding:8px 0; font-size:13px; text-decoration:none; }
 .overview-navigation { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; padding:0 0 24px; }
 .overview-navigation button, .overview-navigation a { border:1px solid #ffffff40; background:white; color:#5e687a; border-radius:8px; min-height:50px; display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; font-size:13px; padding:8px; }
 .overview-navigation svg { width:19px; height:19px; flex-shrink:0; }

@@ -28,7 +28,6 @@
   html:has(.settings-mobile-footer) { height:100%; overflow:hidden; }
   html body:has(.settings-mobile-footer) { height:100vh; height:100dvh; min-height:0; overflow:hidden; background:#171e22!important; }
   body:has(.settings-mobile-footer) #root { height:100%; display:flex; flex-direction:column; padding-bottom:calc(76px + env(safe-area-inset-bottom)); background:#171e22; }
-  body:has(.settings-mobile-footer) #root > .platform-entry { flex-shrink:0; }
   body:has(.settings-mobile-footer) #root > :is(.domain-list-page,.overview-page) { flex:1; min-height:0; display:flex; flex-direction:column; background:#171e22; }
   body:has(.settings-mobile-footer) .settings-shell-header { flex-shrink:0; }
   body:has(.settings-mobile-footer) .settings-shell-header .domain-list-profile-menu { max-height:50dvh; overflow-y:auto; }
