@@ -274,6 +274,116 @@ test('a replaced registration for our own worker is used instead of a stale Push
   assert.equal(created, 1); assert.equal(b.subscriptions(), 0);
 });
 
+test('a worker removed while the permission dialog is open is restored and saved in the same visitor action', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  let allow, current = b.registration, repairs = 0;
+  b.context.Notification.requestPermission = () => new Promise(resolve => { allow = () => { b.context.Notification.permission = 'granted'; resolve('granted'); }; });
+  b.context.navigator.serviceWorker.getRegistration = async () => current;
+  b.context.navigator.serviceWorker.register = async (url, options) => {
+    repairs++; assert.equal(new URL(url).pathname, '/push-sw.js'); assert.ok(new URL(url).searchParams.get('notizo_recovery')); assert.equal(options.scope, '/');
+    b.registration.active = { state: 'activated', scriptURL: url };
+    return current = b.registration;
+  };
+  const pending = b.context.window.PushNotifications.subscribe();
+  current = undefined; allow();
+  await pending;
+  assert.equal(repairs, 1); assert.equal(b.subscriptions(), 1); assert.equal(b.buttons[0].hidden, true);
+  assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 1);
+});
+
+test('an empty registration before the click is repaired after Allow without asking for a page refresh', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  b.registration.active = null;
+  let repairs = 0;
+  b.context.navigator.serviceWorker.getRegistration = async () => b.registration;
+  b.context.navigator.serviceWorker.register = async url => { repairs++; b.registration.active = { state: 'activated', scriptURL: url }; return b.registration; };
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(repairs, 1); assert.equal(b.permissionCalls(), 1); assert.equal(b.subscriptions(), 1);
+});
+
+test('repair finds the exact configured scope and leaves other provider scopes and their subscriptions untouched', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  let repairs = 0, repaired = false;
+  const foreign = { scope: 'https://website.test/feedify/push/', active: { scriptURL: 'https://website.test/feedify.js' }, unregister() { assert.fail('Another provider must not be unregistered'); }, pushManager: { getSubscription() { assert.fail('Another scope must not be read or changed'); } } };
+  b.context.navigator.serviceWorker.getRegistrations = async () => repaired ? [foreign, { ...b.registration, scope: 'https://website.test/' }] : [foreign];
+  b.context.navigator.serviceWorker.register = async url => { repairs++; repaired = true; b.registration.active = { state: 'activated', scriptURL: url }; return b.registration; };
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(repairs, 1); assert.equal(b.subscriptions(), 1);
+});
+
+test('repair refuses to replace a foreign worker at the configured scope', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  b.context.navigator.serviceWorker.getRegistrations = async () => [{ scope: 'https://website.test/', active: { scriptURL: 'https://website.test/other-provider.js' } }];
+  b.context.navigator.serviceWorker.register = () => assert.fail('The foreign registration must be preserved');
+  await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === 'worker-provider-conflict');
+  assert.equal(b.subscriptions(), 0);
+});
+
+test('a stale native PushManager failure recovers a missing worker once without repeating permission', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  let current = b.registration, repairs = 0, calls = 0;
+  const native = b.registration.pushManager.subscribe;
+  b.context.navigator.serviceWorker.getRegistration = async () => current;
+  b.context.navigator.serviceWorker.register = async url => { repairs++; b.registration.active = { state: 'activated', scriptURL: url }; return current = b.registration; };
+  b.registration.pushManager.subscribe = () => {
+    if (++calls === 1) { current = undefined; throw Object.assign(new Error('No active worker'), { name: 'InvalidStateError' }); }
+    return native();
+  };
+  b.context.setTimeout = (fn, ms) => setTimeout(fn, ms === 500 ? 0 : ms);
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(repairs, 1); assert.equal(calls, 2); assert.equal(b.permissionCalls(), 1); assert.equal(b.subscriptions(), 1);
+});
+
+test('repeated external worker removal stops instead of entering a registration battle', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  let repairs = 0, attempts = 0;
+  b.context.navigator.serviceWorker.getRegistration = async () => undefined;
+  b.context.navigator.serviceWorker.register = async () => { repairs++; return b.registration; };
+  b.registration.pushManager.subscribe = () => { attempts++; throw Object.assign(new Error('Worker removed again'), { name: 'AbortError' }); };
+  b.context.setTimeout = (fn, ms) => setTimeout(fn, ms === 500 ? 0 : ms);
+  await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === 'worker-repeatedly-removed');
+  assert.equal(repairs, 1); assert.equal(attempts, 0);
+  assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 0);
+});
+
+test('recovery preserves the WordPress worker query and waits for the owned replacement', async () => {
+  const b = browser({ config: { swPath: 'https://website.test/?ttw_push_worker=1' } });
+  await vm.runInNewContext(sdk, b.context);
+  let current;
+  b.context.navigator.serviceWorker.getRegistration = async () => current;
+  b.context.navigator.serviceWorker.register = async url => {
+    const target = new URL(url);
+    assert.equal(target.origin, 'https://website.test'); assert.equal(target.pathname, '/');
+    assert.equal(target.searchParams.get('ttw_push_worker'), '1'); assert.ok(target.searchParams.get('notizo_recovery'));
+    b.registration.active = { state: 'activated', scriptURL: url };
+    return current = b.registration;
+  };
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(b.subscriptions(), 1); assert.equal(b.permissionCalls(), 1);
+});
+
+test('a recovered worker is recognized on the next visit and remains available for an explicit unsubscribe', async () => {
+  const b = browser(); let registeredUrl, withdrawals = 0;
+  b.registration.scope = 'https://website.test/';
+  b.registration.active = { state: 'activated', scriptURL: 'https://website.test/push-sw.js?notizo_recovery=2026-11-20.4.123.abc' };
+  b.context.navigator.serviceWorker.getRegistrations = async () => [b.registration];
+  b.context.navigator.serviceWorker.register = async url => { registeredUrl = url; return b.registration; };
+  await vm.runInNewContext(sdk, b.context);
+  assert.equal(registeredUrl, b.registration.active.scriptURL);
+  await b.context.window.PushNotifications.subscribe();
+  b.registration.pushManager.getSubscription = async () => ({ toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/recovered', keys: {} }), unsubscribe: async () => { withdrawals++; return true; } });
+  assert.equal(await b.context.window.PushNotifications.unsubscribe(), true);
+  assert.equal(withdrawals, 1);
+});
+
+test('a recovery marker cannot disguise a different provider script as our own worker', async () => {
+  const b = browser(); let registrations = 0;
+  b.context.navigator.serviceWorker.getRegistrations = async () => [{ scope: 'https://website.test/', active: { scriptURL: 'https://website.test/feedify.js?notizo_recovery=2026-11-20.4' } }];
+  b.context.navigator.serviceWorker.register = async () => { registrations++; return b.registration; };
+  await vm.runInNewContext(sdk, b.context);
+  assert.equal(registrations, 0); assert.equal(b.permissionCalls(), 0); assert.equal(b.subscriptions(), 0);
+});
+
 test('a transient native push abort retries once without another permission prompt', async () => {
   const b = browser(); let calls = 0;
   const nativeSubscribe = b.registration.pushManager.subscribe;

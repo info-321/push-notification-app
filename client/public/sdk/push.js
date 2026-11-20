@@ -8,11 +8,23 @@
   const cfg = window.pushConfig || {};
   // Keep helper scripts aligned with this SDK, even in browsers that previously
   // cached an unversioned helper for hours.
-  const sdkVersion = '2026-11-20.3';
+  const sdkVersion = '2026-11-20.4';
   if (!cfg.apiBase || !cfg.domainKey || !cfg.vapidPublicKey) {
     console.error('[Push SDK] Missing apiBase, domainKey, or vapidPublicKey.');
     return;
   }
+  const isOwnWorkerScript = value => {
+    try {
+      const expected = new URL(cfg.swPath || '/push-sw.js', location.origin), actual = new URL(value, location.origin);
+      if (actual.href === expected.href) return true;
+      // A recovery query forces Chromium to reinstall an unregistered worker.
+      // Only our exact origin/path/configured query plus this marker is owned.
+      const marker = actual.searchParams.get('notizo_recovery');
+      if (expected.searchParams.has('notizo_recovery') || !/^[a-z0-9.-]{1,80}$/.test(marker || '')) return false;
+      actual.searchParams.delete('notizo_recovery'); actual.searchParams.sort(); expected.searchParams.sort();
+      return actual.href === expected.href;
+    } catch { return false; }
+  };
   const ua = navigator.userAgent || '';
   const ipad = /iPad/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
   const appleMobile = ipad || /iPhone|iPod/i.test(ua);
@@ -27,9 +39,9 @@
   const clientContext = { ipad, standalone };
   let pendingWithdrawal;
   const unsubscribe = async () => {
-    const scope=new URL(cfg.swScope || '/',location.origin).href,workerUrl=new URL(cfg.swPath || '/push-sw.js',location.origin).href;
+    const scope=new URL(cfg.swScope || '/',location.origin).href;
     const registrations=await navigator.serviceWorker.getRegistrations();
-    const own=registrations.find(item=>item.scope===scope&&item.active?.scriptURL===workerUrl);
+    const own=registrations.find(item=>item.scope===scope&&item.active?.scriptURL&&isOwnWorkerScript(item.active.scriptURL));
     if(!own)return false;
     const sub=await own.pushManager.getSubscription();if(!sub&&!pendingWithdrawal)return true;
     if(sub){pendingWithdrawal=sub.toJSON();await sub.unsubscribe();}
@@ -90,9 +102,9 @@
     if (button) button.textContent = message;
   };
   const workerConflict = () => failure('worker-provider-conflict', 'Another notification provider is using this website\'s notification worker. It has been preserved. Please contact the website administrator.');
-  const waitForActiveWorker = reg => {
-    if (reg.active && (!reg.active.state || reg.active.state === 'activated')) return Promise.resolve();
-    const worker = reg.active || reg.installing || reg.waiting;
+  const waitForActiveWorker = (reg, desiredUrl) => {
+    if (reg.active && (!desiredUrl || !reg.active.scriptURL || reg.active.scriptURL === desiredUrl) && (!reg.active.state || reg.active.state === 'activated')) return Promise.resolve();
+    const worker = desiredUrl ? [reg.installing, reg.waiting, reg.active].find(item => item?.scriptURL === desiredUrl) : reg.active || reg.installing || reg.waiting;
     if (!worker) return Promise.reject(failure('worker-unavailable', 'Notification setup changed or did not start. Please reload this page and try again.'));
     return new Promise((resolve, reject) => {
       const finish = error => { clearTimeout(timer); worker.removeEventListener?.('statechange', check); error ? reject(error) : resolve(); };
@@ -104,28 +116,64 @@
       worker.addEventListener('statechange', check); check();
     });
   };
-  const currentRegistration = async () => {
+  const lookupRegistration = async () => {
     const scope = new URL(cfg.swScope || '/', location.origin).href;
-    const reg = typeof navigator.serviceWorker.getRegistration === 'function' ? await navigator.serviceWorker.getRegistration(scope) : registration;
-    if (!reg || (reg.scope && reg.scope !== scope)) throw failure('worker-unavailable', 'Notification setup changed. Please reload this page and try again.');
-    const workerUrl = new URL(cfg.swPath || '/push-sw.js', location.origin).href;
-    if ([reg.active, reg.waiting, reg.installing].some(worker => worker?.scriptURL && worker.scriptURL !== workerUrl)) throw workerConflict();
-    await waitForActiveWorker(reg);
+    if (typeof navigator.serviceWorker.getRegistrations === 'function') return (await navigator.serviceWorker.getRegistrations()).find(reg => reg.scope === scope);
+    if (typeof navigator.serviceWorker.getRegistration === 'function') {
+      const reg = await navigator.serviceWorker.getRegistration(scope);
+      return reg && (!reg.scope || reg.scope === scope) ? reg : undefined;
+    }
+    return registration;
+  };
+  const assertOwnWorker = reg => {
+    if ([reg.active, reg.waiting, reg.installing].some(worker => worker?.scriptURL && !isOwnWorkerScript(worker.scriptURL))) throw workerConflict();
+  };
+  const currentRegistration = async recovery => {
+    let reg = await lookupRegistration();
+    let recoveryUrl;
+    if (reg) assertOwnWorker(reg);
+    if (!reg || !(reg.installing || reg.waiting || (reg.active && reg.active.state !== 'redundant'))) {
+      if (recovery.used) throw failure('worker-repeatedly-removed', 'Another script on this website keeps removing notification setup. Please contact the website administrator.');
+      recovery.used = true;
+      progress('Restoring notification setup...');
+      const workerUrl = new URL(cfg.swPath || '/push-sw.js', location.origin);
+      if (workerUrl.origin !== location.origin) throw failure('worker-invalid-origin', 'The notification worker must be hosted on this website. Please contact the website administrator.');
+      workerUrl.searchParams.set('notizo_recovery', `${sdkVersion}.${Date.now()}.${Math.random().toString(36).slice(2, 10)}`);
+      recoveryUrl = workerUrl.href;
+      // Repair only the absent/empty registration at our configured scope.
+      // Never unregister anything or replace another provider's worker.
+      reg = await navigator.serviceWorker.register(workerUrl.href, { scope: cfg.swScope || '/', updateViaCache: 'none' });
+      assertOwnWorker(reg);
+    }
+    await waitForActiveWorker(reg, recoveryUrl);
+    assertOwnWorker(reg);
+    if (recoveryUrl) {
+      reg = await lookupRegistration();
+      if (!reg) throw failure('worker-repeatedly-removed', 'Another script on this website keeps removing notification setup. Please contact the website administrator.');
+      assertOwnWorker(reg);
+    }
     return reg;
   };
   const browserSubscription = () => {
     if (!pendingPushSubscription) {
       const deadline = Date.now() + 15000;
+      const recovery = { used: false };
       const attempt = (async () => {
         for (let retry = 0; retry < 2; retry++) {
-          registration = await currentRegistration();
+          registration = await currentRegistration(recovery);
           try {
             // Read again on retry in case the browser completed the first attempt.
             const existing = await registration.pushManager.getSubscription();
             checkIdentity(existing);
+            assertOwnWorker(registration);
             return existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(cfg.vapidPublicKey) });
           } catch (error) {
-            if (retry || error.name !== 'AbortError' || Notification.permission !== 'granted' || navigator.onLine === false || Date.now() + 500 >= deadline) throw error;
+            if (retry || Notification.permission !== 'granted' || navigator.onLine === false || Date.now() + 500 >= deadline) throw error;
+            if (error.name !== 'AbortError') {
+              if (error.name !== 'InvalidStateError') throw error;
+              const latest = await lookupRegistration();
+              if (latest) { assertOwnWorker(latest); if (latest === registration && latest.active?.state !== 'redundant') throw error; }
+            }
             progress('Retrying the browser notification connection...');
             await new Promise(resolve => setTimeout(resolve, 500));
           }
@@ -229,7 +277,7 @@
   };
   const subscribe = async () => {
     if (busy) return;
-    if (!registration?.active) throw failure('setup-loading', 'Notification setup is still loading. Please try again.');
+    if (!registration) throw failure('setup-loading', 'Notification setup is still loading. Please try again.');
     if (Notification.permission === 'denied') throw blocked();
     busy = true;
     let stage = 'permission';
@@ -266,14 +314,18 @@
   };
   try {
     const workerUrl = new URL(cfg.swPath || '/push-sw.js', location.origin);
+    let registerUrl = workerUrl.href;
     if (workerUrl.origin !== location.origin) throw new Error('The service worker must be hosted on this website.');
     if (typeof navigator.serviceWorker.getRegistrations === 'function') {
       const scope = new URL(cfg.swScope || '/', location.origin).href;
       const registrations = await navigator.serviceWorker.getRegistrations();
       const registration = registrations.find(item => item.scope === scope);
-      if (registration && [registration.active, registration.waiting, registration.installing].some(worker => worker && worker.scriptURL !== workerUrl.href)) throw workerConflict();
+      if (registration) {
+        assertOwnWorker(registration);
+        registerUrl = (registration.installing || registration.waiting || registration.active)?.scriptURL || registerUrl;
+      }
     }
-    registration = await navigator.serviceWorker.register(workerUrl.href, { scope: cfg.swScope || '/' });
+    registration = await navigator.serviceWorker.register(registerUrl, { scope: cfg.swScope || '/' });
     await waitForActiveWorker(registration);
     const existing = await registration.pushManager.getSubscription();
     checkIdentity(existing);
