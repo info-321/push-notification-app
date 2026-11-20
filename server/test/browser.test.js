@@ -15,10 +15,11 @@ function browser({ existing, permission = 'default', rejectSave = false, locatio
   let permissionCalls = 0;
   let subscriptions = 0;
   const subscription = { toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/test', keys: {} }) };
+  let currentSubscription = existing ? subscription : null;
   const notification = { permission, async requestPermission() { permissionCalls++; notification.permission = 'granted'; return 'granted'; } };
   const registration = { active: true, pushManager: {
-    async getSubscription() { return existing ? subscription : null; },
-    async subscribe() { subscriptions++; return subscription; },
+    async getSubscription() { return currentSubscription; },
+    async subscribe() { subscriptions++; currentSubscription = subscription; return subscription; },
   } };
   const window = { isSecureContext: true, PushManager: {}, Notification: notification, pushConfig: { domainKey: 'domain-key', apiBase: 'https://api.test/', vapidPublicKey: Buffer.alloc(65, 1).toString('base64url') }, dispatchEvent(event) { events.push(event); } };
   Object.assign(window.pushConfig, config);
@@ -123,9 +124,88 @@ test('denied permission never triggers a subscription or prompt', async () => {
 test('backend rejection remains visible as a failed subscription', async () => {
   const b = browser({ rejectSave: true });
   await vm.runInNewContext(sdk, b.context);
-  await assert.rejects(b.context.window.PushNotifications.subscribe(), /Storage failed/);
+  await assert.rejects(b.context.window.PushNotifications.subscribe(), /Could not save your subscription/);
   assert.notEqual(b.buttons[0].hidden, true);
   assert.equal(b.buttons[0].disabled, false);
+});
+
+test('slow prompt telemetry never delays native permission or subscription saving', async () => {
+  const b = browser(), ordinary = b.context.fetch, progress = [];
+  let mounted, flushes = 0;
+  b.context.window.PushPermissionUI = { mount(options) {
+    mounted = options;
+    return { outcome() {}, progress: message => progress.push(message), hide() {}, flush() { flushes++; return new Promise(() => {}); } };
+  } };
+  b.context.fetch = async (url, options) => url.includes('/api/prompt/')
+    ? { ok: true, json: async () => ({ ok: true, data: { token: 'signed-fixture', prompt: { enabled: true, include_paths: [], exclude_paths: [] } } }) }
+    : ordinary(url, options);
+  await vm.runInNewContext(sdk, b.context);
+  const pending = mounted.subscribe();
+  assert.equal(b.permissionCalls(), 1, 'Native permission starts synchronously inside the click gesture');
+  const saved = await Promise.race([pending, new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Subscription waited for analytics')), 250);
+    pending.finally(() => clearTimeout(timer));
+  })]);
+  assert.ok(saved); assert.equal(flushes, 0);
+  assert.ok(progress.includes('Saving your subscription...'));
+  assert.equal(JSON.parse(b.requests[0].options.body).prompt_token, 'signed-fixture');
+});
+
+test('permission blocked after the popup opens explains the manual fix without another permission request', async () => {
+  const b = browser(); await vm.runInNewContext(sdk, b.context);
+  b.context.Notification.permission = 'denied';
+  await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === 'permission-blocked' && /site settings.*Ask or Allow/.test(error.userMessage));
+  assert.equal(b.permissionCalls(), 0); assert.equal(b.subscriptions(), 0); assert.equal(b.requests.filter(r => r.url.endsWith('/api/subscriptions')).length, 0);
+});
+
+test('subscription deadline includes a stalled response body; retry reuses the browser subscription', async () => {
+  for (const stalledBody of [false, true]) {
+    const b = browser(), ordinary = b.context.fetch;
+    let expire, finishBody, first = true, saveSignal;
+    b.context.setTimeout = (callback, ms) => ms === 10000 ? (expire = callback, 'save-deadline') : setTimeout(callback, ms);
+    b.context.clearTimeout = timer => { if (timer !== 'save-deadline') clearTimeout(timer); };
+    b.context.fetch = (url, options) => {
+      if (!url.endsWith('/api/subscriptions') || !first) return ordinary(url, options);
+      first = false; saveSignal = options.signal;
+      if (!stalledBody) return new Promise(() => {});
+      return Promise.resolve({ ok: true, json: () => new Promise(resolve => { finishBody = resolve; }) });
+    };
+    await vm.runInNewContext(sdk, b.context);
+    const pending = b.context.window.PushNotifications.subscribe();
+    await new Promise(resolve => setImmediate(resolve));
+    expire();
+    await assert.rejects(pending, error => error.code === 'subscription-timeout' && /try again/.test(error.userMessage));
+    assert.equal(saveSignal.aborted, true); assert.notEqual(b.buttons[0].hidden, true);
+    assert.equal(b.buttons[0].disabled, false); assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 0);
+    if (finishBody) { finishBody({ ok: true }); await new Promise(resolve => setImmediate(resolve)); }
+    assert.equal(b.events.filter(e => e.type === 'push:subscribed').length, 0, 'A late response cannot mark a timed-out save as successful');
+    await b.context.window.PushNotifications.subscribe();
+    assert.equal(b.permissionCalls(), 1); assert.equal(b.subscriptions(), 1);
+    assert.equal(b.buttons[0].hidden, true);
+  }
+});
+
+test('subscription errors use safe actionable messages rather than server internals', async () => {
+  for (const [status, code] of [[403, 'subscription-restricted'], [404, 'website-not-found'], [429, 'subscription-busy'], [500, 'subscription-save-failed']]) {
+    const b = browser(), ordinary = b.context.fetch;
+    b.context.fetch = async (url, options) => url.endsWith('/api/subscriptions')
+      ? { ok: false, status, json: async () => ({ ok: false, message: 'SQL private internal details' }) } : ordinary(url, options);
+    await vm.runInNewContext(sdk, b.context);
+    await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === code && !error.userMessage.includes('SQL'));
+    assert.notEqual(b.buttons[0].hidden, true); assert.equal(b.buttons[0].disabled, false);
+  }
+});
+
+test('saving after a connection failure retries without discarding a browser subscription', async () => {
+  const b = browser(), ordinary = b.context.fetch;
+  let failing = true;
+  b.context.fetch = (url, options) => url.endsWith('/api/subscriptions') && failing
+    ? Promise.reject(new TypeError('Failed to fetch')) : ordinary(url, options);
+  await vm.runInNewContext(sdk, b.context);
+  await assert.rejects(b.context.window.PushNotifications.subscribe(), error => error.code === 'subscription-connection');
+  failing = false;
+  await b.context.window.PushNotifications.subscribe();
+  assert.equal(b.permissionCalls(), 1); assert.equal(b.subscriptions(), 1);
 });
 
 test('worker accepts text payloads and does not open off-site notification links', async () => {

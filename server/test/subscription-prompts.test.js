@@ -45,7 +45,7 @@ async function fixture(t) {
       const converted = sql.includes('subscribed_at = NOW()'), permission = sql.includes('permission_outcome = ?');
       const entry = events.get(params[converted || permission ? 2 : 1]);
       if (entry && entry.key === params[converted || permission ? 1 : 0]) {
-        if (converted && entry.clicks && !entry.subscriptions) { entry.subscriptions = 1; entry.subscription_id = params[0]; }
+        if (converted && !entry.dismissals && !entry.subscriptions) { entry.clicks = 1; entry.permission = 'granted'; entry.subscriptions = 1; entry.subscription_id = params[0]; }
         else if (sql.includes('clicked_at = COALESCE') && !entry.dismissals) entry.clicks = 1;
         else if (sql.includes('dismissed_at = COALESCE') && !entry.clicks) entry.dismissals = 1;
         else if (permission && entry.clicks) entry.permission = params[0];
@@ -108,6 +108,22 @@ test('signed event tokens deduplicate views/clicks; only new saved subscriptions
   assert.equal((await f.request('/api/prompt/one/events', { token: token + 'x', event: 'view' })).status, 400);
   assert.equal((await f.request('/api/prompt/one/events', { token, event: 'view' }, false, 'https://evil.test')).status, 403);
   assert.equal((await f.request('/api/domains/one/prompt-performance?start=2026-10-31&end=2026-01-01', undefined, true)).status, 400);
+});
+
+test('a new saved subscription is counted even when view and click telemetry arrive later', async t => {
+  const f = await fixture(t); await f.change('publish');
+  const { token } = (await f.request('/api/prompt/one')).data;
+  const body = { domain_key: 'one', prompt_token: token, subscription: { endpoint: 'https://fcm.googleapis.com/send/slow-telemetry', keys: {
+    p256dh: Buffer.alloc(65, 1).toString('base64url'), auth: Buffer.alloc(16, 2).toString('base64url'),
+  } } };
+  assert.equal((await f.request('/api/subscriptions', body)).created, true);
+  for (const event of ['view', 'click', 'permission']) await f.request('/api/prompt/one/events', { token, event, outcome: 'granted' });
+  const report = (await f.request('/api/domains/one/prompt-performance', undefined, true)).data.rows;
+  assert.equal(report.length, 1);
+  assert.equal(report[0].views, 1); assert.equal(report[0].clicks, 1); assert.equal(report[0].subscriptions, 1);
+  const nextToken = (await f.request('/api/prompt/one')).data.token;
+  assert.equal((await f.request('/api/subscriptions', { ...body, prompt_token: nextToken })).created, false);
+  assert.equal(f.events.size, 1, 'Refreshing an existing subscription does not manufacture another prompt conversion');
 });
 
 test('all four additional templates publish and issue valid attribution tokens and performance rows', async t => {

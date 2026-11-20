@@ -56,7 +56,11 @@ export function readPromptToken(secret, token, key) {
 export async function recordPromptSubscription(pool, secret, token, key, subscriptionId) {
   const data = readPromptToken(secret, token, key);
   if (!data || !subscriptionId) return;
-  await pool.query(`UPDATE prompt_events SET subscribed_at = NOW(), subscription_id = ? WHERE domain_key = ? AND session_id = ? AND clicked_at IS NOT NULL AND subscribed_at IS NULL`, [subscriptionId, key, data.nonce]);
+  // A newly saved subscription with a signed prompt token confirms acceptance.
+  // View/click telemetry can arrive later: it must not delay the browser's save
+  // or cause the conversion to disappear. Existing subscriptions never call this.
+  await pool.query('INSERT IGNORE INTO prompt_events (domain_key, session_id, revision, template, device_group) VALUES (?, ?, ?, ?, ?)', [key, data.nonce, data.revision, data.template, data.device]);
+  await pool.query(`UPDATE prompt_events SET clicked_at = COALESCE(clicked_at, NOW()), permission_outcome = 'granted', subscribed_at = NOW(), subscription_id = ? WHERE domain_key = ? AND session_id = ? AND dismissed_at IS NULL AND subscribed_at IS NULL`, [subscriptionId, key, data.nonce]);
 }
 
 export function installSubscriptionPrompts(app, { pool, secret, requireAdmin }) {

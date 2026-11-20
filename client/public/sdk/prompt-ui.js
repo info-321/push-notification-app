@@ -39,7 +39,7 @@
     const pathMatches = prefix => prefix === '/' || location.pathname === prefix || location.pathname.startsWith(prefix.endsWith('/') ? prefix : prefix + '/');
     let dismissedUntil = 0;
     try { dismissedUntil = Number(localStorage.getItem(storageKey)) || 0; } catch { /* Private browsing may disable storage. */ }
-    let queue = Promise.resolve(), host, panel, active = false, timer, scrollHandler, visibilityHandler, previousFocus, previousOverflow, previousOverflowPriority, modalOpen = false;
+    let queue = Promise.resolve(), host, panel, status, active = false, timer, scrollHandler, visibilityHandler, previousFocus, previousOverflow, previousOverflowPriority, modalOpen = false;
     const event = (name, outcome) => { queue = queue.catch(() => {}).then(() => track(name, outcome)).catch(() => {}); return queue; };
     const clearTriggers = () => { clearTimeout(timer); if (scrollHandler) window.removeEventListener('scroll', scrollHandler); if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler); };
     const hide = () => {
@@ -55,7 +55,7 @@
       if (restoreFocus && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
     const postpone = () => { try { localStorage.setItem(storageKey, String(Date.now() + p.cooldown * 86400000)); } catch { /* Best-effort local cooldown. */ } };
-    const controller = { flush: () => queue, outcome(value) { event('permission', value); if (value !== 'granted') { postpone(); hide(); } }, hide };
+    const controller = { flush: () => queue, progress(message) { if (status) status.textContent = message; }, outcome(value) { event('permission', value); if (value !== 'granted') { postpone(); hide(); } }, hide };
     if (!p.enabled || isPhone(navigator) !== mobile || dismissedUntil > Date.now() || (p.include_paths.length && !p.include_paths.some(pathMatches)) || p.exclude_paths.some(pathMatches)) return controller;
     const show = () => {
       if (active || Notification.permission === 'denied') { clearTriggers(); return; }
@@ -87,7 +87,7 @@
         const message = make('p', p.message, 'message'); message.id = 'push-prompt-description'; panel.appendChild(message); panel.setAttribute('aria-describedby', message.id);
         const actions = make('div', '', 'actions'); actions.appendChild(allow); actions.appendChild(dismiss); panel.appendChild(actions);
       }
-      const status = make('p', '', 'status'); status.setAttribute('role', 'status');
+      status = make('p', '', 'status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
       dismiss.addEventListener('click', () => { event('dismiss'); postpone(); hide(); });
       root.addEventListener('keydown', event => { if (!isModal && event.key === 'Escape') { event.preventDefault(); dismiss.click(); } });
       if (isModal) {
@@ -96,9 +96,12 @@
       }
       allow.addEventListener('click', () => {
         if (allow.disabled) return;
-        allow.disabled = true; event('click');
+        allow.disabled = true; allow.textContent = 'Subscribing...'; panel.setAttribute('aria-busy', 'true');
+        status.textContent = 'Enabling notifications...'; panel.appendChild(status); event('click');
         // Call synchronously within this gesture; telemetry never delays permission.
-        subscribe().then(result => { if (result) hide(); }).catch(() => { status.textContent = 'Could not enable notifications. Please try again.'; panel.appendChild(status); }).finally(() => { allow.disabled = false; dismiss.disabled = false; });
+        subscribe().then(result => { if (result) hide(); }).catch(error => {
+          status.textContent = error?.userMessage || 'Could not enable notifications. Please try again.';
+        }).finally(() => { allow.disabled = false; allow.textContent = p.allow_label; dismiss.disabled = false; panel.setAttribute('aria-busy', 'false'); });
       });
       if (p.template === 'sticky') {
         panel.hidden = true;

@@ -78,6 +78,13 @@
   let savedSubscription, locationToken;
   let busy = false;
   const report = (name, detail) => window.dispatchEvent(new CustomEvent(`push:${name}`, { detail }));
+  // Only these locally authored messages are suitable for the visitor-facing UI.
+  const failure = (code, message) => Object.assign(new Error(message), { code, userMessage: message });
+  const blocked = () => failure('permission-blocked', 'Notifications are blocked. Open this website\'s browser site settings, change Notifications to Ask or Allow, then reload the page.');
+  const progress = message => {
+    promptController?.progress?.(message);
+    if (button) button.textContent = message;
+  };
   const shareLocation = () => {
     if (!savedSubscription || !locationToken) return Promise.reject(new Error('Enable notifications before sharing your location.'));
     if (!navigator.geolocation) return Promise.reject(new Error('Location sharing is unavailable in this browser.'));
@@ -107,12 +114,36 @@
     window.PushLocationUI.mount({ key: cfg.domainKey, shareLocation });
   };
   const save = async subscription => {
-    const response = await fetch(`${cfg.apiBase.replace(/\/$/, '')}/api/subscriptions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain_key: cfg.domainKey, subscription: subscription.toJSON(), client_context: clientContext, ...(promptToken ? { prompt_token: promptToken } : {}) }),
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.message || 'Could not save the subscription.');
+    progress('Saving your subscription...');
+    const controller = new AbortController();
+    let timer;
+    let result;
+    try {
+      // Bound both the response and its body. A late response must never report success.
+      result = await Promise.race([
+        (async () => {
+          const response = await fetch(`${cfg.apiBase.replace(/\/$/, '')}/api/subscriptions`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', signal: controller.signal,
+            body: JSON.stringify({ domain_key: cfg.domainKey, subscription: subscription.toJSON(), client_context: clientContext, ...(promptToken ? { prompt_token: promptToken } : {}) }),
+          });
+          if (response.status === 403) throw failure('subscription-restricted', 'This website\'s subscription rules do not allow this request. Please contact the website administrator.');
+          if (response.status === 404) throw failure('website-not-found', 'Notification setup for this website is unavailable. Please contact the website administrator.');
+          if (response.status === 429) throw failure('subscription-busy', 'The notification service is busy. Please wait a minute before trying again.');
+          const data = await response.json();
+          if (!response.ok || !data?.ok) throw failure('subscription-save-failed', 'Could not save your subscription. Please try again in a moment.');
+          return data;
+        })(),
+        new Promise((resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(failure('subscription-timeout', 'Saving your subscription took too long. Please check your connection and try again.'));
+            controller.abort();
+          }, 10000);
+        }),
+      ]);
+    } catch (error) {
+      if (error.userMessage) throw error;
+      throw failure('subscription-connection', 'Could not connect to the notification service. Please check your connection and try again.');
+    } finally { clearTimeout(timer); }
     savedSubscription = subscription.toJSON();
     locationToken = result.location_token;
     if (button) button.hidden = true;
@@ -123,29 +154,36 @@
   };
   const subscribe = async () => {
     if (busy) return;
-    if (!registration?.active) throw new Error('Notification setup is still loading. Please try again.');
-    if (Notification.permission === 'denied') throw new Error('Notifications are blocked. Enable them in your browser site settings.');
+    if (!registration?.active) throw failure('setup-loading', 'Notification setup is still loading. Please try again.');
+    if (Notification.permission === 'denied') throw blocked();
     busy = true;
     if (button) button.disabled = true;
     try {
       // Request permission in the click handler before other asynchronous work consumes the user gesture.
+      progress(Notification.permission === 'granted' ? 'Connecting to notifications...' : 'Please respond to your browser\'s notification request.');
       const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
       promptController?.outcome(permission);
       if (permission !== 'granted') return;
+      progress('Connecting to notifications...');
       const existing = await registration.pushManager.getSubscription();
       checkIdentity(existing);
       const subscription = existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(cfg.vapidPublicKey) });
-      await promptController?.flush();
+      // Prompt analytics are best-effort; they must never hold up a subscription.
       return await save(subscription);
+    } catch (error) {
+      if (error.userMessage) throw error;
+      if (Notification.permission === 'denied') throw blocked();
+      if (error.name === 'NotAllowedError') throw failure('permission-unavailable', 'Your browser did not allow notifications. Check this website\'s notification permission in browser site settings.');
+      throw failure('browser-subscription-failed', 'Your browser could not connect to its push service. Please check your connection and try again.');
     } finally {
       busy = false;
-      if (button) button.disabled = false;
+      if (button) { button.disabled = false; button.textContent = cfg.buttonLabel || 'Enable notifications'; }
     }
   };
   window.PushNotifications = { subscribe, shareLocation, unsubscribe };
   const checkIdentity = subscription => {
     const existingKey = subscription?.options?.applicationServerKey;
-    if (existingKey && Array.from(new Uint8Array(existingKey)).join(',') !== Array.from(toBytes(cfg.vapidPublicKey)).join(',')) throw new Error('An existing subscription uses another provider. It has not been changed.');
+    if (existingKey && Array.from(new Uint8Array(existingKey)).join(',') !== Array.from(toBytes(cfg.vapidPublicKey)).join(',')) throw failure('subscription-provider-conflict', 'An existing subscription uses another provider. It has not been changed. Please contact the website administrator.');
   };
   try {
     const workerUrl = new URL(cfg.swPath || '/push-sw.js', location.origin);
@@ -206,7 +244,7 @@
       button.textContent = cfg.buttonLabel || 'Enable notifications';
       button.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;padding:12px 18px;border:0;border-radius:8px;background:#1f73c9;color:#fff;font:600 14px system-ui;cursor:pointer';
       button.addEventListener('click', () => subscribe().catch(error => {
-        button.textContent = 'Try enabling notifications again';
+        button.textContent = error.userMessage || 'Could not enable notifications. Please try again.';
         report('error', { message: error.message });
         console.error('[Push SDK]', error);
       }));
