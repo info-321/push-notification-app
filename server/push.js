@@ -36,7 +36,13 @@ export function installPush(app, { pool, webpush, secret, publicApiBase, vapidSu
     liveReady = url.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   } catch { throw new Error('PUBLIC_API_BASE must be an absolute URL.'); }
 
-  app.use('/sdk', express.static(path.join(publicDir, 'sdk'), { maxAge: 0 }));
+  // This SDK has stable URLs in installed WordPress plugins. Do not let a
+  // browser/CDN TTL keep visitors on old subscription or permission behavior.
+  app.use('/sdk', express.static(path.join(publicDir, 'sdk'), { setHeaders(res) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store');
+  } }));
   app.get('/push-sw.js', (req, res) => res.sendFile(path.join(publicDir, 'push-sw.js')));
   app.use('/downloads', express.static(path.join(publicDir, 'downloads'), { maxAge: 0 }));
 

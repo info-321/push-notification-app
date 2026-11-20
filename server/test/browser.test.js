@@ -158,6 +158,41 @@ test('permission blocked after the popup opens explains the manual fix without a
   assert.equal(b.permissionCalls(), 0); assert.equal(b.subscriptions(), 0); assert.equal(b.requests.filter(r => r.url.endsWith('/api/subscriptions')).length, 0);
 });
 
+test('Edge explains quiet permission requests while leaving the browser permission decision pending', async () => {
+  const b = browser(), ordinary = b.context.fetch, progress = [];
+  let mounted, allowPermission;
+  b.context.navigator.userAgent = 'Mozilla/5.0 Windows NT Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0';
+  b.context.Notification.requestPermission = () => new Promise(resolve => { allowPermission = resolve; });
+  b.context.window.PushPermissionUI = { mount(options) {
+    mounted = options;
+    return { outcome() {}, progress: message => progress.push(message), hide() {} };
+  } };
+  b.context.fetch = async (url, options) => url.includes('/api/prompt/')
+    ? { ok: true, json: async () => ({ ok: true, data: { prompt: { enabled: true, include_paths: [], exclude_paths: [] } } }) } : ordinary(url, options);
+  await vm.runInNewContext(sdk, b.context);
+  const pending = mounted.subscribe();
+  assert.match(progress[0], /Edge.*notification icon beside the address bar/);
+  assert.equal(b.subscriptions(), 0);
+  b.context.Notification.permission = 'granted'; allowPermission('granted');
+  await pending;
+  assert.equal(b.subscriptions(), 1);
+});
+
+test('a dynamically loaded popup uses a versioned helper URL instead of an older cached copy', async () => {
+  const b = browser(), ordinary = b.context.fetch, scripts = [];
+  b.context.fetch = async (url, options) => url.includes('/api/prompt/')
+    ? { ok: true, json: async () => ({ ok: true, data: { prompt: { enabled: true, include_paths: [], exclude_paths: [] } } }) } : ordinary(url, options);
+  b.context.document.head = { appendChild(script) {
+    scripts.push(script.src);
+    b.context.window.PushPermissionUI = { mount() { return { hide() {} }; } };
+    script.onload();
+  } };
+  await vm.runInNewContext(sdk, b.context);
+  assert.equal(scripts.length, 1);
+  assert.match(scripts[0], /\/sdk\/prompt-ui\.js\?v=[\w.-]+$/);
+  assert.equal(b.permissionCalls(), 0);
+});
+
 test('subscription deadline includes a stalled response body; retry reuses the browser subscription', async () => {
   for (const stalledBody of [false, true]) {
     const b = browser(), ordinary = b.context.fetch;

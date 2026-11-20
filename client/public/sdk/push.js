@@ -6,6 +6,9 @@
     return;
   }
   const cfg = window.pushConfig || {};
+  // Keep helper scripts aligned with this SDK, even in browsers that previously
+  // cached an unversioned helper for hours.
+  const sdkVersion = '2026-11-20.2';
   if (!cfg.apiBase || !cfg.domainKey || !cfg.vapidPublicKey) {
     console.error('[Push SDK] Missing apiBase, domainKey, or vapidPublicKey.');
     return;
@@ -58,7 +61,7 @@
       if (p && !p.enabled) return;
       if (!window.PushAppleInstall) await new Promise((resolve, reject) => {
         const script = document.createElement('script'), timeout = setTimeout(() => { script.remove(); reject(new Error('Apple installation guide timeout')); }, 3000);
-        script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/apple-install.js`;
+        script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/apple-install.js?v=${sdkVersion}`;
         script.onload = () => { clearTimeout(timeout); resolve(); }; script.onerror = () => { clearTimeout(timeout); reject(new Error('Apple installation guide unavailable')); };
         document.head.appendChild(script);
       });
@@ -106,7 +109,7 @@
     if (cfg.showButton === false || cfg.requestLocation === false || !navigator.geolocation) return;
     if (!window.PushLocationUI) await new Promise((resolve, reject) => {
       const script = document.createElement('script'), timeout = setTimeout(() => { script.remove(); reject(new Error('Location UI timeout')); }, 3000);
-      script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/location-ui.js`;
+      script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/location-ui.js?v=${sdkVersion}`;
       script.onload = () => { clearTimeout(timeout); resolve(); }; script.onerror = () => { clearTimeout(timeout); reject(new Error('Location UI unavailable')); };
       document.head.appendChild(script);
     });
@@ -160,7 +163,9 @@
     if (button) button.disabled = true;
     try {
       // Request permission in the click handler before other asynchronous work consumes the user gesture.
-      progress(Notification.permission === 'granted' ? 'Connecting to notifications...' : 'Please respond to your browser\'s notification request.');
+      progress(Notification.permission === 'granted' ? 'Connecting to notifications...' : /Edg\//.test(ua)
+        ? 'Please allow notifications in Edge. If no permission popup appears, check the notification icon beside the address bar.'
+        : 'Please respond to your browser\'s notification request.');
       const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
       promptController?.outcome(permission);
       if (permission !== 'granted') return;
@@ -227,7 +232,7 @@
             if (!p.enabled || dismissedUntil > Date.now() || (p.include_paths.length && !p.include_paths.some(matches)) || p.exclude_paths.some(matches)) { report('ready', {}); return; }
             if (!window.PushPermissionUI) await new Promise((resolve, reject) => {
               const script = document.createElement('script'), timeout = setTimeout(() => { script.remove(); reject(new Error('Prompt UI timeout')); }, 3000);
-              script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/prompt-ui.js`;
+              script.src = `${cfg.apiBase.replace(/\/$/, '')}/sdk/prompt-ui.js?v=${sdkVersion}`;
               script.onload = () => { clearTimeout(timeout); resolve(); }; script.onerror = () => { clearTimeout(timeout); reject(new Error('Prompt UI unavailable')); };
               document.head.appendChild(script);
             });

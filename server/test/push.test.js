@@ -86,6 +86,15 @@ test('SDK and worker are served by the API, with JavaScript content types', asyn
   }
 });
 
+test('stable SDK URLs and versioned helpers prohibit stale browser and CDN copies', async t => {
+  const f = await fixture(t);
+  for (const route of ['/sdk/push.js', '/sdk/push.js?ver=1.3.1', '/sdk/prompt-ui.js', '/sdk/prompt-ui.js?v=2026-11-20.2', '/sdk/apple-install.js', '/sdk/location-ui.js']) {
+    const response = await fetch(f.base + route);
+    assert.equal(response.status, 200);
+    for (const name of ['Cache-Control', 'CDN-Cache-Control', 'Cloudflare-CDN-Cache-Control']) assert.equal(response.headers.get(name), 'no-store');
+  }
+});
+
 test('composer sends banners and distinct button targets, rejects unsafe actions and oversized encrypted payloads', async t => {
   const f = await fixture(t, { subscriptions: [{ id: 1, endpoint, ...browserKeys }] });
   const data = { domain_key: key, title: 'News', body: 'Story', url: '/article', icon: 'https://cdn.test/icon.png', audience: { platform: 'all', subscribed: 'all' }, banner: { enabled: true, image: 'https://cdn.test/banner.png', actions: [{ title: 'Read', type: 'link', url: '/more' }, { title: 'Share', type: 'facebook', url: '' }] } };
